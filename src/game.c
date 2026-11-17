@@ -1,0 +1,135 @@
+/* Game loop tick, character movement and initiative tracking (main/GameHandler). */
+#include "app.h"
+
+/* Called at ~60 Hz: camera panning with WASD. */
+void game_tick(void) {
+    if (gh->isAltDown) return;              /* pause movement */
+    else if (gh->isShiftDown) gh->moveSpeed = 12;
+    else if (gh->isCtrlDown)  gh->moveSpeed = 6;
+    else                      gh->moveSpeed = 3;
+
+    if (gh->ADown) gfx_grid_offset(gh->moveSpeed, 0);
+    if (gh->DDown) gfx_grid_offset(-gh->moveSpeed, 0);
+    if (gh->SDown) gfx_grid_offset(0, -gh->moveSpeed);
+    if (gh->WDown) gfx_grid_offset(0, gh->moveSpeed);
+
+    gfx_out_of_bounds_correction();
+}
+
+void game_move_character(Hex target, Entity *c) {
+    if (!c) return;
+    astar_path(c->tile, target, false, &gh->path);
+    c->tile = target;
+}
+
+/* ---- initiative ----------------------------------------------------------------- */
+
+static int init_index(const Entity *e) {
+    for (int i = 0; i < gh->init.count; i++)
+        if (gh->init.items[i].entity == e) return i;
+    return -1;
+}
+
+bool game_is_in_initiative(const Entity *e) { return init_index(e) >= 0; }
+
+static void initiative_add(Entity *e) {
+    if (!e || game_is_in_initiative(e)) return;
+    double value = rand_unit();
+    da_push(&gh->init, ((InitEntry){ e, value }));
+
+    /* visual marker above the entity */
+    Hex tiles[MAX_OCCUPIED];
+    entity_occupied_tiles(e, tiles);
+    Vec2 c = hex_center(tiles[0]);
+    Marker *m = marker_new_stat(0, (Vec2){ (int)c.x, (int)c.y - gh->hexSize }, MARKER_STAT, false);
+    m->attached = e;
+    m->debugValue = value;
+    da_push(&gh->initMarkers, m);
+    marker_add(m);
+}
+
+/* Highest initiative first; stable so equal values keep their order. */
+static void sort_initiative(void) {
+    for (int i = 1; i < gh->init.count; i++) {
+        InitEntry cur = gh->init.items[i];
+        int j = i - 1;
+        while (j >= 0 && gh->init.items[j].value < cur.value) {
+            gh->init.items[j + 1] = gh->init.items[j];
+            j--;
+        }
+        gh->init.items[j + 1] = cur;
+    }
+    if (gh->initMarkers.count > 0) game_update_initiative_markers();
+}
+
+void game_initiative_list(Entity **entities, int n) {
+    if (!entities) return;
+    for (int i = 0; i < n; i++) initiative_add(entities[i]);
+    sort_initiative();
+    game_update_initiative_markers();
+}
+
+void game_update_initiative_markers(void) {
+    int count = gh->init.count;
+    for (int i = 0; i < count; i++) {
+        Entity *e = gh->init.items[i].entity;
+        for (int k = 0; k < gh->initMarkers.count; k++) {
+            Marker *m = gh->initMarkers.items[k];
+            if (m->attached != e) continue;
+            m->stat = i; /* position in the turn order */
+            m->debugValue = gh->init.items[i].value;
+            m->hasColor = true;
+            if (i == gh->currentTurnIndex)                   m->color = COLOR_GREEN;      /* current */
+            else if (i == (gh->currentTurnIndex + 1) % count) m->color = rgb_hex(0xF9A801); /* next */
+            else                                              m->color = COLOR_RED;
+            break;
+        }
+    }
+}
+
+void game_next_turn(void) {
+    if (gh->init.count == 0) return;
+    gh->currentTurnIndex = (gh->currentTurnIndex + 1) % gh->init.count;
+    gh->currentTurn = gh->init.items[gh->currentTurnIndex].entity;
+    game_update_initiative_markers();
+}
+
+void game_remove_from_initiative(Entity *e) {
+    int idx = init_index(e);
+    if (!e || idx < 0) return;
+    da_remove_at(&gh->init, idx);
+
+    for (int k = 0; k < gh->initMarkers.count; k++) {
+        Marker *m = gh->initMarkers.items[k];
+        if (m->attached == e) {
+            da_remove_at(&gh->initMarkers, k);
+            marker_remove(m);
+            break;
+        }
+    }
+
+    if (e == gh->currentTurn) {
+        if (gh->init.count == 0) {
+            gh->currentTurn = NULL;
+            gh->currentTurnIndex = 0;
+        } else {
+            game_next_turn(); /* advance if the removed entity was current */
+        }
+    } else if (gh->currentTurnIndex > 0 && init_index(gh->currentTurn) < gh->currentTurnIndex) {
+        gh->currentTurnIndex--;
+    }
+    game_update_initiative_markers();
+}
+
+void game_toggle_show_initiative(void) {
+    for (int k = 0; k < gh->initMarkers.count; k++)
+        gh->initMarkers.items[k]->visible = !gh->initMarkers.items[k]->visible;
+}
+
+void game_clear_initiative(void) {
+    for (int k = 0; k < gh->initMarkers.count; k++) marker_remove(gh->initMarkers.items[k]);
+    da_clear(&gh->initMarkers);
+    da_clear(&gh->init);
+    gh->currentTurn = NULL;
+    gh->currentTurnIndex = 0;
+}

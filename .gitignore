@@ -1,0 +1,12 @@
+# build output
+/build/
+/pathfinder
+
+# save files written while testing
+*.pfsave
+*.pfsave.tmp
+
+# libFuzzer findings
+crash-*
+leak-*
+timeout-*
