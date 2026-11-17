@@ -221,12 +221,20 @@ void gfx_request_file(ActionKind kind, const HexList *tiles, int size, int maxHe
         gfx_handle_file_result(gh->autoFile);
         return;
     }
+    static const SDL_DialogFileFilter save_filters[] = { { "Pathfinder saves (*.pfsave)", "pfsave" } };
     static const SDL_DialogFileFilter filters[] = { { "PNG Images (*.png)", "png" } };
-    SDL_ShowOpenFileDialog(dialog_callback, NULL, gh->window, filters, 1, NULL, false);
+    if (kind == ACTION_SAVE)
+        SDL_ShowSaveFileDialog(dialog_callback, NULL, gh->window, save_filters, 1, NULL);
+    else if (kind == ACTION_LOAD)
+        SDL_ShowOpenFileDialog(dialog_callback, NULL, gh->window, save_filters, 1, NULL, false);
+    else
+        SDL_ShowOpenFileDialog(dialog_callback, NULL, gh->window, filters, 1, NULL, false);
 }
 
+/* User images keep their pixels on the CPU: save files need them. */
 static Texture *texture_from_image(Image *img) {
-    Texture *t = vkr_texture_create(img->w, img->h, img->px, false);
+    Texture *t = vkr_texture_create_kept(img->w, img->h, img->px);
+    img->px = NULL; /* now owned by the texture */
     image_free(img);
     return t;
 }
@@ -236,6 +244,10 @@ void gfx_handle_file_result(const char *path) {
     ActionKind kind = a->kind;
     a->kind = ACTION_NONE;
     if (kind == ACTION_NONE) return;
+    if (kind == ACTION_SAVE || kind == ACTION_LOAD) {
+        save_handle_dialog(kind, path);
+        return;
+    }
     if (!path) {
         if (kind == ACTION_SPAWN_CHARACTERS) console_log("Character summon canceled");
         else if (kind == ACTION_WALLS) console_log("Wall summon canceled");

@@ -32,6 +32,11 @@ struct Texture {
     int w, h;
     bool alpha_only;
     int refs;
+    uint64_t id;      /* unique, never reused (save file fingerprint) */
+    uint8_t *pixels;  /* optional RGBA copy, see vkr_texture_create_kept */
+    uint8_t *blob;    /* optional encoded copy, see vkr_texture_set_blob */
+    size_t blob_len;
+    int blob_kind, blob_w, blob_h;
 };
 
 typedef struct {
@@ -735,6 +740,8 @@ Texture *vkr_texture_create(int w, int h, const uint8_t *pixels, bool alpha_only
     t->h = h;
     t->alpha_only = alpha_only;
     t->refs = 1;
+    static uint64_t next_id = 1;
+    t->id = next_id++;
     VkFormat fmt = alpha_only ? VK_FORMAT_R8_UNORM : VK_FORMAT_R8G8B8A8_UNORM;
     create_image((uint32_t)w, (uint32_t)h, fmt, VK_SAMPLE_COUNT_1_BIT,
                  VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
@@ -778,8 +785,41 @@ void vkr_texture_release(Texture *t) {
     vkDestroyImageView(R.device, t->view, NULL);
     vkDestroyImage(R.device, t->image, NULL);
     vkFreeMemory(R.device, t->memory, NULL);
+    free(t->pixels);
+    free(t->blob);
     free(t);
 }
+
+Texture *vkr_texture_create_kept(int w, int h, uint8_t *pixels) {
+    Texture *t = vkr_texture_create(w, h, pixels, false);
+    t->pixels = pixels;
+    return t;
+}
+
+const uint8_t *vkr_texture_pixels(const Texture *t) { return t->pixels; }
+
+void vkr_texture_set_blob(Texture *t, uint8_t *blob, size_t len, int kind, int w, int h) {
+    if (!blob) return;
+    free(t->blob);
+    t->blob = blob;
+    t->blob_len = len;
+    t->blob_kind = kind;
+    t->blob_w = w;
+    t->blob_h = h;
+    free(t->pixels); /* the blob is enough to save the texture again */
+    t->pixels = NULL;
+}
+
+const uint8_t *vkr_texture_blob(const Texture *t, size_t *len, int *kind, int *w, int *h) {
+    if (!t->blob) return NULL;
+    *len = t->blob_len;
+    *kind = t->blob_kind;
+    *w = t->blob_w;
+    *h = t->blob_h;
+    return t->blob;
+}
+
+uint64_t vkr_texture_id(const Texture *t) { return t->id; }
 
 int vkr_texture_width(const Texture *t)  { return t->w; }
 int vkr_texture_height(const Texture *t) { return t->h; }

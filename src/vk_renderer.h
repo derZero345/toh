@@ -39,6 +39,17 @@ void vkr_texture_release(Texture *t);
 int  vkr_texture_width(const Texture *t);
 int  vkr_texture_height(const Texture *t);
 
+/* CPU-side source data for save files. A texture keeps its RGBA pixels and/or an
+ * encoded copy (the "blob", e.g. WebP); setting a blob frees the pixels. */
+/* Like vkr_texture_create (RGBA), but takes ownership of `pixels` (malloc'd) and keeps them. */
+Texture *vkr_texture_create_kept(int w, int h, uint8_t *pixels);
+const uint8_t *vkr_texture_pixels(const Texture *t); /* NULL when not kept */
+/* Takes ownership of blob (malloc'd); kind, w and h describe the encoded image. */
+void vkr_texture_set_blob(Texture *t, uint8_t *blob, size_t len, int kind, int w, int h);
+const uint8_t *vkr_texture_blob(const Texture *t, size_t *len, int *kind, int *w, int *h); /* NULL if none */
+/* Unique serial number; never reused within a run. */
+uint64_t vkr_texture_id(const Texture *t);
+
 /* Renders and presents one frame. `clear` is RGBA in [0,1].
  * If screenshot_path is non-NULL the presented image is also saved as PNG. */
 void vkr_render(const Vertex *verts, int nverts, const DrawCmd *cmds, int ncmds,

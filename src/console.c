@@ -19,7 +19,7 @@ typedef struct {
 static const char *const ARGS_CHARACTER[] = { "delete", "size", "maxhealth", "armorclass", "speed", "initiative", "icon", NULL };
 static const char *const ARGS_DELETE[]    = { "delete", NULL };
 static const char *const ARGS_HELP[]      = { "quit", "background", "debug", "character", "wall", "entity", "help",
-                                              "roll", "grid", "gamemaster", "init", "clear", "theme", "teleport", NULL };
+                                              "roll", "grid", "gamemaster", "init", "clear", "theme", "teleport", "save", "load", NULL };
 static const char *const ARGS_INIT[]      = { "add", "remove", "clear", "show", "next", NULL };
 static const char *const ARGS_THEME[]     = { "purple", "red", "green", "yellow", "light", "dark", "black", NULL };
 
@@ -31,6 +31,7 @@ static const CommandDef COMMANDS[] = {
     { "theme", ARGS_THEME },
     /* arguments depend on the position and on the existing waypoints: see teleport_suggestions */
     { "teleport", NULL },    { "tp", NULL },
+    { "save", NULL },        { "load", NULL },
 };
 #define NCOMMANDS ((int)(sizeof(COMMANDS) / sizeof(COMMANDS[0])))
 
@@ -415,7 +416,7 @@ static void cmd_character(Args *a) {
 static void cmd_help(Args *a) {
     const char *arg = a->argc > 1 ? a->argv[1] : "";
     if (!strcmp(arg, "quit") || !strcmp(arg, ":q")) {
-        console_log(":q  or quit # Quit the application - No Arguments");
+        console_log(":q  or quit # Quit the application - :q! also quits with unsaved changes");
     } else if (!strcmp(arg, "background") || !strcmp(arg, ":b")) {
         console_log(":b  or background [file.png] # Set a background image (opens a file dialog)");
     } else if (!strcmp(arg, "debug") || !strcmp(arg, ":d")) {
@@ -450,6 +451,12 @@ static void cmd_help(Args *a) {
         console_log("  tp waypoint # list waypoints");
         console_log("  tp waypoint create <name> [row col] # default: selected tile, else screen centre");
         console_log("  tp waypoint delete <name>");
+    } else if (!strcmp(arg, "save") || !strcmp(arg, ":save")) {
+        console_log(":save [file] # Save the table as .pfsave");
+        console_log("  without a file: save to the current file, or choose one in a dialog");
+    } else if (!strcmp(arg, "load") || !strcmp(arg, ":load")) {
+        console_log(":load [file] # Load a saved table (opens a dialog without a file)");
+        console_log("  :load! [file] discards unsaved changes");
     } else {
         console_log("Available commands:");
         console_log(":q  or quit       # Quit the application");
@@ -466,6 +473,8 @@ static void cmd_help(Args *a) {
         console_log(":cl or clear      # Clear the command log and history");
         console_log(":t  or theme      # Show or choose a theme");
         console_log("tp  or teleport   # Jump to a tile or waypoint");
+        console_log(":save [file]      # Save the table");
+        console_log(":load[!] [file]   # Load a saved table");
     }
 }
 
@@ -665,6 +674,17 @@ static void cmd_teleport(Args *a) {
     console_log("Expected coordinates as <row> <col> or a waypoint name");
 }
 
+/* Everything after the first word, without surrounding blanks: file paths may contain spaces. */
+static const char *rest_of_line(const char *input, char *out, size_t cap) {
+    const char *p = input;
+    while (isspace((unsigned char)*p)) p++;
+    while (*p && !isspace((unsigned char)*p)) p++;
+    while (isspace((unsigned char)*p)) p++;
+    snprintf(out, cap, "%s", p);
+    for (size_t n = strlen(out); n > 0 && isspace((unsigned char)out[n - 1]); n--) out[n - 1] = '\0';
+    return out;
+}
+
 static bool ends_with(const char *s, const char *suffix) {
     size_t a = strlen(s), b = strlen(suffix);
     return a >= b && strcmp(s + a - b, suffix) == 0;
@@ -701,7 +721,12 @@ void console_command(const char *raw) {
     snprintf(cmd, sizeof(cmd), "%s", a.argv[0]);
     lower(cmd);
 
-    if      (!strcmp(cmd, "quit") || !strcmp(cmd, ":q"))        gh->running = false;
+    char rest[CONSOLE_TEXT_MAX];
+    if      (!strcmp(cmd, "quit") || !strcmp(cmd, ":q"))        quit_command(false);
+    else if (!strcmp(cmd, "quit!") || !strcmp(cmd, ":q!"))      quit_command(true);
+    else if (!strcmp(cmd, "save") || !strcmp(cmd, ":save"))     save_command(rest_of_line(input, rest, sizeof(rest)));
+    else if (!strcmp(cmd, "load") || !strcmp(cmd, ":load"))     load_command(rest_of_line(input, rest, sizeof(rest)), false);
+    else if (!strcmp(cmd, "load!") || !strcmp(cmd, ":load!"))   load_command(rest_of_line(input, rest, sizeof(rest)), true);
     else if (!strcmp(cmd, "background") || !strcmp(cmd, ":b"))  gfx_set_background_image(a.argc > 1 ? a.argv[1] : NULL);
     else if (!strcmp(cmd, "debug") || !strcmp(cmd, ":d"))       gh->debugMode = !gh->debugMode;
     else if (!strcmp(cmd, "character") || !strcmp(cmd, ":c"))   cmd_character(&a);

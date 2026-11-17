@@ -280,6 +280,8 @@ typedef enum {
     ACTION_SPAWN_CHARACTERS,
     ACTION_WALLS,
     ACTION_CHARACTER_ICON,
+    ACTION_SAVE, /* save / load dialogs (save.c) */
+    ACTION_LOAD,
 } ActionKind;
 
 typedef struct {
@@ -388,6 +390,17 @@ void game_toggle_show_initiative(void);
 void game_next_turn(void);
 void game_clear_initiative(void);
 bool game_is_in_initiative(const Entity *e);
+/* Replaces the initiative list with entities[i] / values[i] in the given order. */
+void game_restore_initiative(Entity **entities, const double *values, int n, int current, bool turn_started,
+                             bool markers_visible);
+
+/* save.c - .pfsave files (format: savefmt.h) */
+void save_init(void);              /* call once after gfx_init: the empty table counts as saved */
+bool save_is_modified(void);       /* table differs from the last save / load */
+void save_command(const char *path);              /* :save [path]; NULL or "" = current file or dialog */
+void load_command(const char *path, bool force);  /* :load[!] [path] */
+void quit_command(bool force);                    /* :q / :q! */
+void save_handle_dialog(ActionKind kind, const char *path); /* path NULL = cancelled */
 
 /* input.c */
 void io_handle_event(const SDL_Event *e);

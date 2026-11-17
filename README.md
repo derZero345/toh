@@ -13,6 +13,7 @@ Dependencies:
 | Vulkan loader + headers | rendering |
 | FreeType 2 + fontconfig | text (looks up "Arial", falls back to the system sans font) |
 | `glslc` (shaderc) | compiles `shaders/*.vert/frag` to SPIR-V at build time |
+| libwebp, libzstd, libsodium | save files: image compression, state compression, integrity tag |
 
 ```sh
 make            # builds ./pathfinder
@@ -20,6 +21,9 @@ make            # builds ./pathfinder
 ```
 
 Sanitizer build: `make clean && make CFLAGS="-O1 -g -fsanitize=address,undefined"`.
+
+Tests: `make test` (save format unit tests), `make fuzz` (libFuzzer on the save file decoder, needs clang;
+`FUZZ_TIME=600` fuzzes longer) and `make e2e` (saves and loads in a real window, needs a display and ImageMagick).
 Set `PATHFINDER_VK_VALIDATION=1` to enable the Khronos validation layer when it is installed.
 
 ## Controls
@@ -47,7 +51,31 @@ These are the same as in the Java version.
 Console commands: `:q` quit, `:b [file.png]` background, `:d` debug, `:c` character
 (`delete`, `size n`, `maxhealth n`, `armorclass n`, `speed n`, `initiative n`, `icon`),
 `:w [delete]` wall, `:e delete`, `:r 2d6+3` roll, `:g` grid orientation, `:gm` gamemaster,
-`:i [add|remove|clear|show|next]` initiative, `:cl` clear, `:t [name]` theme, `:h [command]` help.
+`:i [add|remove|clear|show|next]` initiative, `:cl` clear, `:t [name]` theme, `:h [command]` help,
+`:save [file]` / `:load[!] [file]` save files (see below), `:q!` quit without saving.
+
+## Saving
+
+`:save file` writes the table to `file.pfsave` (the extension is added if missing) and remembers it as the
+current file; a later `:save` without a name writes there again, or opens a save dialog if there is no current file.
+`:load file` loads a save, `:load` opens a dialog. Paths may contain spaces, and `~/` means the home directory.
+
+Like nvim, `:q` and `:load` refuse to throw away unsaved changes: `No write since last change (add ! to override)`.
+Use `:q!` / `:load!` to discard them. Camera, zoom and theme are saved but don't count as changes. The window's
+close button always quits.
+
+A save contains the background, characters (image and stats), walls, the initiative order, waypoints, grid
+orientation, camera and theme; not the console, selections, clipboard or measurements.
+
+The format (`src/savefmt.h`) is binary and compact: the game state is packed with varints and zstd-compressed, and
+every image is stored once as WebP (lossless for characters and walls, quality 90 for the background; images over
+16383 px are scaled down). Saves are written to `file.tmp` first and then renamed, and a load only replaces the
+table once the whole file has been checked.
+
+Every file ends with a keyed BLAKE2b tag, so damaged or edited files are rejected ("Save file is damaged or was
+modified"). The key is part of the program, so the tag is no proof of who made a file; that needs a signature from
+a server, for which the format reserves a flag. Because of that, the loader treats every file as untrusted: all
+sizes, counts and references are checked against fixed limits before use.
 
 ## Source layout
 

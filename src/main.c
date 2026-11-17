@@ -12,7 +12,7 @@
  *   @down KEY / @up KEY                  hold or release a key
  *   @type TEXT       typed text          @shot FILE  save a screenshot
  *   @wait N          idle N frames       @quit
- * --auto-file makes every "open image" dialog return the given file.
+ * --auto-file makes every file dialog (images, :save, :load) return the given file.
  */
 #include "app.h"
 #include "font.h"
@@ -182,6 +182,7 @@ int main(int argc, char **argv) {
     char resdir[512];
     find_resource_dir(resdir, sizeof(resdir));
     gfx_init(&app, resdir);
+    save_init();
     SDL_StartTextInput(app.window);
 
     Uint64 last = SDL_GetTicks();

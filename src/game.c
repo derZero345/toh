@@ -32,9 +32,8 @@ static int init_index(const Entity *e) {
 
 bool game_is_in_initiative(const Entity *e) { return init_index(e) >= 0; }
 
-static void initiative_add(Entity *e) {
-    if (!e || game_is_in_initiative(e)) return;
-    double value = rand_unit();
+/* Appends e with the given roll value and creates its marker. */
+static void initiative_push(Entity *e, double value) {
     da_push(&gh->init, ((InitEntry){ e, value }));
 
     /* visual marker above the entity */
@@ -46,6 +45,11 @@ static void initiative_add(Entity *e) {
     m->debugValue = value;
     da_push(&gh->initMarkers, m);
     marker_add(m);
+}
+
+static void initiative_add(Entity *e) {
+    if (!e || game_is_in_initiative(e)) return;
+    initiative_push(e, rand_unit());
 }
 
 /* Highest initiative first; stable so equal values keep their order. */
@@ -132,4 +136,17 @@ void game_clear_initiative(void) {
     da_clear(&gh->init);
     gh->currentTurn = NULL;
     gh->currentTurnIndex = 0;
+}
+
+void game_restore_initiative(Entity **entities, const double *values, int n, int current, bool turn_started,
+                             bool markers_visible) {
+    game_clear_initiative();
+    for (int i = 0; i < n; i++)
+        if (entities[i] && !game_is_in_initiative(entities[i])) initiative_push(entities[i], values[i]);
+    if (gh->init.count > 0) {
+        gh->currentTurnIndex = (current >= 0 && current < gh->init.count) ? current : 0;
+        gh->currentTurn = turn_started ? gh->init.items[gh->currentTurnIndex].entity : NULL;
+    }
+    game_update_initiative_markers();
+    for (int k = 0; k < gh->initMarkers.count; k++) gh->initMarkers.items[k]->visible = markers_visible;
 }
