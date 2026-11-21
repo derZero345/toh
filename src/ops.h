@@ -25,7 +25,7 @@ typedef enum {
     OP_INIT_REMOVE,      /* ids */
     OP_INIT_CLEAR,
     OP_INIT_SHOW,        /* toggles the turn order markers */
-    OP_INIT_NEXT,
+    OP_INIT_NEXT,        /* id: the entity whose turn it is now (0 = none); stale ops are refused */
     OP_SET_OWNER,        /* ids, name: player name, "" = no owner */
     OP_COUNT
 } OpType;
@@ -66,9 +66,18 @@ typedef enum {
     OPR_NOT_YOUR_TURN,
     OPR_OUT_OF_RANGE,
     OPR_NO_ENTITY,
+    OPR_STALE,
     OPR_INVALID,
 } OpResult;
 
+/*
+ * Notes for ops_check / ops_apply:
+ * - ops_apply looks ids up again one by one, so unknown or duplicate ids and walls in
+ *   character-only ops are skipped harmlessly.
+ * - ops_check does not limit GM moves to the movement range; the UI keeps the ":gm off"
+ *   limit before calling ops_submit.
+ * - Owner names match case-insensitively (ASCII).
+ */
 void       op_free(Op *op); /* frees the lists, not the borrowed textures */
 EntitySpec op_spec_from_entity(const Entity *e);
 

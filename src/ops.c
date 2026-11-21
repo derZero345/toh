@@ -32,6 +32,7 @@ const char *ops_result_text(OpResult r) {
     case OPR_NOT_YOUR_TURN: return "It's not your character's turn";
     case OPR_OUT_OF_RANGE:  return "Out of range";
     case OPR_NO_ENTITY:     return "That entity no longer exists";
+    case OPR_STALE:         return "The turn order changed in the meantime";
     case OPR_INVALID:       return "Invalid action";
     }
     return "Unknown error";
@@ -49,17 +50,27 @@ static bool is_owner(const Entity *e, const OpAuthor *a) {
     return e && e->owner[0] != '\0' && strcasecmp(e->owner, a->name) == 0;
 }
 
+static bool tile_ok(Hex h) {
+    return h.row >= -SAVEFMT_MAX_COORD && h.row <= SAVEFMT_MAX_COORD &&
+           h.col >= -SAVEFMT_MAX_COORD && h.col <= SAVEFMT_MAX_COORD;
+}
+
+static bool count_ok(int n) { return n >= 0 && (unsigned)n <= SAVEFMT_MAX_ENTITIES; }
+
 /* Rules for everyone, the GM included: the op has to make sense for the current table. */
 static OpResult check_structure(const Op *op) {
     if (!memchr(op->name, '\0', sizeof(op->name))) return OPR_INVALID;
+    if (!count_ok(op->ids.count) || !count_ok(op->values.count) || !count_ok(op->specs.count)) return OPR_INVALID;
     switch (op->type) {
     case OP_MOVE: {
+        if (!tile_ok(op->tile)) return OPR_INVALID;
         const Entity *e = entity_by_id(op->id);
         return e && e->type == ENTITY_CHARACTER ? OPR_OK : OPR_NO_ENTITY;
     }
     case OP_SPAWN:
         for (int i = 0; i < op->specs.count; i++) {
             const EntitySpec *s = &op->specs.items[i];
+            if (!tile_ok(s->tile)) return OPR_INVALID;
             if (!s->image || (s->type != ENTITY_CHARACTER && s->type != ENTITY_WALL)) return OPR_INVALID;
         }
         return OPR_OK;
@@ -79,13 +90,17 @@ static OpResult check_structure(const Op *op) {
     case OP_INIT_REMOVE:
         return ids_exist(op) ? OPR_OK : OPR_NO_ENTITY;
     case OP_WAYPOINT_SET:
+        if (!tile_ok(op->tile)) return OPR_INVALID;
+        return op->name[0] != '\0' ? OPR_OK : OPR_INVALID;
     case OP_WAYPOINT_DELETE:
         return op->name[0] != '\0' ? OPR_OK : OPR_INVALID;
+    case OP_INIT_NEXT:
+        /* op->id names the entity whose turn it is now, so a stale op is not applied twice */
+        return op->id == (gh->currentTurn ? gh->currentTurn->id : 0) ? OPR_OK : OPR_STALE;
     case OP_SET_BACKGROUND:
     case OP_GRID_ORIENTATION:
     case OP_INIT_CLEAR:
     case OP_INIT_SHOW:
-    case OP_INIT_NEXT:
         return OPR_OK;
     case OP_COUNT:
         break;
@@ -100,6 +115,7 @@ static OpResult check_player(const Op *op, const OpAuthor *a) {
         Entity *e = entity_by_id(op->id);
         if (!is_owner(e, a)) return OPR_NOT_YOURS;
         if (gh->init.count > 0 && gh->currentTurn != e) return OPR_NOT_YOUR_TURN;
+        if (hex_distance(e->tile, op->tile) > e->speed) return OPR_OUT_OF_RANGE;
         TileSet range = { 0 };
         astar_range(e->tile, e->speed, e, &range);
         bool in_range = ts_has(&range, op->tile);
@@ -114,6 +130,8 @@ static OpResult check_player(const Op *op, const OpAuthor *a) {
 }
 
 OpResult ops_check(const Op *op, const OpAuthor *author) {
+    if (!memchr(author->name, '\0', sizeof(author->name))) return OPR_INVALID;
+    if (!author->gm && op->type != OP_MOVE && op->type != OP_INIT_NEXT) return OPR_GM_ONLY;
     OpResult r = check_structure(op);
     if (r != OPR_OK || author->gm) return r;
     return check_player(op, author);

@@ -2,7 +2,9 @@
  * op effects (ops_apply). Run with `make test`. Stubs: tests/core_stubs.c. */
 #include "app.h"
 #include "ops.h"
+#include "savefmt.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -179,8 +181,21 @@ static void test_turns(void) {
     CHECK_R(ops_check(&cur_move, &cur_owner), OPR_OK);
     CHECK_R(ops_check(&other_move, &other_owner), OPR_NOT_YOUR_TURN);
     CHECK_R(ops_check(&other_move, &GM), OPR_OK);
+    next.id = gh->currentTurn ? gh->currentTurn->id : 0;
     CHECK_R(ops_check(&next, &cur_owner), OPR_OK);
     CHECK_R(ops_check(&next, &other_owner), OPR_NOT_YOUR_TURN);
+
+    /* an op built for an earlier turn is stale */
+    Op stale = { .type = OP_INIT_NEXT, .id = 0 };
+    CHECK_R(ops_check(&stale, &GM), OPR_STALE);
+    CHECK_R(ops_check(&stale, &cur_owner), OPR_STALE);
+
+    /* a player cannot pass the turn of an unowned character */
+    Entity *npc = add_character((Hex){ 30, 30 }, 3, "");
+    gh->currentTurn = npc;
+    Op next_npc = { .type = OP_INIT_NEXT, .id = npc->id };
+    CHECK_R(ops_check(&next_npc, &alice), OPR_NOT_YOUR_TURN);
+    CHECK_R(ops_check(&next_npc, &GM), OPR_OK);
 }
 
 static void test_gm_only(void) {
@@ -259,6 +274,47 @@ static void test_structure(void) {
 
     Op bogus = { .type = OP_COUNT };
     CHECK_R(ops_check(&bogus, &GM), OPR_INVALID);
+    Op neg = { .type = (OpType)-1 }, huge = { .type = (OpType)1000 };
+    CHECK_R(ops_check(&neg, &GM), OPR_INVALID);
+    CHECK_R(ops_check(&huge, &GM), OPR_INVALID);
+
+    Op inf = { .type = OP_INIT_ADD };
+    da_push(&inf.ids, hero->id);
+    da_push(&inf.values, INFINITY);
+    CHECK_R(ops_check(&inf, &GM), OPR_INVALID);
+    op_free(&inf);
+
+    Op badtype = { .type = OP_SPAWN };
+    da_push(&badtype.specs, ((EntitySpec){ .type = (EntityType)7, .image = TEX_A }));
+    CHECK_R(ops_check(&badtype, &GM), OPR_INVALID);
+    op_free(&badtype);
+
+    /* untrusted input: players cannot probe ids, names must be terminated, lists are capped */
+    OpAuthor alice = player("Alice");
+    Op pdel = { .type = OP_DELETE };
+    da_push(&pdel.ids, 777777);
+    CHECK_R(ops_check(&pdel, &alice), OPR_GM_ONLY);
+    op_free(&pdel);
+
+    OpAuthor loose = { .gm = true };
+    memset(loose.name, 'x', sizeof(loose.name));
+    Op any = { .type = OP_INIT_CLEAR };
+    CHECK_R(ops_check(&any, &loose), OPR_INVALID);
+
+    Op big = { .type = OP_DELETE };
+    big.ids.count = SAVEFMT_MAX_ENTITIES + 1;
+    CHECK_R(ops_check(&big, &GM), OPR_INVALID);
+    big.ids.count = 0;
+    op_free(&big);
+
+    Op oob_move = move_op(hero, (Hex){ SAVEFMT_MAX_COORD + 1, 0 });
+    CHECK_R(ops_check(&oob_move, &GM), OPR_INVALID);
+    Op oob_wp = { .type = OP_WAYPOINT_SET, .name = "x", .tile = { 0, -SAVEFMT_MAX_COORD - 1 } };
+    CHECK_R(ops_check(&oob_wp, &GM), OPR_INVALID);
+    Op oob_spawn = { .type = OP_SPAWN };
+    da_push(&oob_spawn.specs, ((EntitySpec){ .type = ENTITY_WALL, .image = TEX_A, .tile = { INT_MAX, 0 } }));
+    CHECK_R(ops_check(&oob_spawn, &GM), OPR_INVALID);
+    op_free(&oob_spawn);
 }
 
 int main(void) {
