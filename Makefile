@@ -48,11 +48,20 @@ TEST_CFLAGS := -std=c11 -Wall -Wextra -D_POSIX_C_SOURCE=200809L -Isrc $(shell pk
 TEST_LIBS   := $(shell pkg-config --libs $(SAVE_PKGS)) -lm
 FUZZ_CC     ?= clang
 
+# Game core tests: entity / game / grid / pathfinding / op logic without a window.
+# tests/core_stubs.c replaces the renderer, console and graphics functions they call.
+CORE_SRC    := src/entity.c src/game.c src/hex.c src/astar.c src/util.c src/savefmt.c
+CORE_LIBS   := $(shell pkg-config --libs sdl3 $(SAVE_PKGS)) -lm
+
 build/save_test: tests/save_test.c src/savefmt.c src/savefmt.h | build
 	$(CC) $(TEST_CFLAGS) $(CFLAGS) -o $@ tests/save_test.c src/savefmt.c $(TEST_LIBS)
 
-test: build/save_test
+build/core_test: tests/core_test.c tests/core_stubs.c $(CORE_SRC) $(wildcard src/*.h) | build
+	$(CC) $(TOH_CFLAGS) $(CFLAGS) -Isrc -o $@ tests/core_test.c tests/core_stubs.c $(CORE_SRC) $(CORE_LIBS)
+
+test: build/save_test build/core_test
 	./build/save_test
+	./build/core_test
 
 build/fuzz_savefmt: tests/fuzz_savefmt.c src/savefmt.c src/savefmt.h | build
 	$(FUZZ_CC) $(TEST_CFLAGS) -DSAVEFMT_FUZZING -g -O1 -fsanitize=fuzzer,address,undefined \

@@ -180,6 +180,31 @@ Entity *entity_at(Hex h) {
     return NULL;
 }
 
+void entity_register(Entity *e) {
+    e->id = ++gh->nextEntityId;
+    da_push(&gh->entities, e);
+}
+
+Entity *entity_by_id(uint32_t id) {
+    for (int i = 0; i < gh->entities.count; i++)
+        if (gh->entities.items[i]->id == id) return gh->entities.items[i];
+    return NULL;
+}
+
+void entity_delete(Entity *e) {
+    if (game_is_in_initiative(e)) game_remove_from_initiative(e);
+    da_remove_value(&gh->entities, e);
+    entity_free(e);
+}
+
+void entities_clear_highlights(void) {
+    da_clear(&gh->selectedEntityTiles);
+    ts_free(&gh->entityRangeTiles);
+    da_clear(&gh->entityPreviewTiles);
+    da_clear(&gh->path);
+    gh->hasSelectedEntity = false;
+}
+
 void entities_delete_type(int type) {
     bool deleted = false;
     for (int i = gh->entities.count - 1; i >= 0; i--) {
@@ -188,17 +213,8 @@ void entities_delete_type(int type) {
                    : (type == 1) ? e->type == ENTITY_WALL
                    : true;
         if (!match) continue;
-        if (game_is_in_initiative(e)) game_remove_from_initiative(e);
-        da_remove_at(&gh->entities, i);
-        entity_free(e);
+        entity_delete(e);
         deleted = true;
     }
-    if (deleted) {
-        /* drop highlights that referred to the deleted entities */
-        da_clear(&gh->selectedEntityTiles);
-        ts_free(&gh->entityRangeTiles);
-        da_clear(&gh->entityPreviewTiles);
-        da_clear(&gh->path);
-        gh->hasSelectedEntity = false;
-    }
+    if (deleted) entities_clear_highlights(); /* drop highlights that referred to the deleted entities */
 }

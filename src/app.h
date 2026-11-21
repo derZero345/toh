@@ -72,6 +72,8 @@ bool hex_find_closest_any(Vec2 p, Hex *out);
 
 /* ==== entities ============================================================== */
 
+/* Player names (character owners): 1..24 bytes, checked with savefmt_owner_valid. */
+#define PLAYER_NAME_MAX 25
 typedef enum { ENTITY_CHARACTER, ENTITY_WALL } EntityType;
 
 enum { SIZE_TINY = -2, SIZE_SMALL = -1, SIZE_NORMAL = 0, SIZE_LARGE = 1, SIZE_HUGE = 2, SIZE_GARGANTUAN = 3 };
@@ -81,6 +83,8 @@ enum { SIZE_TINY = -2, SIZE_SMALL = -1, SIZE_NORMAL = 0, SIZE_LARGE = 1, SIZE_HU
 struct Marker;
 
 typedef struct Entity {
+    uint32_t id;                 /* unique while the program runs (entity_register), never 0 */
+    char owner[PLAYER_NAME_MAX]; /* characters: player who controls it, "" = nobody (only the GM) */
     EntityType type;
     Texture *image;
     Hex tile;
@@ -103,6 +107,13 @@ double  entity_draw_size(const Entity *e);
 bool    entity_occupies(const Entity *e, Hex h);
 /* GraphicsHandler.selectEntity: entity whose *main* tile is h. */
 Entity *entity_at(Hex h);
+/* Gives e the next id and appends it to gh->entities. Every entity on the table goes through this. */
+void    entity_register(Entity *e);
+Entity *entity_by_id(uint32_t id); /* NULL if there is none */
+/* Removes e from the table and the initiative and frees it. */
+void    entity_delete(Entity *e);
+/* Drops selection, range, preview and path highlights (after entities were deleted). */
+void    entities_clear_highlights(void);
 /* GraphicsHandler.deleteEntities: 0 = characters, 1 = walls, else all. */
 void    entities_delete_type(int type);
 
@@ -316,6 +327,7 @@ typedef struct App {
     DA(Measure) measures;
     MarkerList markers;
     EntityList entities;
+    uint32_t nextEntityId; /* last id handed out by entity_register */
     HexList selectedTiles, selectedEntityTiles, entityPreviewTiles, attackTiles, path;
     TileSet entityRangeTiles;
     DA(Waypoint) waypoints;

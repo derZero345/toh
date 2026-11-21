@@ -10,6 +10,7 @@
 
 _Static_assert(SAVEFMT_NAME_MAX == WAYPOINT_NAME_MAX, "waypoint name sizes differ");
 _Static_assert(SAVEFMT_MAX_SPEED == MAX_SPEED, "speed limits differ");
+_Static_assert(SAVEFMT_OWNER_MAX == PLAYER_NAME_MAX, "owner name sizes differ");
 
 #define SAVE_SUFFIX ".tuhh"
 #define PATH_MAX_LEN 1024
@@ -87,6 +88,7 @@ static void gather(Gathered *g) {
         s->ac = e->ac;
         s->speed = e->speed;
         s->initiative = e->initiative;
+        if (e->type == ENTITY_CHARACTER) snprintf(s->owner, sizeof(s->owner), "%s", e->owner);
     }
 
     d->init = calloc(gh->init.count ? (size_t)gh->init.count : 1, sizeof(*d->init));
@@ -316,8 +318,9 @@ static void apply(SaveData *d) {
             e = entity_new_character(tex[s->image], tile, s->size, s->max_health, s->ac, s->speed, s->initiative);
             e->health = s->health;
             e->attack = s->attack;
+            snprintf(e->owner, sizeof(e->owner), "%s", s->owner);
         }
-        da_push(&gh->entities, e);
+        entity_register(e);
     }
 
     Entity **init_entities = calloc(d->ninit ? d->ninit : 1, sizeof(*init_entities));

@@ -275,7 +275,9 @@ static void paste_entities(void) {
         Entity *en = gh->clipboard.items[i];
         Cube cp = hex_to_cube(en->tile.row, en->tile.col);
         en->tile = cube_to_hex((Cube){ pivot.x + cp.x, pivot.y + cp.y, pivot.z + cp.z });
-        da_push(&gh->entities, entity_clone(en, true));
+        Entity *copy = entity_clone(en, true);
+        copy->owner[0] = '\0'; /* pasted characters belong to nobody */
+        entity_register(copy);
     }
 }
 

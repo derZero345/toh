@@ -271,8 +271,8 @@ void gfx_handle_file_result(const char *path) {
         image_free(&img);
         Texture *t = texture_from_image(&cut);
         for (int i = 0; i < a->tiles.count; i++)
-            da_push(&gh->entities, entity_new_character(t, a->tiles.items[i], a->size, a->maxHealth,
-                                                         a->ac, a->speed, a->initiative));
+            entity_register(entity_new_character(t, a->tiles.items[i], a->size, a->maxHealth,
+                                                 a->ac, a->speed, a->initiative));
         vkr_texture_release(t);
         break;
     }
@@ -280,7 +280,7 @@ void gfx_handle_file_result(const char *path) {
         Image cut = image_cut_hex(&img, gh->isFlat);
         image_free(&img);
         Texture *t = texture_from_image(&cut);
-        for (int i = 0; i < a->tiles.count; i++) da_push(&gh->entities, entity_new_wall(t, a->tiles.items[i]));
+        for (int i = 0; i < a->tiles.count; i++) entity_register(entity_new_wall(t, a->tiles.items[i]));
         vkr_texture_release(t);
         break;
     }
