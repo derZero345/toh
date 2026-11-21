@@ -1,6 +1,8 @@
 /* In-app console: log, input line, history, auto-completion and all commands
  * (main/Consol, main/ConsolPanel, main/CommandCompleter). */
 #include "app.h"
+#include "ops.h"
+#include "savefmt.h"
 
 #include <ctype.h>
 #include <stdarg.h>
@@ -16,7 +18,7 @@ typedef struct {
     const char *const *args; /* NULL-terminated, NULL = no arguments */
 } CommandDef;
 
-static const char *const ARGS_CHARACTER[] = { "delete", "size", "maxhealth", "armorclass", "speed", "initiative", "icon", NULL };
+static const char *const ARGS_CHARACTER[] = { "delete", "size", "maxhealth", "armorclass", "speed", "initiative", "icon", "owner", NULL };
 static const char *const ARGS_DELETE[]    = { "delete", NULL };
 static const char *const ARGS_HELP[]      = { "quit", "background", "debug", "character", "wall", "entity", "help",
                                               "roll", "grid", "gamemaster", "init", "clear", "theme", "teleport", "save", "load", NULL };
@@ -351,30 +353,70 @@ static void cmd_clear(void) {
 
 static bool is_delete(const char *arg) { return strcmp(arg, "delete") == 0 || strcmp(arg, "d") == 0; }
 
+static bool op_has_id(const Op *op, uint32_t id) {
+    for (int i = 0; i < op->ids.count; i++)
+        if (op->ids.items[i] == id) return true;
+    return false;
+}
+
+static void submit_simple(OpType type) {
+    Op op = { .type = type };
+    ops_submit(&op);
+}
+
+/* :c / :w / :e delete remove every entity of a type (0 = characters, 1 = walls), like the Java version. */
+static void delete_entities(int type) {
+    Op op = { .type = OP_DELETE };
+    for (int i = 0; i < gh->entities.count; i++) {
+        const Entity *e = gh->entities.items[i];
+        if ((type == 0) == (e->type == ENTITY_CHARACTER)) da_push(&op.ids, e->id);
+    }
+    if (op.ids.count > 0) ops_submit(&op);
+    op_free(&op);
+}
+
 static void cmd_wall(Args *a) {
-    if (a->argc > 1 && is_delete(a->argv[1])) entities_delete_type(1);
+    if (a->argc > 1 && is_delete(a->argv[1])) delete_entities(1);
     else gfx_summon_wall();
 }
 
 static void cmd_entity(Args *a) {
     /* The original passes the wall type here as well. */
-    if (a->argc > 1 && is_delete(a->argv[1])) entities_delete_type(1);
+    if (a->argc > 1 && is_delete(a->argv[1])) delete_entities(1);
 }
 
 static void cmd_character(Args *a) {
     int size = 0, max_health = 0, ac = 0, speed = 0, initiative = 0;
-    bool has[6] = { 0 };
+    bool has[6] = { 0 }; /* size, maxhealth, ac, speed, initiative (= STAT_* bit order), icon */
+    bool has_owner = false;
+    char owner[PLAYER_NAME_MAX] = "";
     for (int i = 1; i < a->argc;) {
         char key[64];
         snprintf(key, sizeof(key), "%s", a->argv[i]);
         lower(key);
         const char *val = (i + 1 < a->argc) ? a->argv[i + 1] : NULL;
         if (strcmp(key, "d") == 0 || strcmp(key, "delete") == 0) {
-            entities_delete_type(0);
+            delete_entities(0);
             return;
         } else if (strcmp(key, "ic") == 0 || strcmp(key, "icon") == 0) {
             has[5] = true;
             i += 1;
+            continue;
+        } else if (strcmp(key, "ow") == 0 || strcmp(key, "owner") == 0) {
+            if (!val) {
+                console_log("Expected a player name or \"none\" after \"%s\"", a->argv[i]);
+                return;
+            }
+            if (strcasecmp(val, "none") == 0) {
+                owner[0] = '\0';
+            } else if (savefmt_owner_valid(val)) {
+                snprintf(owner, sizeof(owner), "%s", val);
+            } else {
+                console_log("Player names are 1 to %d bytes long, without spaces", PLAYER_NAME_MAX - 1);
+                return;
+            }
+            has_owner = true;
+            i += 2;
             continue;
         }
         int *target = NULL;
@@ -393,24 +435,35 @@ static void cmd_character(Args *a) {
         i += 2;
     }
 
-    if (gh->selectedEntityTiles.count > 0) {
-        HexList icon_targets = { 0 };
-        for (int i = 0; i < gh->selectedEntityTiles.count; i++) {
-            Entity *e = entity_at(gh->selectedEntityTiles.items[i]);
-            if (!e || e->type != ENTITY_CHARACTER) continue;
-            if (has[0]) e->size = size;
-            if (has[1]) e->maxHealth = max_health;
-            if (has[2]) e->ac = ac;
-            if (has[3]) e->speed = speed > MAX_SPEED ? MAX_SPEED : speed;
-            if (has[4]) e->initiative = initiative;
-            if (has[5]) da_push(&icon_targets, e->tile);
-        }
-        if (has[5] && icon_targets.count > 0)
-            gfx_request_file(ACTION_CHARACTER_ICON, &icon_targets, 0, 0, 0, 0, 0);
-        da_free(&icon_targets);
-    } else {
-        gfx_spawn_character(size, max_health, ac, speed, initiative);
+    if (gh->selectedEntityTiles.count == 0) {
+        if (has_owner) console_log("Select the characters first");
+        else gfx_spawn_character(size, max_health, ac, speed, initiative);
+        return;
     }
+
+    Op stats = { .type = OP_SET_STATS, .size = size, .maxHealth = max_health, .ac = ac, .speed = speed,
+                 .initiative = initiative };
+    for (int s = 0; s < 5; s++)
+        if (has[s]) stats.statMask |= 1 << s;
+    Op own = { .type = OP_SET_OWNER };
+    snprintf(own.name, sizeof(own.name), "%s", owner);
+    HexList icon_targets = { 0 };
+    for (int i = 0; i < gh->selectedEntityTiles.count; i++) {
+        Entity *e = entity_at(gh->selectedEntityTiles.items[i]);
+        if (!e || e->type != ENTITY_CHARACTER || op_has_id(&stats, e->id)) continue;
+        da_push(&stats.ids, e->id);
+        da_push(&own.ids, e->id);
+        if (has[5]) da_push(&icon_targets, e->tile);
+    }
+    if (stats.statMask && stats.ids.count > 0) ops_submit(&stats);
+    if (has_owner && own.ids.count > 0 && ops_submit(&own) == OPR_OK) {
+        if (owner[0]) console_log("%d character(s) now belong to %s", own.ids.count, owner);
+        else console_log("%d character(s) no longer have an owner", own.ids.count);
+    }
+    if (has[5] && icon_targets.count > 0) gfx_request_file(ACTION_CHARACTER_ICON, &icon_targets, 0, 0, 0, 0, 0);
+    da_free(&icon_targets);
+    op_free(&stats);
+    op_free(&own);
 }
 
 static void cmd_help(Args *a) {
@@ -424,7 +477,7 @@ static void cmd_help(Args *a) {
     } else if (!strcmp(arg, "character") || !strcmp(arg, ":c")) {
         console_log(":c  or character # Create a character, or edit the selected ones");
         console_log("  delete | size <-2..3> | maxhealth <n> | armorclass <n>");
-        console_log("  speed <n> | initiative <n> | icon");
+        console_log("  speed <n> | initiative <n> | icon | owner <player|none>");
     } else if (!strcmp(arg, "wall") || !strcmp(arg, ":w")) {
         console_log(":w  or wall # Place walls on the selected tiles - delete: remove walls");
     } else if (!strcmp(arg, "entity") || !strcmp(arg, ":e")) {
@@ -511,14 +564,16 @@ static void collect_selected_entities(EntityList *out) {
     }
 }
 
-/* Rolls initiative for the entities that are not in it yet and adds them. */
+/* Adds the entities that are not in the initiative yet, each with a fresh roll. */
 static void roll_initiative(Entity **entities, int n) {
-    double *values = calloc(n > 0 ? (size_t)n : 1, sizeof(*values));
-    if (!values) abort();
-    for (int i = 0; i < n; i++)
-        if (!game_is_in_initiative(entities[i])) values[i] = rand_unit();
-    game_initiative_list(entities, values, n);
-    free(values);
+    Op op = { .type = OP_INIT_ADD };
+    for (int i = 0; i < n; i++) {
+        if (game_is_in_initiative(entities[i]) || op_has_id(&op, entities[i]->id)) continue;
+        da_push(&op.ids, entities[i]->id);
+        da_push(&op.values, rand_unit());
+    }
+    if (op.ids.count > 0) ops_submit(&op);
+    op_free(&op);
 }
 
 static void cmd_init(Args *a) {
@@ -532,16 +587,22 @@ static void cmd_init(Args *a) {
     EntityList sel = { 0 };
     if (!strcmp(sub, "add") || !strcmp(sub, "a")) {
         collect_selected_entities(&sel);
-        if (sel.count > 0) roll_initiative(sel.items, sel.count);
+        roll_initiative(sel.items, sel.count);
     } else if (!strcmp(sub, "remove") || !strcmp(sub, "r")) {
         collect_selected_entities(&sel);
-        for (int i = 0; i < sel.count; i++) game_remove_from_initiative(sel.items[i]);
+        Op op = { .type = OP_INIT_REMOVE };
+        for (int i = 0; i < sel.count; i++)
+            if (game_is_in_initiative(sel.items[i])) da_push(&op.ids, sel.items[i]->id);
+        if (op.ids.count > 0) ops_submit(&op);
+        op_free(&op);
     } else if (!strcmp(sub, "clear") || !strcmp(sub, "c")) {
-        game_clear_initiative();
+        submit_simple(OP_INIT_CLEAR);
     } else if (!strcmp(sub, "show") || !strcmp(sub, "s")) {
-        game_toggle_show_initiative();
+        submit_simple(OP_INIT_SHOW);
     } else if (!strcmp(sub, "next") || !strcmp(sub, "n")) {
-        game_next_turn();
+        /* names the current turn, so a repeated or crossing "next" can't skip a turn */
+        Op op = { .type = OP_INIT_NEXT, .id = gh->currentTurn ? gh->currentTurn->id : 0 };
+        ops_submit(&op);
     }
     da_free(&sel);
 }
@@ -622,8 +683,9 @@ static void cmd_waypoint(Args *a) {
             console_log("No waypoint named \"%s\"", name);
             return;
         }
-        console_log("Deleted waypoint %s", w->name);
-        da_remove_at(&gh->waypoints, (int)(w - gh->waypoints.items));
+        Op op = { .type = OP_WAYPOINT_DELETE };
+        snprintf(op.name, sizeof(op.name), "%s", w->name);
+        if (ops_submit(&op) == OPR_OK) console_log("Deleted waypoint %s", op.name);
         return;
     }
 
@@ -646,15 +708,14 @@ static void cmd_waypoint(Args *a) {
         return;
     }
     Waypoint *w = find_waypoint(name);
-    if (w) {
-        w->tile = tile;
-        console_log("Moved waypoint %s to [%d|%d]", w->name, tile.row, tile.col);
-    } else {
-        Waypoint nw = { .tile = tile };
-        snprintf(nw.name, sizeof(nw.name), "%s", name);
-        da_push(&gh->waypoints, nw);
-        console_log("Created waypoint %s at [%d|%d]", nw.name, tile.row, tile.col);
-    }
+    bool existed = w != NULL;
+    char shown[WAYPOINT_NAME_MAX];
+    snprintf(shown, sizeof(shown), "%s", existed ? w->name : name);
+    Op op = { .type = OP_WAYPOINT_SET, .tile = tile };
+    snprintf(op.name, sizeof(op.name), "%s", name);
+    if (ops_submit(&op) != OPR_OK) return;
+    if (existed) console_log("Moved waypoint %s to [%d|%d]", shown, tile.row, tile.col);
+    else console_log("Created waypoint %s at [%d|%d]", shown, tile.row, tile.col);
 }
 
 /* tp <row> <col> | tp <waypoint> | tp waypoint ... */
@@ -744,7 +805,7 @@ void console_command(const char *raw) {
     else if (!strcmp(cmd, "entity") || !strcmp(cmd, ":e"))      cmd_entity(&a);
     else if (!strcmp(cmd, "help") || !strcmp(cmd, ":h"))        cmd_help(&a);
     else if (!strcmp(cmd, "roll") || !strcmp(cmd, ":r"))        cmd_roll(&a);
-    else if (!strcmp(cmd, "grid") || !strcmp(cmd, ":g"))        gfx_toggle_grid_orientation();
+    else if (!strcmp(cmd, "grid") || !strcmp(cmd, ":g"))        submit_simple(OP_GRID_ORIENTATION);
     else if (!strcmp(cmd, "gamemaster") || !strcmp(cmd, ":gm")) io_toggle_game_master();
     else if (!strcmp(cmd, "init") || !strcmp(cmd, ":i"))        cmd_init(&a);
     else if (!strcmp(cmd, "teleport") || !strcmp(cmd, "tp"))    cmd_teleport(&a);
