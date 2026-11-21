@@ -1,5 +1,6 @@
 /* Mouse and keyboard handling (main/IOHandler). */
 #include "app.h"
+#include "ops.h"
 
 #include <stdio.h>
 
@@ -147,7 +148,8 @@ static void select_tile(void) {
     bool is_char = sel && sel->type == ENTITY_CHARACTER;
     /* Shift+click inside the range moves the character; GM mode moves anywhere. */
     if (is_char && ((gh->isShiftDown && ts_has(&gh->entityRangeTiles, gh->currentHexagon)) || gh->gameMaster)) {
-        game_move_character(gh->currentHexagon, sel);
+        Op op = { .type = OP_MOVE, .id = sel->id, .tile = gh->currentHexagon };
+        if (ops_submit(&op) != OPR_OK) return;
 
         gh->hasSelectedEntity = false;
         da_clear(&gh->selectedEntityTiles);
@@ -271,14 +273,16 @@ static void paste_entities(void) {
     if (gh->clipboard.count == 0 || !gh->hasTileUnderMouse) return;
     Hex copy = gh->clipboard.items[0]->tile, paste = gh->tileUnderMouse;
     Cube pivot = hex_to_cube(paste.row - copy.row, paste.col - copy.col);
+    Op op = { .type = OP_SPAWN };
     for (int i = 0; i < gh->clipboard.count; i++) {
         Entity *en = gh->clipboard.items[i];
         Cube cp = hex_to_cube(en->tile.row, en->tile.col);
+        /* like the Java version, the clipboard moves along, so the next paste is relative to this one */
         en->tile = cube_to_hex((Cube){ pivot.x + cp.x, pivot.y + cp.y, pivot.z + cp.z });
-        Entity *copy = entity_clone(en, true);
-        copy->owner[0] = '\0'; /* pasted characters belong to nobody */
-        entity_register(copy);
+        da_push(&op.specs, op_spec_from_entity(en)); /* copies have no owner */
     }
+    ops_submit(&op);
+    op_free(&op);
 }
 
 static void select_all_entities(void) {
