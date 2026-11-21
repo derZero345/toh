@@ -59,9 +59,10 @@ static void sample_init(Sample *s) {
     s->bg = pattern(64, 48, 2);
     s->images[0] = (SaveImage){ .kind = SAVE_IMG_LOSSY, .w = 64, .h = 48, .rgba = s->bg, .id = 101 };
     s->images[1] = (SaveImage){ .kind = SAVE_IMG_LOSSLESS, .w = 8, .h = 8, .rgba = s->icon, .id = 102 };
-    s->entities[0] = (SaveEntity){ SAVE_ENT_CHARACTER, 1, 3, -4, 1, 30, 25, -2, 15, 6, 12 };
-    s->entities[1] = (SaveEntity){ SAVE_ENT_CHARACTER, 1, -100, 250, -2, 7, 7, 0, 10, 1000, -3 };
+    s->entities[0] = (SaveEntity){ SAVE_ENT_CHARACTER, 1, 3, -4, 1, 30, 25, -2, 15, 6, 12, "" };
+    s->entities[1] = (SaveEntity){ SAVE_ENT_CHARACTER, 1, -100, 250, -2, 7, 7, 0, 10, 1000, -3, "" };
     s->entities[2] = (SaveEntity){ .type = SAVE_ENT_WALL, .image = 1, .row = 5, .col = 5 };
+    snprintf(s->entities[0].owner, SAVEFMT_OWNER_MAX, "Alice");
     s->init[0] = (SaveInit){ 1, 0.875 };
     s->init[1] = (SaveInit){ 0, 0.125 };
     snprintf(s->waypoints[0].name, SAVEFMT_NAME_MAX, "camp");
@@ -133,6 +134,7 @@ static void test_roundtrip(void) {
     CHECK(d.bg_rows == 20 && d.bg_cols == 20 && d.offset_x == -120 && d.offset_y == 45 && d.hex_size == 40);
     CHECK(strcmp(d.theme, "dark") == 0);
     CHECK(d.nentities == 3 && memcmp(d.entities, o->entities, sizeof(s.entities)) == 0);
+    CHECK(strcmp(d.entities[0].owner, "Alice") == 0 && d.entities[1].owner[0] == '\0');
     CHECK(d.ninit == 2 && d.init[0].entity == 1 && d.init[0].value == 0.875 && d.init[1].value == 0.125);
     CHECK(d.current_turn == 1);
     CHECK(d.nwaypoints == 2 && strcmp(d.waypoints[1].name, "Höhle") == 0 && d.waypoints[1].row == -7);
@@ -267,14 +269,14 @@ static void test_header_errors(void) {
     CHECK_ERR(savefmt_decode((const uint8_t *)"PNG\x89 not a save", 16, &d), SAVE_ERR_NOT_SAVE);
     CHECK_ERR(savefmt_decode(file, 2, &d), SAVE_ERR_NOT_SAVE);
 
-    file[4] = 2; /* version 2 */
+    file[4] = SAVEFMT_VERSION + 1; /* from the future */
     retag(file, len);
     CHECK_ERR(savefmt_decode(file, len, &d), SAVE_ERR_NEWER);
     file[4] = 0; /* version 0 */
     retag(file, len);
     CHECK_ERR(savefmt_decode(file, len, &d), SAVE_ERR_CORRUPT);
-    file[4] = 1;
-    file[6] = 1; /* signature flag: reserved in v1 */
+    file[4] = SAVEFMT_VERSION;
+    file[6] = 1; /* signature flag: reserved */
     retag(file, len);
     CHECK_ERR(savefmt_decode(file, len, &d), SAVE_ERR_CORRUPT);
     file[6] = 0;
@@ -317,7 +319,7 @@ static void wworld(W *w, uint8_t flags) {
 static void wwall(W *w, uint32_t image) { w8(w, SAVE_ENT_WALL); wuv(w, image); wsv(w, 1); wsv(w, 2); }
 
 /* Wraps a raw state section and raw image section (count + records) into a tagged file. */
-static uint8_t *wrap(const W *state, const W *images, size_t *len, int content_size_flag) {
+static uint8_t *wrap_v(const W *state, const W *images, size_t *len, int content_size_flag, uint8_t version) {
     ZSTD_CCtx *cc = ZSTD_createCCtx();
     ZSTD_CCtx_setParameter(cc, ZSTD_c_contentSizeFlag, content_size_flag);
     size_t bound = ZSTD_compressBound(state->n);
@@ -327,6 +329,7 @@ static uint8_t *wrap(const W *state, const W *images, size_t *len, int content_s
     size_t total = SAVEFMT_HEADER_SIZE + zn + images->n + SAVEFMT_TAG_SIZE;
     uint8_t *f = malloc(total);
     memcpy(f, "TUHH\x01\x00\x00\x00", 8);
+    f[4] = version;
     for (int i = 0; i < 4; i++) f[8 + i] = (uint8_t)(zn >> (8 * i));
     memcpy(f + 12, z, zn);
     memcpy(f + 12 + zn, images->b, images->n);
@@ -334,6 +337,10 @@ static uint8_t *wrap(const W *state, const W *images, size_t *len, int content_s
     free(z);
     *len = total;
     return f;
+}
+
+static uint8_t *wrap(const W *state, const W *images, size_t *len, int content_size_flag) {
+    return wrap_v(state, images, len, content_size_flag, 1);
 }
 
 static SaveError decode_raw(const W *state, const W *images, int content_size_flag) {
@@ -513,11 +520,89 @@ static void test_fingerprint(void) {
     CHECK(memcmp(a, b, sizeof(a)) != 0);
     s.entities[2].row--;
 
+    /* and so does a new owner */
+    snprintf(s.entities[1].owner, SAVEFMT_OWNER_MAX, "Bob");
+    CHECK(savefmt_fingerprint(&s.d, b));
+    CHECK(memcmp(a, b, sizeof(a)) != 0);
+    s.entities[1].owner[0] = '\0';
+
     /* so does a different image (new texture id) */
     s.images[0].id = 999;
     CHECK(savefmt_fingerprint(&s.d, b));
     CHECK(memcmp(a, b, sizeof(a)) != 0);
     sample_free(&s);
+}
+
+static void test_owner_names(void) {
+    CHECK(savefmt_owner_valid("Alice"));
+    CHECK(savefmt_owner_valid("Jörg_42"));
+    CHECK(savefmt_owner_valid("abcdefghijklmnopqrstuvwx"));   /* 24 bytes */
+    CHECK(!savefmt_owner_valid("abcdefghijklmnopqrstuvwxy")); /* 25 bytes */
+    CHECK(!savefmt_owner_valid(""));
+    CHECK(!savefmt_owner_valid("two words"));
+    CHECK(!savefmt_owner_valid("tab\there"));
+    CHECK(!savefmt_owner_valid("\xc3")); /* broken UTF-8 */
+
+    Sample s;
+    sample_init(&s);
+    uint8_t *file = NULL;
+    size_t len;
+    snprintf(s.entities[0].owner, SAVEFMT_OWNER_MAX, "bad name");
+    CHECK_ERR(savefmt_encode(&s.d, NULL, &file, &len), SAVE_ERR_INVALID);
+    s.entities[0].owner[0] = '\0';
+    snprintf(s.entities[2].owner, SAVEFMT_OWNER_MAX, "Alice"); /* walls have no owner */
+    CHECK_ERR(savefmt_encode(&s.d, NULL, &file, &len), SAVE_ERR_INVALID);
+    sample_free(&s);
+}
+
+/* one character record without (version 1) or with (version 2) an owner string */
+static void wcharacter(W *w, const char *owner) {
+    w8(w, SAVE_ENT_CHARACTER);
+    wuv(w, 0);
+    wsv(w, 1);
+    wsv(w, 2);
+    for (int i = 0; i < 7; i++) wsv(w, 0); /* size .. initiative */
+    if (owner) wstr(w, owner);
+}
+
+static void test_owner_versions(void) {
+    W v1 = { .n = 0 }, v2 = { .n = 0 }, bad = { .n = 0 }, im = { .n = 0 };
+    wimage(&im, 8, 8);
+    W *states[3] = { &v1, &v2, &bad };
+    const char *owners[3] = { NULL, "Alice", "A B" };
+    for (int i = 0; i < 3; i++) {
+        wworld(states[i], 0);
+        wuv(states[i], 1);
+        wcharacter(states[i], owners[i]);
+        wuv(states[i], 0); wuv(states[i], 0); /* no initiative, current turn 0 */
+        wuv(states[i], 0);                    /* no waypoints */
+    }
+    SaveData d;
+    size_t len;
+
+    uint8_t *f = wrap_v(&v1, &im, &len, 1, 1);
+    CHECK_ERR(savefmt_decode(f, len, &d), SAVE_OK);
+    CHECK(d.nentities == 1 && d.entities[0].owner[0] == '\0');
+    savefmt_free(&d);
+    free(f);
+
+    f = wrap_v(&v2, &im, &len, 1, 2);
+    CHECK_ERR(savefmt_decode(f, len, &d), SAVE_OK);
+    CHECK(d.nentities == 1 && strcmp(d.entities[0].owner, "Alice") == 0);
+    savefmt_free(&d);
+    free(f);
+
+    /* a version 1 body in a version 2 file lacks the owner string */
+    f = wrap_v(&v1, &im, &len, 1, 2);
+    CHECK_ERR(savefmt_decode(f, len, &d), SAVE_ERR_CORRUPT);
+    savefmt_free(&d);
+    free(f);
+
+    /* owner names follow savefmt_owner_valid */
+    f = wrap_v(&bad, &im, &len, 1, 2);
+    CHECK_ERR(savefmt_decode(f, len, &d), SAVE_ERR_CORRUPT);
+    savefmt_free(&d);
+    free(f);
 }
 
 static int write_sample(const char *path) {
@@ -549,6 +634,8 @@ int main(int argc, char **argv) {
     test_semantic_validation();
     test_encoder_validates();
     test_fingerprint();
+    test_owner_names();
+    test_owner_versions();
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
 }

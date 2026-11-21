@@ -2,7 +2,8 @@
 #define TOH_SAVEFMT_H
 
 /*
- * .tuhh file format, version 1: encoding, decoding and validation.
+ * .tuhh file format, version 2: encoding, decoding and validation.
+ * Version 2 adds an owner name after each character's stats; version 1 files still load (no owners).
  *
  * Plain C11 on top of libzstd, libwebp and libsodium. It knows nothing about SDL,
  * Vulkan or the App struct, so tools or a server can reuse it to validate files.
@@ -17,7 +18,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SAVEFMT_VERSION     1
+#define SAVEFMT_VERSION     2
 #define SAVEFMT_TAG_SIZE    32
 #define SAVEFMT_HEADER_SIZE 12 /* magic, version, flags, state_len */
 
@@ -31,6 +32,7 @@
 #define SAVEFMT_MAX_WAYPOINTS   10000u
 #define SAVEFMT_MAX_STR         255u
 #define SAVEFMT_NAME_MAX        32 /* waypoint names are shorter than this (= WAYPOINT_NAME_MAX) */
+#define SAVEFMT_OWNER_MAX       25 /* owner names are shorter than this (= PLAYER_NAME_MAX) */
 #define SAVEFMT_MAX_SPEED       1000 /* = MAX_SPEED */
 #define SAVEFMT_MAX_COORD       1000000
 #define SAVEFMT_MAX_OFFSET      1000000000
@@ -67,6 +69,7 @@ typedef struct {
     int32_t row, col;
     /* characters only (not stored for walls) */
     int32_t size, max_health, health, attack, ac, speed, initiative;
+    char owner[SAVEFMT_OWNER_MAX]; /* characters only: player name, "" = no owner (version 2) */
 } SaveEntity;
 
 typedef struct {
@@ -128,6 +131,9 @@ bool savefmt_fingerprint(const SaveData *d, uint8_t out[SAVEFMT_TAG_SIZE]);
 
 /* Integrity tag of buf[0..len). Exposed for tests. */
 void savefmt_compute_tag(const uint8_t *buf, size_t len, uint8_t out[SAVEFMT_TAG_SIZE]);
+
+/* Player names, used as character owners: 1..24 bytes of UTF-8 without spaces or control characters. */
+bool savefmt_owner_valid(const char *name);
 
 const char *savefmt_strerror(SaveError e);
 

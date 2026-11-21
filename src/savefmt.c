@@ -190,6 +190,16 @@ static void get_str(Rd *r, char *out, size_t cap) {
     r->pos += n;
 }
 
+bool savefmt_owner_valid(const char *name) {
+    size_t n = strnlen(name, SAVEFMT_OWNER_MAX);
+    if (n == 0 || n >= SAVEFMT_OWNER_MAX || !utf8_valid(name, n)) return false;
+    for (size_t i = 0; i < n; i++) {
+        uint8_t c = (uint8_t)name[i];
+        if (c <= 0x20 || c == 0x7f) return false;
+    }
+    return true;
+}
+
 /* ---- validation (shared by encoder and decoder) ------------------------------------------ */
 
 static bool str_ok(const char *s, size_t cap) {
@@ -227,6 +237,7 @@ static bool validate(const SaveData *d, bool encoding) {
         const SaveEntity *e = &d->entities[i];
         if (e->type > SAVE_ENT_WALL || e->image >= d->nimages || !coord_ok(e->row) || !coord_ok(e->col)) return false;
         if (e->type == SAVE_ENT_CHARACTER && e->speed > SAVEFMT_MAX_SPEED) return false;
+        if (e->owner[0] != '\0' && (e->type != SAVE_ENT_CHARACTER || !savefmt_owner_valid(e->owner))) return false;
     }
 
     if (d->ninit > 0) {
@@ -280,6 +291,7 @@ static void write_state(Buf *b, const SaveData *d, bool fingerprint) {
             put_sv(b, e->ac);
             put_sv(b, e->speed);
             put_sv(b, e->initiative);
+            put_str(b, e->owner);
         }
     }
 
@@ -298,7 +310,7 @@ static void write_state(Buf *b, const SaveData *d, bool fingerprint) {
     }
 }
 
-static SaveError read_state(const uint8_t *p, size_t n, SaveData *d) {
+static SaveError read_state(const uint8_t *p, size_t n, uint16_t version, SaveData *d) {
     Rd r = { p, n, 0, false };
     uint8_t flags = get_u8(&r);
     if (flags & ~15u) return SAVE_ERR_CORRUPT;
@@ -334,6 +346,7 @@ static SaveError read_state(const uint8_t *p, size_t n, SaveData *d) {
             e->ac = get_sv(&r);
             e->speed = get_sv(&r);
             e->initiative = get_sv(&r);
+            if (version >= 2) get_str(&r, e->owner, sizeof(e->owner));
         } else if (e->type != SAVE_ENT_WALL) {
             return SAVE_ERR_CORRUPT;
         }
@@ -584,7 +597,7 @@ SaveError savefmt_decode(const uint8_t *buf, size_t len, SaveData *out) {
     uint8_t *state = malloc(size ? (size_t)size : 1);
     if (!state) return SAVE_ERR_INTERNAL;
     size_t got = ZSTD_decompress(state, (size_t)size, z, state_len);
-    SaveError err = (ZSTD_isError(got) || got != size) ? SAVE_ERR_CORRUPT : read_state(state, (size_t)size, out);
+    SaveError err = (ZSTD_isError(got) || got != size) ? SAVE_ERR_CORRUPT : read_state(state, (size_t)size, version, out);
     free(state);
     if (err == SAVE_OK) err = decode_images(&r, out);
     if (err == SAVE_OK && r.pos != r.len) err = SAVE_ERR_CORRUPT;
