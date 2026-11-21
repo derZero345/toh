@@ -96,6 +96,7 @@ Entity *entity_clone(const Entity *src, bool with_marker) {
     Entity *e = malloc(sizeof(*e));
     if (!e) abort();
     *e = *src;
+    e->id = 0; /* not on the table until entity_register */
     vkr_texture_retain(e->image);
     e->debugMarker = NULL;
     if (with_marker) {

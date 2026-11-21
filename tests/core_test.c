@@ -57,6 +57,10 @@ static void test_entity_ids(void) {
     CHECK(a->id != 0 && b->id != 0 && a->id != b->id);
     CHECK(entity_by_id(a->id) == a && entity_by_id(b->id) == b);
     CHECK(entity_by_id(0) == NULL);
+    Entity *clone = entity_clone(a, false);
+    CHECK(clone->id == 0 && strcmp(clone->owner, a->owner) == 0);
+    entity_register(clone);
+    CHECK(clone->id != 0 && clone->id != a->id && entity_by_id(clone->id) == clone);
     uint32_t old = b->id;
     entities_delete_type(1);
     CHECK(entity_by_id(old) == NULL && entity_by_id(a->id) == a);
