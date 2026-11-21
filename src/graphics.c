@@ -2,6 +2,7 @@
 #include "app.h"
 #include "draw.h"
 #include "image.h"
+#include "ops.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -268,18 +269,24 @@ void gfx_handle_file_result(const char *path) {
     }
 
     switch (kind) {
-    case ACTION_BACKGROUND:
-        vkr_texture_release(gh->backgroundImage);
-        gh->backgroundImage = texture_from_image(&img);
-        update_background_size();
+    case ACTION_BACKGROUND: {
+        Texture *t = texture_from_image(&img);
+        Op op = { .type = OP_SET_BACKGROUND, .image = t };
+        ops_submit(&op);
+        vkr_texture_release(t);
         break;
+    }
     case ACTION_SPAWN_CHARACTERS: {
         Image cut = image_cut_circle(&img);
         image_free(&img);
         Texture *t = texture_from_image(&cut);
+        Op op = { .type = OP_SPAWN };
         for (int i = 0; i < a->tiles.count; i++)
-            entity_register(entity_new_character(t, a->tiles.items[i], a->size, a->maxHealth,
-                                                 a->ac, a->speed, a->initiative));
+            da_push(&op.specs, ((EntitySpec){ .type = ENTITY_CHARACTER, .image = t, .tile = a->tiles.items[i],
+                                               .size = a->size, .maxHealth = a->maxHealth, .health = a->maxHealth,
+                                               .ac = a->ac, .speed = a->speed, .initiative = a->initiative }));
+        ops_submit(&op);
+        op_free(&op);
         vkr_texture_release(t);
         break;
     }
@@ -287,7 +294,11 @@ void gfx_handle_file_result(const char *path) {
         Image cut = image_cut_hex(&img, gh->isFlat);
         image_free(&img);
         Texture *t = texture_from_image(&cut);
-        for (int i = 0; i < a->tiles.count; i++) entity_register(entity_new_wall(t, a->tiles.items[i]));
+        Op op = { .type = OP_SPAWN };
+        for (int i = 0; i < a->tiles.count; i++)
+            da_push(&op.specs, ((EntitySpec){ .type = ENTITY_WALL, .image = t, .tile = a->tiles.items[i] }));
+        ops_submit(&op);
+        op_free(&op);
         vkr_texture_release(t);
         break;
     }
@@ -295,10 +306,13 @@ void gfx_handle_file_result(const char *path) {
         Image cut = image_cut_circle(&img);
         image_free(&img);
         Texture *t = texture_from_image(&cut);
+        Op op = { .type = OP_SET_ICON, .image = t };
         for (int i = 0; i < a->tiles.count; i++) {
             Entity *e = entity_at(a->tiles.items[i]);
-            if (e && e->type == ENTITY_CHARACTER) entity_set_image(e, t);
+            if (e && e->type == ENTITY_CHARACTER) da_push(&op.ids, e->id);
         }
+        if (op.ids.count > 0) ops_submit(&op);
+        op_free(&op);
         vkr_texture_release(t);
         break;
     }
