@@ -36,11 +36,16 @@ timeout 60 ./toh --size 600x400 --auto-file "$icon" \
     --exec "@shot $out/load-refused.png" \
     --exec ":load! $out/table.tuhh" \
     --exec "@shot $out/reloaded.png" \
+    --exec "@click 300 200" --exec ":c owner Bob" \
+    --exec ":q" \
+    --exec "@shot $out/owner-refused.png" \
+    --exec ":c owner none" \
     --exec ":q" \
     || fail "toh exited with status $? (124 = the last :q did not quit)"
 
 [ "$(head -c 4 "$out/table.tuhh")" = TUHH ] || fail "table.tuhh has no TUHH header"
 [ -f "$out/quit-refused.png" ] || fail ":q quit despite unsaved changes"
+[ -f "$out/owner-refused.png" ] || fail ":q quit although the owner of a character changed"
 similar "$out/modified.png" "$out/load-refused.png" || fail ":load replaced a modified table"
 similar "$out/loaded.png" "$out/reloaded.png" || fail ":load! did not restore the saved table"
 ! similar "$out/loaded.png" "$out/modified.png" || fail "the modification was not visible (test is not sensitive)"

@@ -22,7 +22,7 @@ make            # builds ./toh
 
 Sanitizer build: `make clean && make CFLAGS="-O1 -g -fsanitize=address,undefined"`.
 
-Tests: `make test` (save format unit tests), `make fuzz` (libFuzzer on the save file decoder, needs clang;
+Tests: `make test` (save format and game core unit tests), `make fuzz` (libFuzzer on the save file decoder, needs clang;
 `FUZZ_TIME=600` fuzzes longer) and `make e2e` (saves and loads in a real window, needs a display and ImageMagick).
 Set `TOH_VK_VALIDATION=1` to enable the Khronos validation layer when it is installed.
 
@@ -49,7 +49,7 @@ These are the same as in the Java version.
 | Alt + X / S / A / C / V | drag / measure / area / cone / line tool |
 
 Console commands: `:q` quit, `:b [file.png]` background, `:d` debug, `:c` character
-(`delete`, `size n`, `maxhealth n`, `armorclass n`, `speed n`, `initiative n`, `icon`),
+(`delete`, `size n`, `maxhealth n`, `armorclass n`, `speed n`, `initiative n`, `icon`, `owner <player|none>`),
 `:w [delete]` wall, `:e delete`, `:r 2d6+3` roll, `:g` grid orientation, `:gm` gamemaster,
 `:i [add|remove|clear|show|next]` initiative, `:cl` clear, `:t [name]` theme, `:h [command]` help,
 `:save [file]` / `:load[!] [file]` save files (see below), `:q!` quit without saving.
@@ -64,10 +64,11 @@ Like nvim, `:q` and `:load` refuse to throw away unsaved changes: `No write sinc
 Use `:q!` / `:load!` to discard them. Camera, zoom and theme are saved but don't count as changes. The window's
 close button always quits.
 
-A save contains the background, characters (image and stats), walls, the initiative order, waypoints, grid
-orientation, camera and theme; not the console, selections, clipboard or measurements.
+A save contains the background, characters (image, stats and owner), walls, the initiative order, waypoints, grid
+orientation, camera and theme; not the console, selections, clipboard or measurements. `:c owner <player>` gives the
+selected characters to a player (for the upcoming multiplayer mode); pasted copies have no owner.
 
-The format (`src/savefmt.h`) is binary and compact: the game state is packed with varints and zstd-compressed, and
+The format (`src/savefmt.h`, version 2; version 1 files still load) is binary and compact: the game state is packed with varints and zstd-compressed, and
 every image is stored once as WebP (lossless for characters and walls, quality 90 for the background; images over
 16383 px are scaled down). Saves are written to `file.tmp` first and then renamed, and a load only replaces the
 table once the whole file has been checked.
@@ -84,6 +85,7 @@ sizes, counts and references are checked against fixed limits before use.
 | `src/main.c` | `main/Main` – startup, main loop, 16 ms game tick |
 | `src/graphics.c` | `main/GraphicsHandler` – state, zoom/pan, dialogs, scene rendering |
 | `src/game.c` | `main/GameHandler` – camera tick, movement, initiative |
+| `src/ops.c` | – (new) every change to the table as a checked operation; GM / player rules |
 | `src/input.c` | `main/IOHandler` – mouse and keyboard |
 | `src/console.c` | `main/Consol`, `ConsolPanel`, `CommandCompleter` |
 | `src/tools.c` | `main/Toolbox`, `tools/*` (measure, line, area, cone) |
