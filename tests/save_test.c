@@ -542,6 +542,13 @@ static void test_owner_names(void) {
     CHECK(!savefmt_owner_valid("two words"));
     CHECK(!savefmt_owner_valid("tab\there"));
     CHECK(!savefmt_owner_valid("\xc3")); /* broken UTF-8 */
+    CHECK(!savefmt_owner_valid("a\xc2\xa0" "b"));     /* U+00A0 */
+    CHECK(!savefmt_owner_valid("a\xe2\x80\x8b" "b")); /* U+200B */
+    CHECK(!savefmt_owner_valid("a\xe2\x80\xae" "b")); /* U+202E */
+    CHECK(!savefmt_owner_valid("\xef\xbb\xbf" "Alice")); /* U+FEFF */
+    CHECK(!savefmt_owner_valid("\x7f"));
+    CHECK(savefmt_owner_valid("\xe5\x90\x8d\xe5\x89\x8d")); /* CJK, accepted */
+    CHECK(!savefmt_owner_valid(NULL));
 
     Sample s;
     sample_init(&s);

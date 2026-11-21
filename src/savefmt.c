@@ -191,11 +191,22 @@ static void get_str(Rd *r, char *out, size_t cap) {
 }
 
 bool savefmt_owner_valid(const char *name) {
+    if (!name) return false;
     size_t n = strnlen(name, SAVEFMT_OWNER_MAX);
     if (n == 0 || n >= SAVEFMT_OWNER_MAX || !utf8_valid(name, n)) return false;
-    for (size_t i = 0; i < n; i++) {
+    for (size_t i = 0; i < n;) {
         uint8_t c = (uint8_t)name[i];
-        if (c <= 0x20 || c == 0x7f) return false;
+        uint32_t cp;
+        size_t len;
+        if (c < 0x80) { cp = c; len = 1; }
+        else if (c < 0xE0) { cp = c & 0x1F; len = 2; }
+        else if (c < 0xF0) { cp = c & 0x0F; len = 3; }
+        else { cp = c & 0x07; len = 4; }
+        for (size_t k = 1; k < len; k++) cp = (cp << 6) | ((uint8_t)name[i + k] & 0x3F);
+        i += len;
+        if (cp <= 0x20 || (cp >= 0x7F && cp <= 0xA0) || cp == 0xAD) return false;
+        if ((cp >= 0x2000 && cp <= 0x200F) || (cp >= 0x2028 && cp <= 0x202F)) return false;
+        if ((cp >= 0x205F && cp <= 0x206F) || cp == 0x3000 || cp == 0xFEFF) return false;
     }
     return true;
 }

@@ -132,7 +132,7 @@ bool savefmt_fingerprint(const SaveData *d, uint8_t out[SAVEFMT_TAG_SIZE]);
 /* Integrity tag of buf[0..len). Exposed for tests. */
 void savefmt_compute_tag(const uint8_t *buf, size_t len, uint8_t out[SAVEFMT_TAG_SIZE]);
 
-/* Player names, used as character owners: 1..24 bytes of UTF-8 without spaces or control characters. */
+/* Player names, used as character owners: 1..24 bytes of UTF-8 without spaces, control or invisible formatting characters. */
 bool savefmt_owner_valid(const char *name);
 
 const char *savefmt_strerror(SaveError e);
