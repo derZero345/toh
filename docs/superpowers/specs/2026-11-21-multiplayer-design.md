@@ -1,7 +1,7 @@
 # Live multiplayer (GM hosts, players join) — design
 
 Date: 2026-11-21
-Status: approved in brainstorming, waiting for spec review
+Status: approved; implementation plans in docs/superpowers/plans/2026-11-21-multiplayer-*.md
 
 ## Goal
 
@@ -155,7 +155,7 @@ count and value against fixed limits, like `savefmt.c`, and never trusts IDs (un
 
 The protocol version starts at 1. Host and client must have the same version.
 
-**Images in ops.** Ops never carry pixels. They reference images by hash. Before sending an op that references an
+**Images in ops.** Only GM ops carry images, so images only travel from the host to clients. Ops never carry pixels. They reference images by hash. Before sending an op that references an
 image the receiver has not seen yet, the sender sends an `IMAGE` message with it (WebP, encoded with the savefmt
 rules: lossless for icons and walls, quality 90 for backgrounds). Every peer keeps a per-session cache
 hash → `Texture`, filled by the snapshot and by `IMAGE` messages; the host checks that the WebP decodes and that
@@ -207,7 +207,6 @@ initiative, waypoints, background, grid orientation, teleport, paste, load) is c
 | Op | Comes from | GM | Player |
 |---|---|---|---|
 | `MOVE id → hex` | Shift + click, keyboard move | always (with `:gm` on: no range limit, as today) | see "Move rules" below |
-| `TELEPORT id → hex` | `:tp` | yes | no |
 | `SPAWN_CHARACTER` (tiles, stats, image) | `:c` | yes | no |
 | `SPAWN_WALL` (tiles, image) | `:w` | yes | no |
 | `PASTE` (entities, offset) | Ctrl + V | yes | no |
@@ -236,17 +235,19 @@ everyone: `Alice rolled 2d6+3: 4 + 2 + 3 = 9`. Players cannot fake results. The 
 today are shown on every screen.
 
 **Claims.** `:claim` with exactly one selected unowned character sends `CLAIM`. The host logs
-`Alice wants to claim Goblin #3 [4|9]. Allow? (y/n)` and uses the console confirm prompt. Claims arriving while a
+`Alice wants to claim character #3 [4|9]. Allow? (y/n)` and uses the console confirm prompt. Claims arriving while a
 prompt is open are queued and asked one after another. `y` applies `SET_OWNER`, `n` sends the player
 `The GM declined your claim.` The console's confirm prompt is generalized from the hard-wired
 `gfx_spawn_character_confirmed` to a callback with context, so spawn confirmations and claims share it.
 
-**Rejection reasons** (logged on the client): `Not your character`, `Out of range`, `Not <name>'s turn`,
-`Only the GM can do that`, `That character already has an owner`, `That entity no longer exists`.
+**Rejection reasons** (logged on the client): `Not your character`, `Out of range`,
+`It's not your character's turn`, `Only the GM can do that`, `That character already has an owner`,
+`That entity no longer exists`, `Invalid action`. Characters have no names, so messages refer to them as
+`character #<id> [row|col]`.
 
 ### 3.4 Local actions (never ops)
 
-Selecting tiles / entities, panning, zooming, theme, `:d` debug, console and toolbox size, `:cl` (clears the
+Selecting tiles / entities, panning, zooming, `:tp <row> <col>` / `:tp <waypoint>` (they only move the camera), theme, `:d` debug, console and toolbox size, `:cl` (clears the
 console), copying to the clipboard, `:save`, `:h`, `:gm` on the host. `:gm` on a client is refused
 (`Only the GM can do that`). Tools (measure, line, area, cone) stay local state and are shown to others through
 presence (section 4), so they need no ops.
