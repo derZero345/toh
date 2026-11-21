@@ -2194,3 +2194,6 @@ Summarize for the user: which commits were made, test output (checks counts), an
   equals an existing player's name under the same comparison.
 - **`OP_INIT_NEXT`** carries the id of the entity whose turn it is (`OPR_STALE` otherwise); clients fill it from their
   copy of the table.
+- **Local view state in `ops_apply`:** `OP_DELETE` clears all selection highlights and `OP_MOVE` overwrites
+  `gh->path`. Fine offline; once remote ops are applied, only clear highlights that refer to deleted entities and
+  don't touch the local path preview for other players' moves.
