@@ -208,6 +208,7 @@ static void apply_init_add(const Op *op) {
     for (int i = 0; i < op->ids.count; i++) {
         Entity *e = entity_by_id(op->ids.items[i]);
         if (!e) continue;
+        if (i >= op->values.count) break;
         da_push(&es, e);
         da_push(&vs, op->values.items[i]);
     }

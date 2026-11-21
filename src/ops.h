@@ -72,6 +72,7 @@ typedef enum {
 
 /*
  * Notes for ops_check / ops_apply:
+ * - ops_apply requires an op that passed ops_check (e.g. values.count == ids.count for OP_INIT_ADD).
  * - ops_apply looks ids up again one by one, so unknown or duplicate ids and walls in
  *   character-only ops are skipped harmlessly.
  * - ops_check does not limit GM moves to the movement range; the UI keeps the ":gm off"

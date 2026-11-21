@@ -11,6 +11,8 @@
 
 extern char stub_last_log[1024];
 extern Texture *stub_background;
+extern int stub_bad_releases;
+int stub_refs(Texture *t);
 
 static int failures, checks;
 
@@ -326,7 +328,9 @@ static void test_apply_entities(void) {
                                          .size = SIZE_NORMAL, .maxHealth = 20, .health = 7, .attack = 1,
                                          .ac = 14, .speed = 4, .initiative = 2 }));
     da_push(&spawn.specs, ((EntitySpec){ .type = ENTITY_WALL, .image = TEX_B, .tile = { 5, 6 } }));
+    int a0 = stub_refs(TEX_A), b0 = stub_refs(TEX_B);
     CHECK_R(ops_submit(&spawn), OPR_OK);
+    CHECK(stub_refs(TEX_A) == a0 + 1 && stub_refs(TEX_B) == b0 + 1);
     CHECK(spawn.ids.count == 2 && gh->entities.count == 2);
     Entity *hero = entity_by_id(spawn.ids.items[0]);
     Entity *wall = entity_by_id(spawn.ids.items[1]);
@@ -351,8 +355,11 @@ static void test_apply_entities(void) {
 
     Op icon = { .type = OP_SET_ICON, .image = TEX_B };
     da_push(&icon.ids, hero->id);
+    a0 = stub_refs(TEX_A);
+    b0 = stub_refs(TEX_B);
     CHECK_R(ops_submit(&icon), OPR_OK);
     CHECK(hero->image == TEX_B);
+    CHECK(stub_refs(TEX_A) == a0 - 1 && stub_refs(TEX_B) == b0 + 1);
     op_free(&icon);
 
     Op own = { .type = OP_SET_OWNER, .name = "Alice" };
@@ -368,9 +375,19 @@ static void test_apply_entities(void) {
     Op del = { .type = OP_DELETE };
     da_push(&del.ids, wall->id);
     uint32_t wall_id = wall->id;
+    b0 = stub_refs(TEX_B);
     CHECK_R(ops_submit(&del), OPR_OK);
     CHECK(gh->entities.count == 1 && entity_by_id(wall_id) == NULL);
+    CHECK(stub_refs(TEX_B) == b0 - 1);
     op_free(&del);
+
+    /* the same id twice: the second lookup finds nothing */
+    Op twice = { .type = OP_DELETE };
+    da_push(&twice.ids, hero->id);
+    da_push(&twice.ids, hero->id);
+    CHECK_R(ops_submit(&twice), OPR_OK);
+    CHECK(gh->entities.count == 0);
+    op_free(&twice);
 
     /* rejected ops change nothing and tell the user why */
     Op bad = { .type = OP_MOVE, .id = 4242, .tile = { 0, 0 } };
@@ -380,12 +397,13 @@ static void test_apply_entities(void) {
 
 static void test_apply_world(void) {
     reset_table();
+    int a0 = stub_refs(TEX_A);
     Op bg = { .type = OP_SET_BACKGROUND, .image = TEX_A };
     CHECK_R(ops_submit(&bg), OPR_OK);
-    CHECK(stub_background == TEX_A);
+    CHECK(stub_background == TEX_A && stub_refs(TEX_A) == a0 + 1);
     bg.image = NULL;
     CHECK_R(ops_submit(&bg), OPR_OK);
-    CHECK(stub_background == NULL);
+    CHECK(stub_background == NULL && stub_refs(TEX_A) == a0);
 
     bool flat = gh->isFlat;
     Op grid = { .type = OP_GRID_ORIENTATION };
@@ -422,7 +440,20 @@ static void test_apply_initiative(void) {
 
     Op next = { .type = OP_INIT_NEXT };
     CHECK_R(ops_submit(&next), OPR_OK);
-    CHECK(gh->currentTurn != NULL);
+    CHECK(gh->currentTurn == c); /* order is b, c, a; the first next goes to index 1 (Java behaviour) */
+
+    /* an op that names the current turn advances it */
+    Op next2 = { .type = OP_INIT_NEXT, .id = gh->currentTurn->id };
+    CHECK_R(ops_submit(&next2), OPR_OK);
+    CHECK(gh->currentTurn == a);
+    Op stale = { .type = OP_INIT_NEXT, .id = c->id }; /* c's turn is over */
+    CHECK_R(ops_submit(&stale), OPR_STALE);
+    Op next3 = { .type = OP_INIT_NEXT, .id = gh->currentTurn->id };
+    CHECK_R(ops_submit(&next3), OPR_OK);
+    CHECK(gh->currentTurn == b);
+    Op next4 = { .type = OP_INIT_NEXT, .id = gh->currentTurn->id };
+    CHECK_R(ops_submit(&next4), OPR_OK);
+    CHECK(gh->currentTurn == c); /* full circle: c is current again */
 
     Op rm = { .type = OP_INIT_REMOVE };
     da_push(&rm.ids, c->id);
@@ -435,6 +466,7 @@ static void test_apply_initiative(void) {
     da_push(&del.ids, b->id);
     CHECK_R(ops_submit(&del), OPR_OK);
     CHECK(gh->init.count == 1 && gh->init.items[0].entity == a);
+    CHECK(gh->currentTurn == a); /* b was current; removing it passes the turn on */
     op_free(&del);
 
     Op show = { .type = OP_INIT_SHOW };
@@ -457,6 +489,7 @@ int main(void) {
     test_apply_entities();
     test_apply_world();
     test_apply_initiative();
+    CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
 }
