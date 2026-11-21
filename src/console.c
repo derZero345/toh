@@ -511,9 +511,19 @@ static void collect_selected_entities(EntityList *out) {
     }
 }
 
+/* Rolls initiative for the entities that are not in it yet and adds them. */
+static void roll_initiative(Entity **entities, int n) {
+    double *values = calloc(n > 0 ? (size_t)n : 1, sizeof(*values));
+    if (!values) abort();
+    for (int i = 0; i < n; i++)
+        if (!game_is_in_initiative(entities[i])) values[i] = rand_unit();
+    game_initiative_list(entities, values, n);
+    free(values);
+}
+
 static void cmd_init(Args *a) {
     if (a->argc < 2) {
-        game_initiative_list(gh->entities.items, gh->entities.count);
+        roll_initiative(gh->entities.items, gh->entities.count);
         return;
     }
     char sub[32];
@@ -522,7 +532,7 @@ static void cmd_init(Args *a) {
     EntityList sel = { 0 };
     if (!strcmp(sub, "add") || !strcmp(sub, "a")) {
         collect_selected_entities(&sel);
-        if (sel.count > 0) game_initiative_list(sel.items, sel.count);
+        if (sel.count > 0) roll_initiative(sel.items, sel.count);
     } else if (!strcmp(sub, "remove") || !strcmp(sub, "r")) {
         collect_selected_entities(&sel);
         for (int i = 0; i < sel.count; i++) game_remove_from_initiative(sel.items[i]);

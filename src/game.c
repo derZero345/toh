@@ -47,11 +47,6 @@ static void initiative_push(Entity *e, double value) {
     marker_add(m);
 }
 
-static void initiative_add(Entity *e) {
-    if (!e || game_is_in_initiative(e)) return;
-    initiative_push(e, rand_unit());
-}
-
 /* Highest initiative first; stable so equal values keep their order. */
 static void sort_initiative(void) {
     for (int i = 1; i < gh->init.count; i++) {
@@ -66,9 +61,10 @@ static void sort_initiative(void) {
     if (gh->initMarkers.count > 0) game_update_initiative_markers();
 }
 
-void game_initiative_list(Entity **entities, int n) {
+void game_initiative_list(Entity **entities, const double *values, int n) {
     if (!entities) return;
-    for (int i = 0; i < n; i++) initiative_add(entities[i]);
+    for (int i = 0; i < n; i++)
+        if (entities[i] && !game_is_in_initiative(entities[i])) initiative_push(entities[i], values[i]);
     sort_initiative();
     game_update_initiative_markers();
 }

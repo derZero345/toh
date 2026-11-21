@@ -395,7 +395,8 @@ void gfx_update_tools(void);
 /* game.c */
 void game_tick(void);
 void game_move_character(Hex target, Entity *c);
-void game_initiative_list(Entity **entities, int n);
+/* Adds the entities that are not in the initiative yet, entities[i] with roll values[i], and sorts. */
+void game_initiative_list(Entity **entities, const double *values, int n);
 void game_remove_from_initiative(Entity *e);
 void game_update_initiative_markers(void);
 void game_toggle_show_initiative(void);

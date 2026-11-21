@@ -68,8 +68,27 @@ static void test_entity_ids(void) {
     CHECK(c->id != old); /* ids are never reused */
 }
 
+static void test_initiative_values(void) {
+    reset_table();
+    Entity *a = add_character((Hex){ 0, 0 }, 3, "");
+    Entity *b = add_character((Hex){ 0, 4 }, 3, "");
+    Entity *c = add_character((Hex){ 0, 8 }, 3, "");
+    Entity *order[3] = { a, b, c };
+    double values[3] = { 0.2, 0.9, 0.5 };
+    game_initiative_list(order, values, 3);
+    /* highest roll first */
+    CHECK(gh->init.count == 3);
+    CHECK(gh->init.items[0].entity == b && gh->init.items[1].entity == c && gh->init.items[2].entity == a);
+    CHECK(gh->init.items[0].value == 0.9);
+    /* entities already in the initiative keep their roll */
+    double again[3] = { 0.99, 0.0, 0.0 };
+    game_initiative_list(order, again, 3);
+    CHECK(gh->init.count == 3 && gh->init.items[0].entity == b && gh->init.items[2].value == 0.2);
+}
+
 int main(void) {
     test_entity_ids();
+    test_initiative_values();
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
 }
