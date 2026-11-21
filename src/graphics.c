@@ -120,6 +120,13 @@ static void update_background_size(void) {
     gh->drawWidth = (int)(gh->drawHeight * image_ratio * format_ratio);
 }
 
+void gfx_set_background_texture(Texture *t) {
+    vkr_texture_retain(t);
+    vkr_texture_release(gh->backgroundImage);
+    gh->backgroundImage = t;
+    update_background_size();
+}
+
 void gfx_grid_offset(int dx, int dy) {
     gh->gridOffsetX += dx;
     gh->gridOffsetY += dy;

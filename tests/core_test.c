@@ -317,6 +317,136 @@ static void test_structure(void) {
     op_free(&oob_spawn);
 }
 
+/* ---- ops_apply ------------------------------------------------------------------------- */
+
+static void test_apply_entities(void) {
+    reset_table();
+    Op spawn = { .type = OP_SPAWN };
+    da_push(&spawn.specs, ((EntitySpec){ .type = ENTITY_CHARACTER, .image = TEX_A, .tile = { 5, 5 },
+                                         .size = SIZE_NORMAL, .maxHealth = 20, .health = 7, .attack = 1,
+                                         .ac = 14, .speed = 4, .initiative = 2 }));
+    da_push(&spawn.specs, ((EntitySpec){ .type = ENTITY_WALL, .image = TEX_B, .tile = { 5, 6 } }));
+    CHECK_R(ops_submit(&spawn), OPR_OK);
+    CHECK(spawn.ids.count == 2 && gh->entities.count == 2);
+    Entity *hero = entity_by_id(spawn.ids.items[0]);
+    Entity *wall = entity_by_id(spawn.ids.items[1]);
+    CHECK(hero && hero->type == ENTITY_CHARACTER && hero->image == TEX_A && hex_eq(hero->tile, (Hex){ 5, 5 }));
+    CHECK(hero && hero->maxHealth == 20 && hero->health == 7 && hero->attack == 1 && hero->ac == 14 &&
+          hero->speed == 4 && hero->initiative == 2);
+    CHECK(wall && wall->type == ENTITY_WALL && wall->image == TEX_B && hex_eq(wall->tile, (Hex){ 5, 6 }));
+    op_free(&spawn);
+    if (!hero || !wall) return;
+
+    Op mv = move_op(hero, (Hex){ 7, 5 });
+    CHECK_R(ops_submit(&mv), OPR_OK);
+    CHECK(hex_eq(hero->tile, (Hex){ 7, 5 }));
+
+    /* only the masked stats change, speed is capped, walls are skipped */
+    Op st = { .type = OP_SET_STATS, .statMask = STAT_SPEED | STAT_AC, .speed = 5000, .ac = 9, .maxHealth = 1 };
+    da_push(&st.ids, hero->id);
+    da_push(&st.ids, wall->id);
+    CHECK_R(ops_submit(&st), OPR_OK);
+    CHECK(hero->speed == MAX_SPEED && hero->ac == 9 && hero->maxHealth == 20);
+    op_free(&st);
+
+    Op icon = { .type = OP_SET_ICON, .image = TEX_B };
+    da_push(&icon.ids, hero->id);
+    CHECK_R(ops_submit(&icon), OPR_OK);
+    CHECK(hero->image == TEX_B);
+    op_free(&icon);
+
+    Op own = { .type = OP_SET_OWNER, .name = "Alice" };
+    da_push(&own.ids, hero->id);
+    da_push(&own.ids, wall->id);
+    CHECK_R(ops_submit(&own), OPR_OK);
+    CHECK(strcmp(hero->owner, "Alice") == 0 && wall->owner[0] == '\0');
+    own.name[0] = '\0';
+    CHECK_R(ops_submit(&own), OPR_OK);
+    CHECK(hero->owner[0] == '\0');
+    op_free(&own);
+
+    Op del = { .type = OP_DELETE };
+    da_push(&del.ids, wall->id);
+    uint32_t wall_id = wall->id;
+    CHECK_R(ops_submit(&del), OPR_OK);
+    CHECK(gh->entities.count == 1 && entity_by_id(wall_id) == NULL);
+    op_free(&del);
+
+    /* rejected ops change nothing and tell the user why */
+    Op bad = { .type = OP_MOVE, .id = 4242, .tile = { 0, 0 } };
+    CHECK_R(ops_submit(&bad), OPR_NO_ENTITY);
+    CHECK(strcmp(stub_last_log, "That entity no longer exists") == 0);
+}
+
+static void test_apply_world(void) {
+    reset_table();
+    Op bg = { .type = OP_SET_BACKGROUND, .image = TEX_A };
+    CHECK_R(ops_submit(&bg), OPR_OK);
+    CHECK(stub_background == TEX_A);
+    bg.image = NULL;
+    CHECK_R(ops_submit(&bg), OPR_OK);
+    CHECK(stub_background == NULL);
+
+    bool flat = gh->isFlat;
+    Op grid = { .type = OP_GRID_ORIENTATION };
+    CHECK_R(ops_submit(&grid), OPR_OK);
+    CHECK(gh->isFlat != flat);
+
+    Op set = { .type = OP_WAYPOINT_SET, .tile = { 1, 2 }, .name = "Camp" };
+    CHECK_R(ops_submit(&set), OPR_OK);
+    CHECK(gh->waypoints.count == 1 && strcmp(gh->waypoints.items[0].name, "Camp") == 0);
+    Op move = { .type = OP_WAYPOINT_SET, .tile = { 3, 4 }, .name = "camp" };
+    CHECK_R(ops_submit(&move), OPR_OK); /* same waypoint: keeps its name, moves */
+    CHECK(gh->waypoints.count == 1 && strcmp(gh->waypoints.items[0].name, "Camp") == 0);
+    CHECK(hex_eq(gh->waypoints.items[0].tile, (Hex){ 3, 4 }));
+    Op del = { .type = OP_WAYPOINT_DELETE, .name = "CAMP" };
+    CHECK_R(ops_submit(&del), OPR_OK);
+    CHECK(gh->waypoints.count == 0);
+}
+
+static void test_apply_initiative(void) {
+    reset_table();
+    Entity *a = add_character((Hex){ 0, 0 }, 3, "");
+    Entity *b = add_character((Hex){ 0, 4 }, 3, "");
+    Entity *c = add_character((Hex){ 0, 8 }, 3, "");
+    Op add = { .type = OP_INIT_ADD };
+    Entity *es[3] = { a, b, c };
+    double vals[3] = { 0.2, 0.9, 0.5 };
+    for (int i = 0; i < 3; i++) {
+        da_push(&add.ids, es[i]->id);
+        da_push(&add.values, vals[i]);
+    }
+    CHECK_R(ops_submit(&add), OPR_OK);
+    CHECK(gh->init.count == 3 && gh->init.items[0].entity == b && gh->init.items[2].entity == a);
+    op_free(&add);
+
+    Op next = { .type = OP_INIT_NEXT };
+    CHECK_R(ops_submit(&next), OPR_OK);
+    CHECK(gh->currentTurn != NULL);
+
+    Op rm = { .type = OP_INIT_REMOVE };
+    da_push(&rm.ids, c->id);
+    CHECK_R(ops_submit(&rm), OPR_OK);
+    CHECK(gh->init.count == 2 && !game_is_in_initiative(c));
+    op_free(&rm);
+
+    /* deleting an entity also takes it out of the initiative */
+    Op del = { .type = OP_DELETE };
+    da_push(&del.ids, b->id);
+    CHECK_R(ops_submit(&del), OPR_OK);
+    CHECK(gh->init.count == 1 && gh->init.items[0].entity == a);
+    op_free(&del);
+
+    Op show = { .type = OP_INIT_SHOW };
+    bool visible = gh->initMarkers.items[0]->visible;
+    CHECK_R(ops_submit(&show), OPR_OK);
+    CHECK(gh->initMarkers.items[0]->visible != visible);
+
+    Op clear = { .type = OP_INIT_CLEAR };
+    CHECK_R(ops_submit(&clear), OPR_OK);
+    CHECK(gh->init.count == 0 && gh->currentTurn == NULL);
+}
+
 int main(void) {
     test_entity_ids();
     test_initiative_values();
@@ -324,6 +454,9 @@ int main(void) {
     test_turns();
     test_gm_only();
     test_structure();
+    test_apply_entities();
+    test_apply_world();
+    test_apply_initiative();
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
 }

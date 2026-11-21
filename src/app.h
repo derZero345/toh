@@ -390,6 +390,7 @@ void gfx_spawn_character(int size, int maxhealth, int ac, int speed, int initiat
 void gfx_spawn_character_confirmed(bool yes);
 void gfx_summon_wall(void);
 void gfx_set_background_image(const char *path_or_null);
+void gfx_set_background_texture(Texture *t); /* NULL = no background; takes its own reference */
 void gfx_update_tools(void);
 
 /* game.c */

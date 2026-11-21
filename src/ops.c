@@ -139,8 +139,144 @@ OpResult ops_check(const Op *op, const OpAuthor *author) {
 
 /* ---- ops_apply ---------------------------------------------------------------------------- */
 
+static void apply_spawn(Op *op) {
+    da_clear(&op->ids);
+    for (int i = 0; i < op->specs.count; i++) {
+        const EntitySpec *s = &op->specs.items[i];
+        Entity *e;
+        if (s->type == ENTITY_WALL) {
+            e = entity_new_wall(s->image, s->tile);
+        } else {
+            e = entity_new_character(s->image, s->tile, s->size, s->maxHealth, s->ac, s->speed, s->initiative);
+            e->health = s->health;
+            e->attack = s->attack;
+        }
+        entity_register(e);
+        da_push(&op->ids, e->id);
+    }
+}
+
+static void apply_delete(const Op *op) {
+    bool deleted = false;
+    for (int i = 0; i < op->ids.count; i++) {
+        Entity *e = entity_by_id(op->ids.items[i]);
+        if (!e) continue;
+        entity_delete(e);
+        deleted = true;
+    }
+    if (deleted) entities_clear_highlights();
+}
+
+/* The characters among op->ids; walls are skipped like in the Java version. */
+static Entity *character_at(const Op *op, int i) {
+    Entity *e = entity_by_id(op->ids.items[i]);
+    return e && e->type == ENTITY_CHARACTER ? e : NULL;
+}
+
+static void apply_stats(const Op *op) {
+    for (int i = 0; i < op->ids.count; i++) {
+        Entity *e = character_at(op, i);
+        if (!e) continue;
+        if (op->statMask & STAT_SIZE)       e->size = op->size;
+        if (op->statMask & STAT_MAXHEALTH)  e->maxHealth = op->maxHealth;
+        if (op->statMask & STAT_AC)         e->ac = op->ac;
+        if (op->statMask & STAT_SPEED)      e->speed = op->speed > MAX_SPEED ? MAX_SPEED : op->speed;
+        if (op->statMask & STAT_INITIATIVE) e->initiative = op->initiative;
+    }
+}
+
+static Waypoint *waypoint_named(const char *name) {
+    for (int i = 0; i < gh->waypoints.count; i++)
+        if (strcasecmp(gh->waypoints.items[i].name, name) == 0) return &gh->waypoints.items[i];
+    return NULL;
+}
+
+static void apply_waypoint_set(const Op *op) {
+    Waypoint *w = waypoint_named(op->name);
+    if (w) {
+        w->tile = op->tile;
+        return;
+    }
+    Waypoint nw = { .tile = op->tile };
+    snprintf(nw.name, sizeof(nw.name), "%s", op->name);
+    da_push(&gh->waypoints, nw);
+}
+
+static void apply_init_add(const Op *op) {
+    EntityList es = { 0 };
+    DA(double) vs = { 0 };
+    for (int i = 0; i < op->ids.count; i++) {
+        Entity *e = entity_by_id(op->ids.items[i]);
+        if (!e) continue;
+        da_push(&es, e);
+        da_push(&vs, op->values.items[i]);
+    }
+    game_initiative_list(es.items, vs.items, es.count);
+    da_free(&es);
+    da_free(&vs);
+}
+
 void ops_apply(Op *op) {
-    (void)op; /* Task 5 */
+    switch (op->type) {
+    case OP_MOVE:
+        game_move_character(op->tile, entity_by_id(op->id));
+        break;
+    case OP_SPAWN:
+        apply_spawn(op);
+        break;
+    case OP_DELETE:
+        apply_delete(op);
+        break;
+    case OP_SET_STATS:
+        apply_stats(op);
+        break;
+    case OP_SET_ICON:
+        for (int i = 0; i < op->ids.count; i++) {
+            Entity *e = character_at(op, i);
+            if (e) entity_set_image(e, op->image);
+        }
+        break;
+    case OP_SET_BACKGROUND:
+        gfx_set_background_texture(op->image);
+        break;
+    case OP_GRID_ORIENTATION:
+        gfx_toggle_grid_orientation();
+        break;
+    case OP_WAYPOINT_SET:
+        apply_waypoint_set(op);
+        break;
+    case OP_WAYPOINT_DELETE: {
+        Waypoint *w = waypoint_named(op->name);
+        if (w) da_remove_at(&gh->waypoints, (int)(w - gh->waypoints.items));
+        break;
+    }
+    case OP_INIT_ADD:
+        apply_init_add(op);
+        break;
+    case OP_INIT_REMOVE:
+        for (int i = 0; i < op->ids.count; i++) {
+            Entity *e = entity_by_id(op->ids.items[i]);
+            if (e) game_remove_from_initiative(e);
+        }
+        break;
+    case OP_INIT_CLEAR:
+        game_clear_initiative();
+        break;
+    case OP_INIT_SHOW:
+        game_toggle_show_initiative();
+        break;
+    case OP_INIT_NEXT:
+        game_next_turn();
+        break;
+    case OP_SET_OWNER:
+        for (int i = 0; i < op->ids.count; i++) {
+            Entity *e = character_at(op, i);
+            if (e) snprintf(e->owner, sizeof(e->owner), "%.*s", PLAYER_NAME_MAX - 1, op->name);
+        }
+        break;
+    case OP_COUNT:
+        break;
+    }
 }
 
 OpResult ops_submit(Op *op) {
