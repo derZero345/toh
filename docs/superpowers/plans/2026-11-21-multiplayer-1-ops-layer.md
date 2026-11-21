@@ -1951,7 +1951,9 @@ static void cmd_init(Args *a) {
     } else if (!strcmp(sub, "show") || !strcmp(sub, "s")) {
         submit_simple(OP_INIT_SHOW);
     } else if (!strcmp(sub, "next") || !strcmp(sub, "n")) {
-        submit_simple(OP_INIT_NEXT);
+        /* names the current turn, so a repeated or crossing "next" can't skip a turn */
+        Op op = { .type = OP_INIT_NEXT, .id = gh->currentTurn ? gh->currentTurn->id : 0 };
+        ops_submit(&op);
     }
     da_free(&sel);
 }
@@ -2179,3 +2181,16 @@ Expected: builds `./toh` without warnings.
 - [ ] **Step 4: Report**
 
 Summarize for the user: which commits were made, test output (checks counts), and anything that behaved differently from this plan.
+
+---
+
+## Notes for Plan 3 (from the Task 4 review)
+
+- **Texture lifetime:** `Op` borrows its `Texture *`s. Ops decoded from the network and queued must hold their own
+  references (or name images by id and resolve them at apply time), or a texture can be freed between decode and apply.
+- **Spawn ids on clients:** `ops_apply(OP_SPAWN)` replaces `op->ids` with fresh ids. Clients applying `OP_APPLIED`
+  must create the entities with the host's ids instead.
+- **Player names:** ownership matches names case-insensitively (ASCII `strcasecmp`); `:join` must reject a name that
+  equals an existing player's name under the same comparison.
+- **`OP_INIT_NEXT`** carries the id of the entity whose turn it is (`OPR_STALE` otherwise); clients fill it from their
+  copy of the table.
