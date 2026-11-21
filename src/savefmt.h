@@ -1,15 +1,15 @@
-#ifndef PF_SAVEFMT_H
-#define PF_SAVEFMT_H
+#ifndef TOH_SAVEFMT_H
+#define TOH_SAVEFMT_H
 
 /*
- * .pfsave file format, version 1: encoding, decoding and validation.
+ * .tuhh file format, version 1: encoding, decoding and validation.
  *
  * Plain C11 on top of libzstd, libwebp and libsodium. It knows nothing about SDL,
  * Vulkan or the App struct, so tools or a server can reuse it to validate files.
  * Design: docs/superpowers/specs/2026-11-18-save-files-design.md
  *
  * Layout (little endian):
- *   "PFSV" | u16 version | u16 flags | u32 state_len | zstd(state) |
+ *   "TUHH" | u16 version | u16 flags | u32 state_len | zstd(state) |
  *   u32 image_count | { u8 kind, u16 w, u16 h, u32 len, WebP }... | 32-byte keyed BLAKE2b tag
  */
 

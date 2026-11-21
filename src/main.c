@@ -1,7 +1,7 @@
 /*
- * Pathfinder - hex grid tabletop helper. C / Vulkan port of the Java program.
+ * Tales of Honor (ToH) - hex grid tabletop helper. C / Vulkan port of the Java program.
  *
- * Usage: pathfinder [--exec <line>]... [--auto-file <png>] [--size WxH]
+ * Usage: toh [--exec <line>]... [--auto-file <png>] [--size WxH]
  *
  * --exec lines are run one per frame, after the first frame. A line is either a
  * console command (e.g. ":r 2d6") or a scripted input action, which is mainly

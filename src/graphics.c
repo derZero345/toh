@@ -221,7 +221,7 @@ void gfx_request_file(ActionKind kind, const HexList *tiles, int size, int maxHe
         gfx_handle_file_result(gh->autoFile);
         return;
     }
-    static const SDL_DialogFileFilter save_filters[] = { { "Pathfinder saves (*.pfsave)", "pfsave" } };
+    static const SDL_DialogFileFilter save_filters[] = { { "Tales of Honor saves (*.tuhh)", "tuhh" } };
     static const SDL_DialogFileFilter filters[] = { { "PNG Images (*.png)", "png" } };
     if (kind == ACTION_SAVE)
         SDL_ShowSaveFileDialog(dialog_callback, NULL, gh->window, save_filters, 1, NULL);

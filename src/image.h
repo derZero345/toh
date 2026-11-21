@@ -1,5 +1,5 @@
-#ifndef PF_IMAGE_H
-#define PF_IMAGE_H
+#ifndef TOH_IMAGE_H
+#define TOH_IMAGE_H
 
 #include "util.h"
 

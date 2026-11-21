@@ -1,6 +1,6 @@
-# pathfinder (C / Vulkan)
+# Tales of Honor (ToH) — C / Vulkan
 
-A C11 rewrite of the Java/Swing `pathfinder` hex-grid tabletop tool. It renders with Vulkan
+A C11 rewrite of the Java/Swing hex-grid tabletop tool (originally called `pathfinder`). It renders with Vulkan
 and uses SDL3 for the window, input and file dialogs.
 
 ## Building
@@ -16,15 +16,15 @@ Dependencies:
 | libwebp, libzstd, libsodium | save files: image compression, state compression, integrity tag |
 
 ```sh
-make            # builds ./pathfinder
-./pathfinder    # run from this directory, or anywhere: resources/ is found next to the binary
+make            # builds ./toh
+./toh           # run from this directory, or anywhere: resources/ is found next to the binary
 ```
 
 Sanitizer build: `make clean && make CFLAGS="-O1 -g -fsanitize=address,undefined"`.
 
 Tests: `make test` (save format unit tests), `make fuzz` (libFuzzer on the save file decoder, needs clang;
 `FUZZ_TIME=600` fuzzes longer) and `make e2e` (saves and loads in a real window, needs a display and ImageMagick).
-Set `PATHFINDER_VK_VALIDATION=1` to enable the Khronos validation layer when it is installed.
+Set `TOH_VK_VALIDATION=1` to enable the Khronos validation layer when it is installed.
 
 ## Controls
 
@@ -56,7 +56,7 @@ Console commands: `:q` quit, `:b [file.png]` background, `:d` debug, `:c` charac
 
 ## Saving
 
-`:save file` writes the table to `file.pfsave` (the extension is added if missing) and remembers it as the
+`:save file` writes the table to `file.tuhh` (the extension is added if missing) and remembers it as the
 current file; a later `:save` without a name writes there again, or opens a save dialog if there is no current file.
 `:load file` loads a save, `:load` opens a dialog. Paths may contain spaces, and `~/` means the home directory.
 
@@ -103,7 +103,7 @@ typical frame is only a few draw calls.
 screenshot, which makes headless-ish regression checks possible:
 
 ```sh
-./pathfinder --auto-file hero.png --exec "@move 300 250" --exec ":c speed 3" \
+./toh --auto-file hero.png --exec "@move 300 250" --exec ":c speed 3" \
              --exec "@click 300 250" --exec "@shot out.png" --exec "@quit"
 ```
 

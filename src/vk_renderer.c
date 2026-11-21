@@ -224,13 +224,13 @@ static bool create_instance(void) {
     }
     VkApplicationInfo app = {
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pApplicationName = "pathfinder",
+        .pApplicationName = "Tales of Honor",
         .applicationVersion = VK_MAKE_VERSION(0, 1, 0),
-        .pEngineName = "pathfinder",
+        .pEngineName = "Tales of Honor",
         .apiVersion = VK_API_VERSION_1_0,
     };
     const char *layers[] = { "VK_LAYER_KHRONOS_validation" };
-    const char *env = SDL_getenv("PATHFINDER_VK_VALIDATION");
+    const char *env = SDL_getenv("TOH_VK_VALIDATION");
     bool validation = env && env[0] == '1';
 
     VkInstanceCreateInfo ci = {

@@ -19,30 +19,30 @@ rmse() {
 similar() { awk -v v="$(rmse "$1" "$2")" 'BEGIN { exit !(v < 0.005) }'; }
 
 # The final :q must quit by itself (table unchanged since :load!); otherwise timeout fails the test.
-timeout 60 ./pathfinder --size 600x400 --auto-file "$icon" \
+timeout 60 ./toh --size 600x400 --auto-file "$icon" \
     --exec ":b $bg" \
     --exec "@click 300 200" --exec ":c" \
     --exec "@click 380 260" --exec ":w" \
     --exec "tp waypoint create camp 2 3" \
     --exec ":i" \
     --exec ":save $out/table" \
-    --exec ":load $out/table.pfsave" \
+    --exec ":load $out/table.tuhh" \
     --exec "@shot $out/loaded.png" \
     --exec ":c delete" --exec ":g" \
     --exec "@shot $out/modified.png" \
     --exec ":q" \
     --exec "@shot $out/quit-refused.png" \
-    --exec ":load $out/table.pfsave" \
+    --exec ":load $out/table.tuhh" \
     --exec "@shot $out/load-refused.png" \
-    --exec ":load! $out/table.pfsave" \
+    --exec ":load! $out/table.tuhh" \
     --exec "@shot $out/reloaded.png" \
     --exec ":q" \
-    || fail "pathfinder exited with status $? (124 = the last :q did not quit)"
+    || fail "toh exited with status $? (124 = the last :q did not quit)"
 
-[ "$(head -c 4 "$out/table.pfsave")" = PFSV ] || fail "table.pfsave has no PFSV header"
+[ "$(head -c 4 "$out/table.tuhh")" = TUHH ] || fail "table.tuhh has no TUHH header"
 [ -f "$out/quit-refused.png" ] || fail ":q quit despite unsaved changes"
 similar "$out/modified.png" "$out/load-refused.png" || fail ":load replaced a modified table"
 similar "$out/loaded.png" "$out/reloaded.png" || fail ":load! did not restore the saved table"
 ! similar "$out/loaded.png" "$out/modified.png" || fail "the modification was not visible (test is not sensitive)"
 
-echo "e2e save/load: OK ($(stat -c %s "$out/table.pfsave") byte save file)"
+echo "e2e save/load: OK ($(stat -c %s "$out/table.tuhh") byte save file)"

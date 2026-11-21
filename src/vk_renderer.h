@@ -1,5 +1,5 @@
-#ifndef PF_VK_RENDERER_H
-#define PF_VK_RENDERER_H
+#ifndef TOH_VK_RENDERER_H
+#define TOH_VK_RENDERER_H
 
 #include <SDL3/SDL.h>
 #include "util.h"

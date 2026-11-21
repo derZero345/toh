@@ -452,7 +452,7 @@ static void cmd_help(Args *a) {
         console_log("  tp waypoint create <name> [row col] # default: selected tile, else screen centre");
         console_log("  tp waypoint delete <name>");
     } else if (!strcmp(arg, "save") || !strcmp(arg, ":save")) {
-        console_log(":save [file] # Save the table as .pfsave");
+        console_log(":save [file] # Save the table as .tuhh");
         console_log("  without a file: save to the current file, or choose one in a dialog");
     } else if (!strcmp(arg, "load") || !strcmp(arg, ":load")) {
         console_log(":load [file] # Load a saved table (opens a dialog without a file)");

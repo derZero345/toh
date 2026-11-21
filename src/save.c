@@ -11,7 +11,7 @@
 _Static_assert(SAVEFMT_NAME_MAX == WAYPOINT_NAME_MAX, "waypoint name sizes differ");
 _Static_assert(SAVEFMT_MAX_SPEED == MAX_SPEED, "speed limits differ");
 
-#define SAVE_SUFFIX ".pfsave"
+#define SAVE_SUFFIX ".tuhh"
 #define PATH_MAX_LEN 1024
 
 static char current_file[PATH_MAX_LEN]; /* "" = none yet */

@@ -1,5 +1,5 @@
-#ifndef PF_APP_H
-#define PF_APP_H
+#ifndef TOH_APP_H
+#define TOH_APP_H
 
 /*
  * Shared state and module interfaces. The structure mirrors the original Java
@@ -394,7 +394,7 @@ bool game_is_in_initiative(const Entity *e);
 void game_restore_initiative(Entity **entities, const double *values, int n, int current, bool turn_started,
                              bool markers_visible);
 
-/* save.c - .pfsave files (format: savefmt.h) */
+/* save.c - .tuhh files (format: savefmt.h) */
 void save_init(void);              /* call once after gfx_init: the empty table counts as saved */
 bool save_is_modified(void);       /* table differs from the last save / load */
 void save_command(const char *path);              /* :save [path]; NULL or "" = current file or dialog */

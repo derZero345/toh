@@ -109,7 +109,7 @@ static uint8_t *encode_sample(Sample *s, size_t *len) {
 
 static void test_tag(void) {
     uint8_t a[SAVEFMT_TAG_SIZE], b[SAVEFMT_TAG_SIZE];
-    uint8_t data[16] = "pathfinder";
+    uint8_t data[16] = "talesofhonor";
     savefmt_compute_tag(data, sizeof(data), a);
     savefmt_compute_tag(data, sizeof(data), b);
     CHECK(memcmp(a, b, sizeof(a)) == 0);
@@ -123,7 +123,7 @@ static void test_roundtrip(void) {
     sample_init(&s);
     size_t len;
     uint8_t *file = encode_sample(&s, &len);
-    CHECK(file && len > 4 && memcmp(file, "PFSV", 4) == 0);
+    CHECK(file && len > 4 && memcmp(file, "TUHH", 4) == 0);
 
     SaveData d;
     CHECK_ERR(savefmt_decode(file, len, &d), SAVE_OK);
@@ -326,7 +326,7 @@ static uint8_t *wrap(const W *state, const W *images, size_t *len, int content_s
     ZSTD_freeCCtx(cc);
     size_t total = SAVEFMT_HEADER_SIZE + zn + images->n + SAVEFMT_TAG_SIZE;
     uint8_t *f = malloc(total);
-    memcpy(f, "PFSV\x01\x00\x00\x00", 8);
+    memcpy(f, "TUHH\x01\x00\x00\x00", 8);
     for (int i = 0; i < 4; i++) f[8 + i] = (uint8_t)(zn >> (8 * i));
     memcpy(f + 12, z, zn);
     memcpy(f + 12 + zn, images->b, images->n);

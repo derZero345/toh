@@ -1,4 +1,4 @@
-/* .pfsave encoding, decoding and validation. See savefmt.h. */
+/* .tuhh encoding, decoding and validation. See savefmt.h. */
 #include "savefmt.h"
 
 #include <math.h>
@@ -9,7 +9,7 @@
 #include <webp/encode.h>
 #include <zstd.h>
 
-static const uint8_t MAGIC[4] = { 'P', 'F', 'S', 'V' };
+static const uint8_t MAGIC[4] = { 'T', 'U', 'H', 'H' };
 
 /* Key of the integrity tag. It ships with the game, so the tag detects corruption and
  * casual edits but does not prove who made a file (see the spec, "Integrity tag"). */
@@ -630,8 +630,8 @@ bool savefmt_fingerprint(const SaveData *d, uint8_t out[SAVEFMT_TAG_SIZE]) {
 const char *savefmt_strerror(SaveError e) {
     switch (e) {
     case SAVE_OK:            return "OK";
-    case SAVE_ERR_NOT_SAVE:  return "Not a pathfinder save file";
-    case SAVE_ERR_NEWER:     return "Save file was made by a newer version of pathfinder";
+    case SAVE_ERR_NOT_SAVE:  return "Not a Tales of Honor save file";
+    case SAVE_ERR_NEWER:     return "Save file was made by a newer version of Tales of Honor";
     case SAVE_ERR_CORRUPT:   return "Save file is damaged or was modified";
     case SAVE_ERR_TOO_LARGE: return "Save file is too large";
     case SAVE_ERR_INVALID:   return "The table contains values that cannot be saved";

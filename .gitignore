@@ -1,10 +1,10 @@
 # build output
 /build/
-/pathfinder
+/toh
 
 # save files written while testing
-*.pfsave
-*.pfsave.tmp
+*.tuhh
+*.tuhh.tmp
 
 # libFuzzer findings
 crash-*

@@ -1,4 +1,4 @@
-# Save files (`.pfsave`) — design
+# Save files (`.tuhh`) — design
 
 Date: 2026-11-18
 Status: approved, ready for implementation planning
@@ -22,14 +22,14 @@ Building the online sharing service itself is out of scope. The format only has 
 | Command | Behaviour |
 |---|---|
 | `:save <path>` | Saves to `<path>`, which becomes the *current file*. |
-| `:save` | Saves to the current file. If there is none yet, the save dialog opens (filter `*.pfsave`). |
+| `:save` | Saves to the current file. If there is none yet, the save dialog opens (filter `*.tuhh`). |
 | `:load <path>` | Loads `<path>`, which becomes the current file. |
-| `:load` | Opens the load dialog (filter `*.pfsave`). |
+| `:load` | Opens the load dialog (filter `*.tuhh`). |
 | `:load! [path]` | Same as `:load`, but skips the unsaved-changes check. |
 | `:q` | Quits, unless there are unsaved changes (see below). |
 | `:q!` | Quits unconditionally. |
 
-- `.pfsave` is appended to a path that does not already end in it (on save only).
+- `.tuhh` is appended to a path that does not already end in it (on save only).
 - `:w` (wall) and `:e` (entity) are unchanged.
 - `save` and `load` get tab completion (as commands; no argument suggestions) and `:h save` / `:h load` help text.
 - The current file starts as "none" at startup.
@@ -62,8 +62,8 @@ call at every mutation site, and one missed site would be a silent bug):
 ### Feedback messages (console log)
 
 - `Saved "<path>" (<size>)` / `Loaded "<path>"`
-- `Not a pathfinder save file`
-- `Save file was made by a newer version of pathfinder`
+- `Not a Tales of Honor save file`
+- `Save file was made by a newer version of Tales of Honor`
 - `Save file is damaged or was modified`
 - `Save file is too large`
 - `Could not write "<path>": <reason>` / `Could not read "<path>": <reason>`
@@ -112,7 +112,7 @@ All integers are little-endian.
 
 ```
 offset  size  field
-0       4     magic "PFSV"
+0       4     magic "TUHH"
 4       2     u16 version = 1
 6       2     u16 flags   (bit 0 = signature block present; must be 0 in v1, other bits must be 0)
 8       4     u32 state_len           length of the zstd frame that follows
@@ -192,7 +192,7 @@ reject itself. If validation fails (only possible in extreme cases, such as a wa
 
 ### Version handling
 
-- The magic is checked first; a mismatch gives "Not a pathfinder save file".
+- The magic is checked first; a mismatch gives "Not a Tales of Honor save file".
 - `version > 1` gives "made by a newer version". `version == 0` or unknown flag bits give "damaged or was modified".
 
 ## 4. Safe loading (untrusted input)
@@ -283,7 +283,7 @@ Value validation:
 - **`make test` → `tests/save_test.c`** (links `savefmt.c` only). It checks:
   - Round trip: encode, decode, then compare field by field. Images: lossless ones are pixel-exact; the lossy
     background has the right dimensions.
-  - Every single-byte flip in an encoded file is rejected (`damaged or was modified`, or `not a pathfinder save`
+  - Every single-byte flip in an encoded file is rejected (`damaged or was modified`, or `not a Tales of Honor save`
     for the magic bytes).
   - Every truncation length is rejected.
   - Bad magic, `version = 2`, and non-zero flag bits give the right error.
