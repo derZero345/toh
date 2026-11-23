@@ -134,6 +134,7 @@ static bool upnp_map(Portmap *pm, PortmapStatus *st) {
     int r = UPNP_GetValidIGD(devs, &pm->urls, &pm->data, pm->lanaddr, sizeof(pm->lanaddr), wanaddr, sizeof(wanaddr));
 #else
     int r = UPNP_GetValidIGD(devs, &pm->urls, &pm->data, pm->lanaddr, sizeof(pm->lanaddr));
+    if (r == 2) r = 3; /* before API 18, 2 meant "IGD not connected" */
 #endif
     freeUPNPDevlist(devs);
     if (r <= 0) return false;

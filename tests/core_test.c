@@ -455,33 +455,52 @@ static void test_apply_initiative(void) {
 
     Op next = { .type = OP_INIT_NEXT };
     CHECK_R(ops_submit(&next), OPR_OK);
-    CHECK(gh->currentTurn == c); /* order is b, c, a; the first next goes to index 1 (Java behaviour) */
+    CHECK(gh->currentTurn == b); /* order is b, c, a; the first next starts with the highest roller */
 
     /* an op that names the current turn advances it */
     Op next2 = { .type = OP_INIT_NEXT, .id = gh->currentTurn->id };
     CHECK_R(ops_submit(&next2), OPR_OK);
-    CHECK(gh->currentTurn == a);
-    Op stale = { .type = OP_INIT_NEXT, .id = c->id }; /* c's turn is over */
+    CHECK(gh->currentTurn == c);
+    Op stale = { .type = OP_INIT_NEXT, .id = b->id }; /* b's turn is over */
     CHECK_R(ops_submit(&stale), OPR_STALE);
     Op next3 = { .type = OP_INIT_NEXT, .id = gh->currentTurn->id };
     CHECK_R(ops_submit(&next3), OPR_OK);
-    CHECK(gh->currentTurn == b);
+    CHECK(gh->currentTurn == a);
     Op next4 = { .type = OP_INIT_NEXT, .id = gh->currentTurn->id };
     CHECK_R(ops_submit(&next4), OPR_OK);
-    CHECK(gh->currentTurn == c); /* full circle: c is current again */
+    CHECK(gh->currentTurn == b); /* full circle: b is current again */
 
+    /* removing the current one passes the turn to the next in order, not the one after */
     Op rm = { .type = OP_INIT_REMOVE };
-    da_push(&rm.ids, c->id);
+    da_push(&rm.ids, b->id);
     CHECK_R(ops_submit(&rm), OPR_OK);
-    CHECK(gh->init.count == 2 && !game_is_in_initiative(c));
+    CHECK(gh->init.count == 2 && !game_is_in_initiative(b) && gh->currentTurn == c);
     op_free(&rm);
+    /* removing the last one in order while it is current wraps around */
+    Op next5 = { .type = OP_INIT_NEXT, .id = gh->currentTurn->id };
+    CHECK_R(ops_submit(&next5), OPR_OK);
+    CHECK(gh->currentTurn == a);
+    Op rm2 = { .type = OP_INIT_REMOVE };
+    da_push(&rm2.ids, a->id);
+    CHECK_R(ops_submit(&rm2), OPR_OK);
+    CHECK(gh->init.count == 1 && gh->currentTurn == c && gh->currentTurnIndex == 0);
+    op_free(&rm2);
+    /* removing one before the current keeps the current */
+    Op add2 = { .type = OP_INIT_ADD };
+    da_push(&add2.ids, a->id);
+    da_push(&add2.values, 0.95); /* order a, c; c is current */
+    da_push(&add2.ids, b->id);
+    da_push(&add2.values, 0.05); /* order a, c, b */
+    CHECK_R(ops_submit(&add2), OPR_OK);
+    op_free(&add2);
+    CHECK(gh->currentTurn == c && gh->currentTurnIndex == 1); /* the index follows c to its new place */
 
     /* deleting an entity also takes it out of the initiative */
     Op del = { .type = OP_DELETE };
-    da_push(&del.ids, b->id);
+    da_push(&del.ids, c->id);
     CHECK_R(ops_submit(&del), OPR_OK);
-    CHECK(gh->init.count == 1 && gh->init.items[0].entity == a);
-    CHECK(gh->currentTurn == a); /* b was current; removing it passes the turn on */
+    CHECK(gh->init.count == 2 && gh->init.items[0].entity == a);
+    CHECK(gh->currentTurn == b); /* c was current; removing it passes the turn on */
     op_free(&del);
 
     Op show = { .type = OP_INIT_SHOW };

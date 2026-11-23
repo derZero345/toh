@@ -172,6 +172,9 @@ The changes below are deliberate:
 - **`:c icon`** applies the new image cropped to a circle, as with newly created characters. It no
   longer swallows the arguments that follow it.
 - **Deleting entities** also removes them from initiative and clears stale selection highlights.
+- **Initiative order:** the first `:i next` starts with the highest roller (Java skipped them), removing
+  the current character passes the turn to the next one in order (Java skipped that one too), and
+  adding characters mid-round keeps the turn with the same character.
 - **`:` shortcut** only fires while the console is hidden, so typing `:` inside a command no
   longer wipes the line.
 - **Tool icons:** `move.png`, `length.png` and `line.png` in the Java project are actually JPEG files

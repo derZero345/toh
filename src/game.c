@@ -58,6 +58,10 @@ static void sort_initiative(void) {
         }
         gh->init.items[j + 1] = cur;
     }
+    if (gh->currentTurn) { /* keep the turn with the same entity, wherever it moved */
+        int idx = init_index(gh->currentTurn);
+        if (idx >= 0) gh->currentTurnIndex = idx;
+    }
     if (gh->initMarkers.count > 0) game_update_initiative_markers();
 }
 
@@ -89,7 +93,9 @@ void game_update_initiative_markers(void) {
 
 void game_next_turn(void) {
     if (gh->init.count == 0) return;
-    gh->currentTurnIndex = (gh->currentTurnIndex + 1) % gh->init.count;
+    /* the first :i next starts the round with the highest roller (the Java version skipped them) */
+    if (gh->currentTurn) gh->currentTurnIndex = (gh->currentTurnIndex + 1) % gh->init.count;
+    else gh->currentTurnIndex %= gh->init.count;
     gh->currentTurn = gh->init.items[gh->currentTurnIndex].entity;
     game_update_initiative_markers();
 }
@@ -112,8 +118,9 @@ void game_remove_from_initiative(Entity *e) {
         if (gh->init.count == 0) {
             gh->currentTurn = NULL;
             gh->currentTurnIndex = 0;
-        } else {
-            game_next_turn(); /* advance if the removed entity was current */
+        } else { /* the next one in order slid into the removed slot */
+            gh->currentTurnIndex = idx % gh->init.count;
+            gh->currentTurn = gh->init.items[gh->currentTurnIndex].entity;
         }
     } else if (gh->currentTurnIndex > 0 && init_index(gh->currentTurn) < gh->currentTurnIndex) {
         gh->currentTurnIndex--;
