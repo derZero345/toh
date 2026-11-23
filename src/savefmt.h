@@ -125,6 +125,13 @@ SaveError savefmt_decode(const uint8_t *buf, size_t len, SaveData *out);
 void savefmt_free(SaveData *d);
 void savefmt_blobs_free(SaveBlob *blobs, uint32_t n);
 
+/* One image on its own (network IMAGE messages), encoded with the same rules as in files:
+ * lossless and pixel-exact for SAVE_IMG_LOSSLESS, quality 90 for SAVE_IMG_LOSSY, scaled down
+ * over SAVEFMT_MAX_DIM. Free out->webp with free(). */
+bool savefmt_encode_image(const uint8_t *rgba, int w, int h, uint8_t kind, SaveBlob *out);
+/* Decodes one WebP image of at most SAVEFMT_MAX_DIM per side into new RGBA pixels (free()). */
+bool savefmt_decode_image(const uint8_t *webp, size_t len, int *w, int *h, uint8_t **rgba);
+
 /* Hash of the table content, ignoring camera and theme; images by their id.
  * Returns false when out of memory. */
 bool savefmt_fingerprint(const SaveData *d, uint8_t out[SAVEFMT_TAG_SIZE]);

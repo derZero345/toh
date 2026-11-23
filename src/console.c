@@ -3,6 +3,7 @@
 #include "app.h"
 #include "ops.h"
 #include "savefmt.h"
+#include "session.h"
 
 #include <ctype.h>
 #include <stdarg.h>
@@ -21,7 +22,8 @@ typedef struct {
 static const char *const ARGS_CHARACTER[] = { "delete", "size", "maxhealth", "armorclass", "speed", "initiative", "icon", "owner", NULL };
 static const char *const ARGS_DELETE[]    = { "delete", NULL };
 static const char *const ARGS_HELP[]      = { "quit", "background", "debug", "character", "wall", "entity", "help",
-                                              "roll", "grid", "gamemaster", "init", "clear", "theme", "teleport", "save", "load", NULL };
+                                              "roll", "grid", "gamemaster", "init", "clear", "theme", "teleport", "save", "load",
+                                              "host", "unhost", "join", "leave", "players", "kick", "claim", NULL };
 static const char *const ARGS_INIT[]      = { "add", "remove", "clear", "show", "next", NULL };
 static const char *const ARGS_THEME[]     = { "purple", "red", "green", "yellow", "light", "dark", "black", NULL };
 
@@ -34,6 +36,9 @@ static const CommandDef COMMANDS[] = {
     /* arguments depend on the position and on the existing waypoints: see teleport_suggestions */
     { "teleport", NULL },    { "tp", NULL },
     { "save", NULL },        { "load", NULL },
+    { "host", NULL },        { "unhost", NULL },            { "join", NULL },
+    { "leave", NULL },       { "players", NULL },           { "kick", NULL },
+    { "claim", NULL },
 };
 #define NCOMMANDS ((int)(sizeof(COMMANDS) / sizeof(COMMANDS[0])))
 
@@ -300,9 +305,18 @@ void console_reset_suggestions(void) {
     C->suggestionIndex = -1;
 }
 
-void console_display_confirm(const char *text) {
-    console_set_text(text);
+static ConfirmFn confirm_fn;
+static void *confirm_ctx;
+
+bool console_confirm_busy(void) { return C->confirm; }
+
+bool console_confirm(const char *question, ConfirmFn fn, void *ctx) {
+    if (C->confirm) return false;
+    console_set_text(question);
     C->confirm = true;
+    confirm_fn = fn;
+    confirm_ctx = ctx;
+    return true;
 }
 
 /* ---- commands ------------------------------------------------------------------------------------ */
@@ -510,6 +524,21 @@ static void cmd_help(Args *a) {
     } else if (!strcmp(arg, "load") || !strcmp(arg, ":load")) {
         console_log(":load [file] # Load a saved table (opens a dialog without a file)");
         console_log("  :load! [file] discards unsaved changes");
+    } else if (!strcmp(arg, "host") || !strcmp(arg, ":host")) {
+        console_log(":host [name] # Host this table as GM (name defaults to GM)");
+        console_log("  opens the router port and copies the join code to the clipboard");
+    } else if (!strcmp(arg, "unhost") || !strcmp(arg, ":unhost")) {
+        console_log(":unhost # End the session; players keep a copy of the table");
+    } else if (!strcmp(arg, "join") || !strcmp(arg, ":join")) {
+        console_log(":join <code> <name> # Join the GM's table; your table is replaced by it");
+    } else if (!strcmp(arg, "leave") || !strcmp(arg, ":leave")) {
+        console_log(":leave # Leave the table; you keep a copy of it");
+    } else if (!strcmp(arg, "players") || !strcmp(arg, ":players")) {
+        console_log(":players # List the people at the table");
+    } else if (!strcmp(arg, "kick") || !strcmp(arg, ":kick")) {
+        console_log(":kick <name> # GM: remove a player from the table");
+    } else if (!strcmp(arg, "claim") || !strcmp(arg, ":claim")) {
+        console_log(":claim # Ask the GM for the selected character (it must have no owner)");
     } else {
         console_log("Available commands:");
         console_log(":q  or quit       # Quit the application");
@@ -528,20 +557,16 @@ static void cmd_help(Args *a) {
         console_log("tp  or teleport   # Jump to a tile or waypoint");
         console_log(":save [file]      # Save the table");
         console_log(":load[!] [file]   # Load a saved table");
+        console_log(":host / :join     # Play together: host as GM, or join with a code");
+        console_log(":unhost / :leave  # End or leave the session");
+        console_log(":players / :kick  # List or remove players");
+        console_log(":claim            # Ask the GM for the selected character");
     }
 }
 
-static void cmd_roll(Args *a) {
+void console_show_dice(const int *rolls, int num, int total) {
     for (int i = 0; i < C->diceMarkers.count; i++) marker_remove(C->diceMarkers.items[i]);
     da_clear(&C->diceMarkers);
-
-    int num, sides, mod;
-    if (a->argc < 2 || !dice_parse(a->argv[1], &num, &sides, &mod)) {
-        console_log("Wrong dice syntax - use e.g. roll 2d6 or roll 1d20+3");
-        return;
-    }
-    int *rolls = calloc((size_t)(num > 0 ? num : 1), sizeof(int));
-    int total = dice_roll(num, sides, mod, rolls);
     for (int i = 0; i < num; i++) {
         Vec2 pos = { (int)((gh->winW - 50) * rand_unit() - 25), (int)((gh->winH - 50) * rand_unit() - 25) };
         Marker *m = marker_new_stat(rolls[i], pos, MARKER_DICE, false);
@@ -551,6 +576,18 @@ static void cmd_roll(Args *a) {
     Marker *m = marker_new_stat(total, (Vec2){ 0, 0 }, MARKER_DICERESULT, false);
     marker_add(m);
     da_push(&C->diceMarkers, m);
+}
+
+static void cmd_roll(Args *a) {
+    int num, sides, mod;
+    if (a->argc < 2 || !dice_parse(a->argv[1], &num, &sides, &mod)) {
+        console_log("Wrong dice syntax - use e.g. roll 2d6 or roll 1d20+3");
+        return;
+    }
+    if (session_roll(a->argv[1])) return; /* in a session the host rolls */
+    int *rolls = calloc((size_t)(num > 0 ? num : 1), sizeof(int));
+    int total = dice_roll(num, sides, mod, rolls);
+    console_show_dice(rolls, num, total);
     free(rolls);
 }
 
@@ -781,7 +818,10 @@ void console_command(const char *raw) {
         snprintf(low, sizeof(low), "%s", input);
         lower(low);
         C->confirm = false;
-        gfx_spawn_character_confirmed(!(ends_with(low, "n") || low[0] == 'n'));
+        ConfirmFn fn = confirm_fn;
+        confirm_fn = NULL;
+        if (fn) fn(!(ends_with(low, "n") || low[0] == 'n'), confirm_ctx);
+        if (!C->confirm) session_prompt_free();
         return;
     }
 
@@ -806,7 +846,23 @@ void console_command(const char *raw) {
     else if (!strcmp(cmd, "help") || !strcmp(cmd, ":h"))        cmd_help(&a);
     else if (!strcmp(cmd, "roll") || !strcmp(cmd, ":r"))        cmd_roll(&a);
     else if (!strcmp(cmd, "grid") || !strcmp(cmd, ":g"))        submit_simple(OP_GRID_ORIENTATION);
-    else if (!strcmp(cmd, "gamemaster") || !strcmp(cmd, ":gm")) io_toggle_game_master();
+    else if (!strcmp(cmd, "gamemaster") || !strcmp(cmd, ":gm")) {
+        if (session_is_client()) console_log("%s", ops_result_text(OPR_GM_ONLY));
+        else io_toggle_game_master();
+    }
+    else if (!strcmp(cmd, "host") || !strcmp(cmd, ":host"))     session_cmd_host(a.argc > 1 ? a.argv[1] : "GM");
+    else if (!strcmp(cmd, "unhost") || !strcmp(cmd, ":unhost")) session_cmd_unhost();
+    else if (!strcmp(cmd, "join") || !strcmp(cmd, ":join")) {
+        if (a.argc != 3) console_log("Usage: :join <code> <name>");
+        else session_cmd_join(a.argv[1], a.argv[2]);
+    }
+    else if (!strcmp(cmd, "leave") || !strcmp(cmd, ":leave"))   session_cmd_leave();
+    else if (!strcmp(cmd, "players") || !strcmp(cmd, ":players")) session_cmd_players();
+    else if (!strcmp(cmd, "kick") || !strcmp(cmd, ":kick")) {
+        if (a.argc != 2) console_log("Usage: :kick <name>");
+        else session_cmd_kick(a.argv[1]);
+    }
+    else if (!strcmp(cmd, "claim") || !strcmp(cmd, ":claim"))   session_cmd_claim();
     else if (!strcmp(cmd, "init") || !strcmp(cmd, ":i"))        cmd_init(&a);
     else if (!strcmp(cmd, "teleport") || !strcmp(cmd, "tp"))    cmd_teleport(&a);
     else if (!strcmp(cmd, "clear") || !strcmp(cmd, ":cl"))      cmd_clear();

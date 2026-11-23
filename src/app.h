@@ -109,6 +109,10 @@ bool    entity_occupies(const Entity *e, Hex h);
 Entity *entity_at(Hex h);
 /* Gives e the next id and appends it to gh->entities. Every entity on the table goes through this. */
 void    entity_register(Entity *e);
+/* Like entity_register, with an id chosen by the session host. */
+void    entity_register_as(Entity *e, uint32_t id);
+/* Gives the entities (in gh->entities order) the host's ids. False if n or the ids don't fit. */
+bool    entities_set_ids(const uint32_t *ids, uint32_t n);
 Entity *entity_by_id(uint32_t id); /* NULL if there is none */
 /* Removes e from the table and the initiative and frees it. */
 void    entity_delete(Entity *e);
@@ -274,7 +278,13 @@ void console_arrow_up(void);
 void console_arrow_down(void);
 void console_autocomplete(void);
 void console_reset_suggestions(void);
-void console_display_confirm(const char *text);
+/* Shows a yes/no question in the input line; the next entered line answers it (anything but
+ * "n..." / "...n" is yes) and fn(yes, ctx) runs. Returns false while another question is open. */
+typedef void (*ConfirmFn)(bool yes, void *ctx);
+bool console_confirm(const char *question, ConfirmFn fn, void *ctx);
+bool console_confirm_busy(void);
+/* The dice markers of :r: one per die, plus the total. */
+void console_show_dice(const int *rolls, int n, int total);
 void console_set_text(const char *text);
 void console_insert(const char *text);
 void console_key_edit(SDL_Keycode key); /* caret movement / deletion */
@@ -309,6 +319,7 @@ typedef struct App {
     char resourceDir[512];
     const char *autoFile; /* test hook: skip file dialogs */
     Uint32 dialogEvent;
+    Uint32 netEvent; /* pushed by the network threads: call session_poll */
 
     /* GraphicsHandler */
     int hexSize, thickness, backgroundRows, backgroundCols;
@@ -387,7 +398,6 @@ void gfx_add_entity_preview_tiles(void);
 void gfx_request_file(ActionKind kind, const HexList *tiles, int size, int maxHealth, int ac, int speed, int initiative);
 void gfx_handle_file_result(const char *path); /* path NULL = cancelled */
 void gfx_spawn_character(int size, int maxhealth, int ac, int speed, int initiative);
-void gfx_spawn_character_confirmed(bool yes);
 void gfx_summon_wall(void);
 void gfx_set_background_image(const char *path_or_null);
 /* NULL = no background; takes its own reference. Background and entity textures must keep their
@@ -417,6 +427,11 @@ void save_command(const char *path);              /* :save [path]; NULL or "" = 
 void load_command(const char *path, bool force);  /* :load[!] [path] */
 void quit_command(bool force);                    /* :q / :q! */
 void save_handle_dialog(ActionKind kind, const char *path); /* path NULL = cancelled */
+/* The table as save file bytes (free with free()); a SaveError (0 = ok). Caches WebP data on the textures. */
+int  save_encode_table(uint8_t **out, size_t *out_len);
+/* Replaces the table with a session snapshot; camera, zoom and theme stay. False if it doesn't decode. */
+bool save_apply_snapshot(const uint8_t *buf, size_t len);
+void save_mark_modified(void); /* a player left a session: :q asks before throwing the table away */
 
 /* input.c */
 void io_handle_event(const SDL_Event *e);

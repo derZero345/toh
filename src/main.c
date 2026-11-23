@@ -1,7 +1,7 @@
 /*
  * Tales of Honor (ToH) - hex grid tabletop helper. C / Vulkan port of the Java program.
  *
- * Usage: toh [--exec <line>]... [--auto-file <png>] [--size WxH]
+ * Usage: toh [--exec <line>]... [--auto-file <png>] [--size WxH] [--port N]
  *
  * --exec lines are run one per frame, after the first frame. A line is either a
  * console command (e.g. ":r 2d6") or a scripted input action, which is mainly
@@ -12,17 +12,49 @@
  *   @down KEY / @up KEY                  hold or release a key
  *   @type TEXT       typed text          @shot FILE  save a screenshot
  *   @wait N          idle N frames       @quit
+ *   @waitnet N       wait (at most 20 s) until N players joined (host) or the client joined
+ *   @waitfile FILE   wait (at most 20 s) until FILE exists   @touch FILE  create FILE
+ * A wait that times out ends the program with exit status 3.
  * --auto-file makes every file dialog (images, :save, :load) return the given file.
+ * --port sets the port :host listens on (default 41234). TOH_NO_PORTMAP=1 skips the router.
  */
 #include "app.h"
 #include "font.h"
+#include "session.h"
 #include "vk_renderer.h"
 
 #include <stdio.h>
 #include <strings.h>
+#include <unistd.h>
 
 App *gh;
 static App app;
+static int exit_status;
+
+/* @waitnet / @waitfile: the script pauses until the condition holds */
+static struct {
+    enum { WAIT_NONE, WAIT_NET, WAIT_FILE } kind;
+    int players;
+    char file[256];
+    Uint64 deadline;
+} script_cond;
+
+/* True when the script may go on. */
+static bool script_cond_met(void) {
+    if (script_cond.kind == WAIT_NONE) return true;
+    bool met = script_cond.kind == WAIT_NET ? session_ready(script_cond.players)
+                                            : access(script_cond.file, F_OK) == 0;
+    if (met) {
+        script_cond.kind = WAIT_NONE;
+        return true;
+    }
+    if (SDL_GetTicks() > script_cond.deadline) {
+        fprintf(stderr, "Script wait timed out\n");
+        exit_status = 3;
+        gh->running = false;
+    }
+    return false;
+}
 
 /* ---- scripted input ---------------------------------------------------------------- */
 
@@ -122,6 +154,14 @@ static int run_script_line(const char *line, const char **screenshot) {
         *screenshot = path;
     } else if (!strcmp(cmd, "wait")) {
         return (int)x;
+    } else if (!strcmp(cmd, "waitnet") || !strcmp(cmd, "waitfile")) {
+        script_cond.kind = cmd[4] == 'n' ? WAIT_NET : WAIT_FILE;
+        script_cond.players = (int)x;
+        snprintf(script_cond.file, sizeof(script_cond.file), "%s", arg);
+        script_cond.deadline = SDL_GetTicks() + 20000;
+    } else if (!strcmp(cmd, "touch")) {
+        FILE *f = fopen(arg, "w");
+        if (f) fclose(f);
     } else if (!strcmp(cmd, "quit")) {
         gh->running = false;
     } else {
@@ -158,8 +198,15 @@ int main(int argc, char **argv) {
         if (!strcmp(argv[i], "--exec") && i + 1 < argc) script[nscript++] = argv[++i];
         else if (!strcmp(argv[i], "--auto-file") && i + 1 < argc) app.autoFile = argv[++i];
         else if (!strcmp(argv[i], "--size") && i + 1 < argc) sscanf(argv[++i], "%dx%d", &width, &height);
-        else {
-            fprintf(stderr, "usage: %s [--exec <line>]... [--auto-file <png>] [--size WxH]\n", argv[0]);
+        else if (!strcmp(argv[i], "--port") && i + 1 < argc) {
+            int port = atoi(argv[++i]);
+            if (port < 1 || port > 65535) {
+                fprintf(stderr, "--port: expected 1..65535\n");
+                return 2;
+            }
+            session_set_port((uint16_t)port);
+        } else {
+            fprintf(stderr, "usage: %s [--exec <line>]... [--auto-file <png>] [--size WxH] [--port N]\n", argv[0]);
             return 2;
         }
     }
@@ -183,6 +230,7 @@ int main(int argc, char **argv) {
     find_resource_dir(resdir, sizeof(resdir));
     gfx_init(&app, resdir);
     save_init();
+    session_init();
     SDL_StartTextInput(app.window);
 
     Uint64 last = SDL_GetTicks();
@@ -220,6 +268,8 @@ int main(int argc, char **argv) {
                        (e.type == SDL_EVENT_MOUSE_MOTION || e.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
                         e.type == SDL_EVENT_MOUSE_BUTTON_UP || e.type == SDL_EVENT_MOUSE_WHEEL)) {
                 /* while a script runs, ignore the real mouse so it cannot interfere */
+            } else if (e.type == app.netEvent) {
+                session_poll();
             } else if (e.type == app.dialogEvent) {
                 gfx_handle_file_result((const char *)e.user.data1);
                 SDL_free(e.user.data1);
@@ -242,7 +292,8 @@ int main(int argc, char **argv) {
 
         const char *screenshot = NULL;
         if (script_pos < nscript) {
-            if (--script_wait <= 0) script_wait = 1 + run_script_line(script[script_pos++], &screenshot);
+            if (script_cond_met() && --script_wait <= 0)
+                script_wait = 1 + run_script_line(script[script_pos++], &screenshot);
             redraw = true;
         }
 
@@ -260,6 +311,7 @@ int main(int argc, char **argv) {
         redraw = false;
     }
 
+    session_shutdown(); /* tells the players, removes the router mapping */
     SDL_StopTextInput(app.window);
     gfx_shutdown();
     font_shutdown();
@@ -267,5 +319,5 @@ int main(int argc, char **argv) {
     SDL_DestroyWindow(app.window);
     SDL_Quit();
     free(script);
-    return 0;
+    return exit_status;
 }

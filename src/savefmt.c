@@ -269,6 +269,31 @@ static bool encode_webp(const SaveImage *im, SaveBlob *out) {
 
 /* ---- public API ---------------------------------------------------------------------------- */
 
+bool savefmt_encode_image(const uint8_t *rgba, int w, int h, uint8_t kind, SaveBlob *out) {
+    memset(out, 0, sizeof(*out));
+    if (!rgba || w < 1 || h < 1 || w > 65535 || h > 65535 || kind > SAVE_IMG_LOSSY) return false;
+    SaveImage im = { .kind = kind, .w = w, .h = h, .rgba = rgba };
+    if (encode_webp(&im, out)) return true;
+    free(out->webp);
+    memset(out, 0, sizeof(*out));
+    return false;
+}
+
+bool savefmt_decode_image(const uint8_t *webp, size_t len, int *w, int *h, uint8_t **rgba) {
+    *rgba = NULL;
+    if (!WebPGetInfo(webp, len, w, h) || *w < 1 || *h < 1 || *w > SAVEFMT_MAX_DIM || *h > SAVEFMT_MAX_DIM)
+        return false;
+    size_t px = (size_t)*w * (size_t)*h * 4;
+    uint8_t *p = malloc(px);
+    if (!p) return false;
+    if (!WebPDecodeRGBAInto(webp, len, p, px, *w * 4)) {
+        free(p);
+        return false;
+    }
+    *rgba = p;
+    return true;
+}
+
 void savefmt_compute_tag(const uint8_t *buf, size_t len, uint8_t out[SAVEFMT_TAG_SIZE]) {
     crypto_generichash(out, SAVEFMT_TAG_SIZE, buf, len, TAG_KEY, sizeof(TAG_KEY));
 }

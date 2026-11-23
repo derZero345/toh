@@ -2,7 +2,10 @@
 #
 # Dependencies: SDL3 (>= 3.4, for SDL_LoadPNG), Vulkan loader + headers,
 #               FreeType 2, fontconfig, glslc (shaderc) for shader compilation,
-#               libwebp, libzstd and libsodium for save files.
+#               libwebp, libzstd and libsodium for save files and multiplayer.
+# Optional:     miniupnpc and libnatpmp open the host's port on the router (:host).
+#               Without them the game builds and hosts, but players outside the LAN / VPN
+#               need a manually forwarded port.
 
 CC      ?= cc
 SAVE_PKGS := libwebp libzstd libsodium
@@ -12,7 +15,15 @@ CFLAGS  ?= -O2 -g
 LDFLAGS ?=
 TOH_CFLAGS := -std=c11 -Wall -Wextra -Wno-unused-parameter -D_POSIX_C_SOURCE=200809L \
              $(shell pkg-config --cflags $(PKGS)) -Ibuild
-TOH_LIBS   := $(shell pkg-config --libs $(PKGS)) -lm
+TOH_LIBS   := $(shell pkg-config --libs $(PKGS)) -lm -pthread
+
+# Port mapping libraries: used when a test program against them links.
+HAVE_PORTMAP := $(shell printf '\043include <miniupnpc/miniupnpc.h>\n\043include <natpmp.h>\nint main(void){return 0;}\n' | \
+                  $(CC) -x c - -o /dev/null $$(pkg-config --cflags --libs miniupnpc 2>/dev/null || echo -lminiupnpc) -lnatpmp 2>/dev/null && echo 1)
+ifeq ($(HAVE_PORTMAP),1)
+TOH_CFLAGS += -DTOH_HAVE_PORTMAP $(shell pkg-config --cflags miniupnpc 2>/dev/null)
+TOH_LIBS   += $(shell pkg-config --libs miniupnpc 2>/dev/null || echo -lminiupnpc) -lnatpmp
+endif
 GLSLC   ?= glslc
 
 SRC     := $(wildcard src/*.c)
@@ -21,6 +32,9 @@ SHADERS := build/ui.vert.inc build/ui.frag.inc
 BIN     := toh
 
 all: $(BIN)
+ifneq ($(HAVE_PORTMAP),1)
+	@echo "note: miniupnpc / libnatpmp not found - built without router port mapping"
+endif
 
 $(BIN): $(OBJ)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(TOH_LIBS)
@@ -91,8 +105,10 @@ fuzz: build/fuzz_savefmt build/fuzz_netmsg build/save_test build/netmsg_test
 	./build/fuzz_savefmt -max_total_time=$(FUZZ_TIME) build/fuzz-corpus
 	./build/fuzz_netmsg -max_total_time=$(FUZZ_TIME) build/fuzz-corpus-net
 
-# end-to-end :save / :load check; needs a display and ImageMagick
+# end-to-end checks of :save / :load and of a session (host + client on localhost);
+# they need a display and ImageMagick
 e2e: $(BIN)
 	./tests/e2e_save.sh
+	./tests/e2e_net.sh
 
 .PHONY: all clean run test fuzz e2e

@@ -331,12 +331,24 @@ void gfx_set_background_image(const char *path) {
     gfx_handle_file_result(path);
 }
 
+static void spawn_confirmed(bool yes, void *ctx) {
+    (void)ctx;
+    PendingAction *c = &gh->confirm;
+    if (c->kind == ACTION_SPAWN_CHARACTERS && yes)
+        gfx_request_file(ACTION_SPAWN_CHARACTERS, &c->tiles, c->size, c->maxHealth, c->ac, c->speed, c->initiative);
+    c->kind = ACTION_NONE;
+}
+
 void gfx_spawn_character(int size, int maxhealth, int ac, int speed, int initiative) {
     HexList tiles = { 0 };
     if (gh->selectedTiles.count == 1) {
         da_push(&tiles, gh->selectedTiles.items[0]);
     } else if (gh->selectedTiles.count > 1) {
         /* ask first (Java: AnswerWaiter on a background thread) */
+        if (console_confirm_busy()) {
+            console_log("Answer the open question first");
+            return;
+        }
         PendingAction *c = &gh->confirm;
         c->kind = ACTION_SPAWN_CHARACTERS;
         hl_copy(&c->tiles, &gh->selectedTiles);
@@ -348,7 +360,7 @@ void gfx_spawn_character(int size, int maxhealth, int ac, int speed, int initiat
         gfx_set_console_visibility(true);
         char msg[128];
         snprintf(msg, sizeof(msg), "are you sure you want to create [%d] Characters: (Y/N)", gh->selectedTiles.count);
-        console_display_confirm(msg);
+        console_confirm(msg, spawn_confirmed, NULL);
         return;
     } else if (gh->hasTileUnderMouse) {
         da_push(&tiles, gh->tileUnderMouse);
@@ -359,13 +371,6 @@ void gfx_spawn_character(int size, int maxhealth, int ac, int speed, int initiat
     if (tiles.count == 0) console_log("Character summon canceled");
     else gfx_request_file(ACTION_SPAWN_CHARACTERS, &tiles, size, maxhealth, ac, speed, initiative);
     da_free(&tiles);
-}
-
-void gfx_spawn_character_confirmed(bool yes) {
-    PendingAction *c = &gh->confirm;
-    if (c->kind == ACTION_SPAWN_CHARACTERS && yes)
-        gfx_request_file(ACTION_SPAWN_CHARACTERS, &c->tiles, c->size, c->maxHealth, c->ac, c->speed, c->initiative);
-    c->kind = ACTION_NONE;
 }
 
 void gfx_summon_wall(void) {

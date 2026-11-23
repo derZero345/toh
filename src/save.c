@@ -2,6 +2,7 @@
  * Converts between the game state and SaveData; the file format lives in savefmt.c. */
 #include "app.h"
 #include "savefmt.h"
+#include "session.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -224,26 +225,9 @@ static void save_to(const char *path_in) {
         return;
     }
 
-    Gathered g;
-    gather(&g);
-    SaveBlob *blobs = calloc(g.d.nimages ? g.d.nimages : 1, sizeof(*blobs));
-    if (!blobs) abort();
     uint8_t *file = NULL;
     size_t len = 0;
-    SaveError err = savefmt_encode(&g.d, blobs, &file, &len);
-    /* keep freshly encoded images on their textures: the next save doesn't re-encode them */
-    for (uint32_t i = 0; i < g.d.nimages; i++) {
-        if (!blobs[i].webp) continue;
-        Texture *t = g.tex.items[i];
-        if (blobs[i].w != vkr_texture_width(t) || blobs[i].h != vkr_texture_height(t))
-            console_log("An image was scaled down to %dx%d to fit the save format", blobs[i].w, blobs[i].h);
-        vkr_texture_set_blob(t, blobs[i].webp, blobs[i].len, g.d.images[i].kind, blobs[i].w, blobs[i].h);
-        blobs[i].webp = NULL;
-    }
-    savefmt_blobs_free(blobs, g.d.nimages);
-    free(blobs);
-    gathered_free(&g);
-
+    SaveError err = save_encode_table(&file, &len);
     if (err != SAVE_OK) {
         console_log("Could not save: %s", savefmt_strerror(err));
         return;
@@ -256,6 +240,27 @@ static void save_to(const char *path_in) {
         console_log("Saved \"%s\" (%s)", path, size);
     }
     free(file);
+}
+
+int save_encode_table(uint8_t **out, size_t *out_len) {
+    Gathered g;
+    gather(&g);
+    SaveBlob *blobs = calloc(g.d.nimages ? g.d.nimages : 1, sizeof(*blobs));
+    if (!blobs) abort();
+    SaveError err = savefmt_encode(&g.d, blobs, out, out_len);
+    /* keep freshly encoded images on their textures: the next save doesn't re-encode them */
+    for (uint32_t i = 0; i < g.d.nimages; i++) {
+        if (!blobs[i].webp) continue;
+        Texture *t = g.tex.items[i];
+        if (blobs[i].w != vkr_texture_width(t) || blobs[i].h != vkr_texture_height(t))
+            console_log("An image was scaled down to %dx%d to fit the save format", blobs[i].w, blobs[i].h);
+        vkr_texture_set_blob(t, blobs[i].webp, blobs[i].len, g.d.images[i].kind, blobs[i].w, blobs[i].h);
+        blobs[i].webp = NULL;
+    }
+    savefmt_blobs_free(blobs, g.d.nimages);
+    free(blobs);
+    gathered_free(&g);
+    return err;
 }
 
 /* ---- loading ------------------------------------------------------------------------------------ */
@@ -280,8 +285,9 @@ static void clear_table(void) {
     gh->hasDragStart = false;
 }
 
-/* d was fully validated by savefmt_decode, so nothing here can fail. */
-static void apply(SaveData *d) {
+/* d was fully validated by savefmt_decode, so nothing here can fail.
+ * keep_view: a session snapshot; camera, zoom and theme stay as they are. */
+static void apply(SaveData *d, bool keep_view) {
     clear_table();
 
     Texture **tex = calloc(d->nimages ? d->nimages : 1, sizeof(*tex));
@@ -298,11 +304,13 @@ static void apply(SaveData *d) {
     gh->isFlat = d->is_flat;
     gh->backgroundRows = (int)d->bg_rows;
     gh->backgroundCols = (int)d->bg_cols;
-    gh->hexSize = (int)d->hex_size;
-    gh->thickness = gh->hexSize / 30 > 1 ? gh->hexSize / 30 : 1;
-    gh->gridOffsetX = d->offset_x;
-    gh->gridOffsetY = d->offset_y;
-    gfx_change_theme(d->theme); /* logs a note if the theme doesn't exist */
+    if (!keep_view) {
+        gh->hexSize = (int)d->hex_size;
+        gh->thickness = gh->hexSize / 30 > 1 ? gh->hexSize / 30 : 1;
+        gh->gridOffsetX = d->offset_x;
+        gh->gridOffsetY = d->offset_y;
+        gfx_change_theme(d->theme); /* logs a note if the theme doesn't exist */
+    }
     if (d->has_background) {
         gh->backgroundImage = tex[d->background];
         vkr_texture_retain(gh->backgroundImage);
@@ -359,12 +367,28 @@ static void load_from(const char *path) {
         savefmt_free(&d);
         return;
     }
-    apply(&d);
+    apply(&d, false);
     savefmt_free(&d);
     snprintf(current_file, sizeof(current_file), "%s", path);
     remember_fingerprint();
     console_log("Loaded \"%s\"", path);
+    if (session_is_host()) session_table_replaced();
 }
+
+bool save_apply_snapshot(const uint8_t *buf, size_t len) {
+    SaveData d;
+    SaveError err = savefmt_decode(buf, len, &d);
+    if (err != SAVE_OK) {
+        savefmt_free(&d);
+        return false;
+    }
+    apply(&d, true);
+    savefmt_free(&d);
+    current_file[0] = '\0'; /* :save must not overwrite a file of the player's own with the host's table */
+    return true;
+}
+
+void save_mark_modified(void) { have_fp = false; }
 
 /* ---- commands ------------------------------------------------------------------------------------ */
 
@@ -389,6 +413,10 @@ void save_command(const char *path) {
 }
 
 void load_command(const char *path, bool force) {
+    if (session_is_client()) {
+        console_log("Only the GM can load a table");
+        return;
+    }
     if (!force && save_is_modified()) {
         console_log("%s", NO_WRITE);
         return;
@@ -400,7 +428,8 @@ void load_command(const char *path, bool force) {
 }
 
 void quit_command(bool force) {
-    if (!force && save_is_modified()) {
+    /* a connected player's table is the host's: nothing of theirs gets lost */
+    if (!force && !session_is_client() && save_is_modified()) {
         console_log("%s", NO_WRITE);
         return;
     }
@@ -413,5 +442,6 @@ void save_handle_dialog(ActionKind kind, const char *path) {
         return;
     }
     if (kind == ACTION_SAVE) save_to(path);
+    else if (session_is_client()) console_log("Only the GM can load a table");
     else load_from(path);
 }

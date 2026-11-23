@@ -494,6 +494,81 @@ static void test_apply_initiative(void) {
     CHECK(gh->init.count == 0 && gh->currentTurn == NULL);
 }
 
+extern bool stub_client;
+extern int stub_sent_ops;
+
+static void test_host_ids(void) {
+    reset_table();
+    /* spawn ops broadcast by the host create the entities with the host's ids */
+    Op op = { .type = OP_SPAWN, .keepIds = true };
+    da_push(&op.specs, ((EntitySpec){ .type = ENTITY_CHARACTER, .image = TEX_A, .tile = { 1, 1 }, .speed = 3 }));
+    da_push(&op.specs, ((EntitySpec){ .type = ENTITY_WALL, .image = TEX_B, .tile = { 2, 2 } }));
+    da_push(&op.ids, 500u);
+    da_push(&op.ids, 77u);
+    ops_apply(&op);
+    CHECK(op.ids.count == 2 && op.ids.items[0] == 500 && op.ids.items[1] == 77);
+    CHECK(entity_by_id(500) && entity_by_id(500)->type == ENTITY_CHARACTER && entity_by_id(77));
+    op_free(&op);
+    /* later local ids do not collide with them */
+    Entity *c = add_character((Hex){ 3, 3 }, 3, "");
+    CHECK(c->id > 500);
+
+    /* the snapshot's entities get the host's ids in order */
+    uint32_t ids[3] = { 9, 10, 11 }, dup[3] = { 9, 9, 11 };
+    CHECK(!entities_set_ids(ids, 2));  /* wrong count */
+    CHECK(!entities_set_ids(dup, 3));  /* duplicate */
+    CHECK(entities_set_ids(ids, 3));
+    CHECK(app.entities.items[0]->id == 9 && app.entities.items[2]->id == 11 && entity_by_id(500) == NULL);
+}
+
+static void test_remote_view_state(void) {
+    reset_table();
+    Entity *a = add_character((Hex){ 0, 0 }, 3, "bob");
+    Entity *b = add_character((Hex){ 5, 5 }, 3, "");
+    /* a is selected locally and shows a path */
+    app.hasSelectedEntity = true;
+    da_clear(&app.selectedEntityTiles);
+    da_push(&app.selectedEntityTiles, a->tile);
+    da_clear(&app.path);
+    da_push(&app.path, ((Hex){ 0, 1 }));
+
+    /* someone else moves b: the local path and selection stay */
+    Op mv = { .type = OP_MOVE, .id = b->id, .tile = { 5, 6 }, .remote = true };
+    ops_apply(&mv);
+    CHECK(b->tile.col == 6 && app.path.count == 1 && app.hasSelectedEntity);
+
+    /* someone else deletes b: still nothing to clear */
+    Op del = { .type = OP_DELETE };
+    da_push(&del.ids, b->id);
+    del.remote = true;
+    ops_apply(&del);
+    CHECK(app.hasSelectedEntity && app.selectedEntityTiles.count == 1);
+    op_free(&del);
+
+    /* someone else moves the selected entity: its highlights go */
+    Op mv2 = { .type = OP_MOVE, .id = a->id, .tile = { 0, 1 }, .remote = true };
+    ops_apply(&mv2);
+    CHECK(!app.hasSelectedEntity && app.selectedEntityTiles.count == 0);
+}
+
+static void test_client_submit(void) {
+    reset_table();
+    Entity *a = add_character((Hex){ 0, 0 }, 3, "Alice");
+    Entity *b = add_character((Hex){ 4, 4 }, 3, "");
+    stub_client = true;
+    int sent = stub_sent_ops;
+    /* a client checks locally, sends, and does not apply yet */
+    Op ok = { .type = OP_MOVE, .id = a->id, .tile = { 0, 1 } };
+    CHECK_R(ops_submit(&ok), OPR_OK);
+    CHECK(stub_sent_ops == sent + 1 && a->tile.col == 0);
+    /* refused ops are not sent */
+    Op other = { .type = OP_MOVE, .id = b->id, .tile = { 4, 5 } };
+    CHECK_R(ops_submit(&other), OPR_NOT_YOURS);
+    CHECK(stub_sent_ops == sent + 1);
+    stub_client = false;
+    CHECK(strcmp(ops_result_text(OPR_ALREADY_OWNED), "That character already has an owner") == 0);
+}
+
 int main(void) {
     test_entity_ids();
     test_initiative_values();
@@ -504,6 +579,9 @@ int main(void) {
     test_apply_entities();
     test_apply_world();
     test_apply_initiative();
+    test_host_ids();
+    test_remote_view_state();
+    test_client_submit();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;

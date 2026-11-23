@@ -186,6 +186,26 @@ void entity_register(Entity *e) {
     da_push(&gh->entities, e);
 }
 
+void entity_register_as(Entity *e, uint32_t id) {
+    e->id = id;
+    if (id > gh->nextEntityId) gh->nextEntityId = id;
+    da_push(&gh->entities, e);
+}
+
+bool entities_set_ids(const uint32_t *ids, uint32_t n) {
+    if (n != (uint32_t)gh->entities.count) return false;
+    for (uint32_t i = 0; i < n; i++) {
+        if (ids[i] == 0) return false;
+        for (uint32_t k = 0; k < i; k++)
+            if (ids[k] == ids[i]) return false;
+    }
+    for (uint32_t i = 0; i < n; i++) {
+        gh->entities.items[i]->id = ids[i];
+        if (ids[i] > gh->nextEntityId) gh->nextEntityId = ids[i];
+    }
+    return true;
+}
+
 Entity *entity_by_id(uint32_t id) {
     for (int i = 0; i < gh->entities.count; i++)
         if (gh->entities.items[i]->id == id) return gh->entities.items[i];

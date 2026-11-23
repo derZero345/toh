@@ -51,6 +51,8 @@ typedef struct Op {
     int statMask;         /* OP_SET_STATS */
     int size, maxHealth, ac, speed, initiative;
     char name[WAYPOINT_NAME_MAX]; /* OP_WAYPOINT_*: waypoint name, OP_SET_OWNER: player name */
+    bool remote;  /* someone else's op: leave the local selection and path preview alone */
+    bool keepIds; /* OP_SPAWN from the host: create the entities with the ids in ids */
 } Op;
 
 /* Who sends an op. */
@@ -68,6 +70,7 @@ typedef enum {
     OPR_NO_ENTITY,
     OPR_STALE,
     OPR_INVALID,
+    OPR_ALREADY_OWNED,
 } OpResult;
 
 /*
@@ -82,10 +85,11 @@ typedef enum {
 void       op_free(Op *op); /* frees the lists, not the borrowed textures */
 EntitySpec op_spec_from_entity(const Entity *e);
 
-OpAuthor    ops_local_author(void);
+OpAuthor    ops_local_author(void); /* GM offline and on the host, the player's name on a client */
 OpResult    ops_check(const Op *op, const OpAuthor *author);
 void        ops_apply(Op *op); /* op must have passed ops_check */
-/* Checks op as the local user and applies it. Logs the reason when it is refused. */
+/* Checks op as the local user and applies it (on a client: sends it to the host, which applies
+ * and broadcasts it). Logs the reason when it is refused. */
 OpResult    ops_submit(Op *op);
 const char *ops_result_text(OpResult r);
 

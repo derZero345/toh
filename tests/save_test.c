@@ -628,9 +628,28 @@ static int write_sample(const char *path) {
     return 0;
 }
 
+static void test_single_image(void) {
+    uint8_t *px = pattern(9, 7, 4);
+    SaveBlob b;
+    CHECK(savefmt_encode_image(px, 9, 7, SAVE_IMG_LOSSLESS, &b) && b.webp && b.w == 9 && b.h == 7);
+    int w, h;
+    uint8_t *back;
+    CHECK(savefmt_decode_image(b.webp, b.len, &w, &h, &back) && w == 9 && h == 7);
+    CHECK(back && memcmp(back, px, 9 * 7 * 4) == 0); /* lossless is pixel-exact */
+    free(back);
+    CHECK(!savefmt_decode_image(b.webp, b.len / 2, &w, &h, &back) && back == NULL);
+    free(b.webp);
+    CHECK(!savefmt_encode_image(px, 0, 7, SAVE_IMG_LOSSLESS, &b) && b.webp == NULL);
+    CHECK(!savefmt_encode_image(px, 9, 7, 7, &b));
+    CHECK(savefmt_encode_image(px, 9, 7, SAVE_IMG_LOSSY, &b) && b.webp);
+    free(b.webp);
+    free(px);
+}
+
 int main(int argc, char **argv) {
     if (argc == 2) return write_sample(argv[1]);
     test_tag();
+    test_single_image();
     test_roundtrip();
     test_empty_table();
     test_blobs();

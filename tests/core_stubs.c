@@ -61,3 +61,16 @@ void gfx_set_background_texture(Texture *t) {
     stub_background = t;
 }
 void gfx_toggle_grid_orientation(void) { gh->isFlat = !gh->isFlat; }
+
+/* Session: the core tests run offline, except where they set stub_client. */
+#include "session.h"
+bool stub_client;
+int stub_sent_ops;
+bool session_is_client(void) { return stub_client; }
+bool session_is_host(void) { return false; }
+const char *session_my_name(void) { return "alice"; }
+void session_send_op(const Op *op) {
+    (void)op;
+    stub_sent_ops++;
+}
+void session_broadcast_op(const Op *op) { (void)op; }

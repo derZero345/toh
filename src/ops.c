@@ -1,6 +1,7 @@
 /* The op layer: rules for who may change what (ops_check) and the changes themselves (ops_apply). */
 #include "ops.h"
 #include "savefmt.h"
+#include "session.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -21,8 +22,13 @@ EntitySpec op_spec_from_entity(const Entity *e) {
                          .speed = e->speed, .initiative = e->initiative };
 }
 
-/* Offline the local user is the game master. */
-OpAuthor ops_local_author(void) { return (OpAuthor){ .gm = true }; }
+/* Offline and on the host the local user is the game master. */
+OpAuthor ops_local_author(void) {
+    if (!session_is_client()) return (OpAuthor){ .gm = true };
+    OpAuthor a = { .gm = false };
+    snprintf(a.name, sizeof(a.name), "%s", session_my_name());
+    return a;
+}
 
 const char *ops_result_text(OpResult r) {
     switch (r) {
@@ -34,6 +40,7 @@ const char *ops_result_text(OpResult r) {
     case OPR_NO_ENTITY:     return "That entity no longer exists";
     case OPR_STALE:         return "The turn order changed in the meantime";
     case OPR_INVALID:       return "Invalid action";
+    case OPR_ALREADY_OWNED: return "That character already has an owner";
     }
     return "Unknown error";
 }
@@ -140,6 +147,12 @@ OpResult ops_check(const Op *op, const OpAuthor *author) {
 /* ---- ops_apply ---------------------------------------------------------------------------- */
 
 static void apply_spawn(Op *op) {
+    bool keep = op->keepIds && op->ids.count == op->specs.count;
+    uint32_t *given = NULL; /* the host's ids; op->ids gets refilled below */
+    if (keep) {
+        given = op->ids.items;
+        memset(&op->ids, 0, sizeof(op->ids));
+    }
     da_clear(&op->ids);
     for (int i = 0; i < op->specs.count; i++) {
         const EntitySpec *s = &op->specs.items[i];
@@ -151,20 +164,42 @@ static void apply_spawn(Op *op) {
             e->health = s->health;
             e->attack = s->attack;
         }
-        entity_register(e);
+        if (keep) entity_register_as(e, given[i]);
+        else entity_register(e);
         da_push(&op->ids, e->id);
     }
+    free(given);
+}
+
+/* The entity whose selection highlights are shown, if any. */
+static Entity *selected_entity(void) {
+    return gh->hasSelectedEntity && gh->selectedEntityTiles.count > 0 ? entity_at(gh->selectedEntityTiles.items[0]) : NULL;
 }
 
 static void apply_delete(const Op *op) {
-    bool deleted = false;
+    bool deleted = false, deleted_selected = false;
+    Entity *sel = selected_entity();
     for (int i = 0; i < op->ids.count; i++) {
         Entity *e = entity_by_id(op->ids.items[i]);
         if (!e) continue;
+        if (e == sel) deleted_selected = true;
         entity_delete(e);
         deleted = true;
     }
-    if (deleted) entities_clear_highlights();
+    /* someone else's delete only clears the local highlights when they showed a deleted entity */
+    if (op->remote ? deleted_selected : deleted) entities_clear_highlights();
+}
+
+static void apply_move(const Op *op) {
+    Entity *e = entity_by_id(op->id);
+    if (!e) return;
+    if (!op->remote) {
+        game_move_character(op->tile, e); /* also shows the path it took */
+        return;
+    }
+    bool was_selected = e == selected_entity();
+    e->tile = op->tile;
+    if (was_selected) entities_clear_highlights(); /* the range shown belonged to the old tile */
 }
 
 /* The characters among op->ids; walls are skipped like in the Java version. */
@@ -220,7 +255,7 @@ static void apply_init_add(const Op *op) {
 void ops_apply(Op *op) {
     switch (op->type) {
     case OP_MOVE:
-        game_move_character(op->tile, entity_by_id(op->id));
+        apply_move(op);
         break;
     case OP_SPAWN:
         apply_spawn(op);
@@ -287,6 +322,11 @@ OpResult ops_submit(Op *op) {
         console_log("%s", ops_result_text(r));
         return r;
     }
+    if (session_is_client()) {
+        session_send_op(op); /* applied when the host broadcasts it */
+        return OPR_OK;
+    }
     ops_apply(op);
+    if (session_is_host()) session_broadcast_op(op);
     return OPR_OK;
 }

@@ -1,0 +1,47 @@
+#ifndef TOH_SESSION_H
+#define TOH_SESSION_H
+
+/*
+ * Multiplayer sessions: the GM hosts (:host), players join (:join) with a join code.
+ * The host's table is authoritative: clients send their ops, the host checks and applies
+ * them and broadcasts every applied op to everyone (OP_APPLIED), so all tables stay identical.
+ * All of this runs on the main thread; net.c does the networking in the background.
+ * Design: docs/superpowers/specs/2026-11-21-multiplayer-design.md, sections 1-3 and 5.
+ */
+
+#include "ops.h"
+
+/* The GM is player 0 and always gold; players get the first free palette color. */
+#define SESSION_GM_COLOR 0xE0B000u
+
+void session_init(void);     /* after gfx_init: registers the wake-up event */
+void session_shutdown(void); /* on quit: ends the session, removes the port mapping */
+void session_poll(void);     /* on gh->netEvent: handles everything the network thread delivered */
+void session_set_port(uint16_t port); /* --port */
+
+bool        session_is_host(void);
+bool        session_is_client(void); /* joining or joined */
+const char *session_my_name(void);
+/* @waitnet: host: at least n players joined; client: joined. */
+bool        session_ready(int n);
+
+/* Called by ops_submit. */
+void session_send_op(const Op *op);      /* client: send to the host */
+void session_broadcast_op(const Op *op); /* host: after applying the GM's own op */
+
+void session_table_replaced(void); /* host: after :load, every player gets the new table */
+bool session_roll(const char *spec); /* :r in a session: rolled by the host. false = offline */
+
+/* Commands */
+void session_cmd_host(const char *name);
+void session_cmd_unhost(void);
+void session_cmd_join(const char *code, const char *name);
+void session_cmd_leave(void);
+void session_cmd_players(void);
+void session_cmd_kick(const char *name);
+void session_cmd_claim(void);
+
+/* The console's yes/no prompt became free: asks the next queued claim. */
+void session_prompt_free(void);
+
+#endif
