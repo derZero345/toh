@@ -53,26 +53,39 @@ FUZZ_CC     ?= clang
 CORE_SRC    := src/ops.c src/entity.c src/game.c src/hex.c src/astar.c src/util.c src/savefmt.c
 CORE_LIBS   := $(shell pkg-config --libs sdl3 $(SAVE_PKGS)) -lm
 
-build/save_test: tests/save_test.c src/savefmt.c src/savefmt.h | build
+build/save_test: tests/save_test.c src/savefmt.c src/savefmt.h src/wire.h | build
 	$(CC) $(TEST_CFLAGS) $(CFLAGS) -o $@ tests/save_test.c src/savefmt.c $(TEST_LIBS)
+
+NETMSG_SRC  := src/netmsg.c src/savefmt.c
+NETMSG_HDR  := src/netmsg.h src/savefmt.h src/wire.h
+
+build/netmsg_test: tests/netmsg_test.c $(NETMSG_SRC) $(NETMSG_HDR) | build
+	$(CC) $(TEST_CFLAGS) $(CFLAGS) -o $@ tests/netmsg_test.c $(NETMSG_SRC) $(TEST_LIBS)
 
 build/core_test: tests/core_test.c tests/core_stubs.c $(CORE_SRC) $(wildcard src/*.h) | build
 	$(CC) $(TOH_CFLAGS) $(CFLAGS) -Isrc -o $@ tests/core_test.c tests/core_stubs.c $(CORE_SRC) $(CORE_LIBS)
 
-test: build/save_test build/core_test
+test: build/save_test build/core_test build/netmsg_test
 	./build/save_test
 	./build/core_test
+	./build/netmsg_test
 
 build/fuzz_savefmt: tests/fuzz_savefmt.c src/savefmt.c src/savefmt.h | build
 	$(FUZZ_CC) $(TEST_CFLAGS) -DSAVEFMT_FUZZING -g -O1 -fsanitize=fuzzer,address,undefined \
 		-o $@ tests/fuzz_savefmt.c src/savefmt.c $(TEST_LIBS)
 
-# FUZZ_TIME seconds of fuzzing, seeded with a sample save written by save_test
+build/fuzz_netmsg: tests/fuzz_netmsg.c $(NETMSG_SRC) $(NETMSG_HDR) | build
+	$(FUZZ_CC) $(TEST_CFLAGS) -DSAVEFMT_FUZZING -g -O1 -fsanitize=fuzzer,address,undefined \
+		-o $@ tests/fuzz_netmsg.c $(NETMSG_SRC) $(TEST_LIBS)
+
+# FUZZ_TIME seconds of fuzzing per target, seeded with samples written by the unit tests
 FUZZ_TIME ?= 60
-fuzz: build/fuzz_savefmt build/save_test
-	mkdir -p build/fuzz-corpus
+fuzz: build/fuzz_savefmt build/fuzz_netmsg build/save_test build/netmsg_test
+	mkdir -p build/fuzz-corpus build/fuzz-corpus-net
 	./build/save_test build/fuzz-corpus/sample.tuhh
+	./build/netmsg_test build/fuzz-corpus-net
 	./build/fuzz_savefmt -max_total_time=$(FUZZ_TIME) build/fuzz-corpus
+	./build/fuzz_netmsg -max_total_time=$(FUZZ_TIME) build/fuzz-corpus-net
 
 # end-to-end :save / :load check; needs a display and ImageMagick
 e2e: $(BIN)

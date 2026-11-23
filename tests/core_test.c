@@ -1,6 +1,7 @@
 /* Tests for the game core without a window: entity ids, op rules (ops_check) and
  * op effects (ops_apply). Run with `make test`. Stubs: tests/core_stubs.c. */
 #include "app.h"
+#include "netmsg.h"
 #include "ops.h"
 #include "savefmt.h"
 
@@ -8,6 +9,20 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+
+/* The wire format (netmsg.h) numbers ops and stats like ops.h, so session.c can convert by value. */
+_Static_assert((int)NOP_MOVE == (int)OP_MOVE && (int)NOP_SPAWN == (int)OP_SPAWN && (int)NOP_DELETE == (int)OP_DELETE &&
+               (int)NOP_SET_STATS == (int)OP_SET_STATS && (int)NOP_SET_ICON == (int)OP_SET_ICON &&
+               (int)NOP_SET_BACKGROUND == (int)OP_SET_BACKGROUND && (int)NOP_GRID_ORIENTATION == (int)OP_GRID_ORIENTATION &&
+               (int)NOP_WAYPOINT_SET == (int)OP_WAYPOINT_SET && (int)NOP_WAYPOINT_DELETE == (int)OP_WAYPOINT_DELETE &&
+               (int)NOP_INIT_ADD == (int)OP_INIT_ADD && (int)NOP_INIT_REMOVE == (int)OP_INIT_REMOVE &&
+               (int)NOP_INIT_CLEAR == (int)OP_INIT_CLEAR && (int)NOP_INIT_SHOW == (int)OP_INIT_SHOW &&
+               (int)NOP_INIT_NEXT == (int)OP_INIT_NEXT && (int)NOP_SET_OWNER == (int)OP_SET_OWNER && (int)NOP_ROLL == (int)OP_COUNT,
+               "NetOpType must match OpType");
+_Static_assert((int)NSTAT_SIZE == (int)STAT_SIZE && (int)NSTAT_MAXHEALTH == (int)STAT_MAXHEALTH && (int)NSTAT_AC == (int)STAT_AC &&
+               (int)NSTAT_SPEED == (int)STAT_SPEED && (int)NSTAT_INITIATIVE == (int)STAT_INITIATIVE, "stat bits must match");
+_Static_assert((int)OPR_INVALID <= (int)NETMSG_MAX_REASON, "OpResult must fit OP_REJECTED");
+_Static_assert(PLAYER_NAME_MAX == SAVEFMT_OWNER_MAX && WAYPOINT_NAME_MAX == SAVEFMT_NAME_MAX, "name sizes");
 
 extern char stub_last_log[1024];
 extern Texture *stub_background;
