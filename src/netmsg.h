@@ -29,6 +29,7 @@
 #define NETMSG_MAX_PLAYERS   64                     /* players in SESSION */
 #define NETMSG_MAX_DICE      64                     /* ROLL spec, bytes incl. the terminating NUL */
 #define NETMSG_MAX_REASON    31                     /* OP_REJECTED reason codes are 1..31 */
+#define NETMSG_MAX_ROLLS     1001                   /* NOP_ROLL values: up to 1000 dice and the total */
 #define NET_HASH_SIZE        32                     /* BLAKE2b-256 of an image's WebP bytes */
 #define NET_SECRET_SIZE      16
 #define NET_MAX_ADDRS        8
@@ -75,7 +76,8 @@ typedef enum {
     NOP_INIT_SHOW,
     NOP_INIT_NEXT,        /* id (0 = no current turn) */
     NOP_SET_OWNER,        /* ids, name ("" = no owner) */
-    NOP_ROLL,             /* dice: "NdM[+K|-K]" (characters 0-9 d D + -) */
+    NOP_ROLL,             /* dice: "NdM[+K|-K]" (characters 0-9 d D + -); values: none (client) or
+                           * the host's result, every die then the total (at most NETMSG_MAX_ROLLS) */
     NOP_CLAIM,            /* id */
     NOP_COUNT
 } NetOpType;

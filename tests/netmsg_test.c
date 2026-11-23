@@ -82,6 +82,7 @@ static NetOp sample_op(int type) {
         break;
     case NOP_ROLL:
         strcpy(o.dice, "2d6+3");
+        o.values = values3; o.nvalues = 3; /* as broadcast by the host: dice, then the total */
         break;
     case NOP_CLAIM:
         o.id = 70000;
@@ -218,7 +219,10 @@ static void test_fields_survive(void) {
     netmsg_free(&d);
 
     m = sample_msg(NM_OP, NOP_ROLL);
-    CHECK(round_trip(&m, &d) && strcmp(d.op.dice, "2d6+3") == 0);
+    CHECK(round_trip(&m, &d) && strcmp(d.op.dice, "2d6+3") == 0 && d.op.nvalues == 3 && d.op.values[2] == 19.0);
+    netmsg_free(&d);
+    m.op.nvalues = 0; /* a roll from a client has no result yet */
+    CHECK(round_trip(&m, &d) && d.op.nvalues == 0);
     netmsg_free(&d);
 
     /* a spawn from a client carries no ids */
@@ -309,6 +313,8 @@ static void test_encoder_refuses_invalid(void) {
     m = sample_msg(NM_OP, NOP_WAYPOINT_SET); m.op.name[0] = '\0'; check_invalid(m, "empty waypoint name");
     m = sample_msg(NM_OP, NOP_SET_OWNER); strcpy(m.op.name, "a\tb"); check_invalid(m, "owner with a tab");
     m = sample_msg(NM_OP, NOP_ROLL); strcpy(m.op.dice, ""); check_invalid(m, "empty dice spec");
+    m = sample_msg(NM_OP, NOP_ROLL); m.op.nvalues = NETMSG_MAX_ROLLS + 1; check_invalid(m, "too many dice results");
+    m = sample_msg(NM_OP, NOP_ROLL); values3[0] = NAN; check_invalid(m, "NaN die"); values3[0] = 0.5;
     m = sample_msg(NM_OP, NOP_ROLL); strcpy(m.op.dice, "2d6; rm"); check_invalid(m, "dice spec with other characters");
     m = sample_msg(NM_LOG, 0); strcpy(m.text, "\xff\xfe"); check_invalid(m, "log text not UTF-8");
 }

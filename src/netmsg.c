@@ -64,6 +64,9 @@ static bool op_ok(const NetOp *o) {
     case NOP_SET_OWNER:
         return o->name[0] == '\0' || savefmt_owner_valid(o->name);
     case NOP_ROLL:
+        if (o->nvalues > NETMSG_MAX_ROLLS || (o->nvalues && !o->values)) return false;
+        for (uint32_t i = 0; i < o->nvalues; i++)
+            if (!isfinite(o->values[i])) return false;
         return dice_ok(o->dice);
     case NOP_CLAIM:
         return o->id != 0;
@@ -186,6 +189,8 @@ static void put_op(Buf *b, const NetOp *o) {
         break;
     case NOP_ROLL:
         put_str(b, o->dice);
+        put_uv(b, o->nvalues);
+        for (uint32_t i = 0; i < o->nvalues; i++) put_f64(b, o->values[i]);
         break;
     default: /* GRID_ORIENTATION, INIT_CLEAR, INIT_SHOW */
         break;
@@ -381,9 +386,14 @@ static void get_op(Rd *r, NetOp *o) {
         o->ids = get_ids(r, &o->nids);
         get_str(r, o->name, sizeof(o->name));
         break;
-    case NOP_ROLL:
+    case NOP_ROLL: {
         get_str(r, o->dice, sizeof(o->dice));
+        uint32_t n = get_count(r, NETMSG_MAX_ROLLS, 8);
+        o->values = get_array(r, n, sizeof(double));
+        o->nvalues = o->values ? n : 0;
+        for (uint32_t i = 0; i < o->nvalues && !r->bad; i++) o->values[i] = get_f64(r);
         break;
+    }
     case NOP_GRID_ORIENTATION:
     case NOP_INIT_CLEAR:
     case NOP_INIT_SHOW:

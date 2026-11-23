@@ -62,13 +62,17 @@ NETMSG_HDR  := src/netmsg.h src/savefmt.h src/wire.h
 build/netmsg_test: tests/netmsg_test.c $(NETMSG_SRC) $(NETMSG_HDR) | build
 	$(CC) $(TEST_CFLAGS) $(CFLAGS) -o $@ tests/netmsg_test.c $(NETMSG_SRC) $(TEST_LIBS)
 
+build/net_test: tests/net_test.c src/net.c src/net.h $(NETMSG_SRC) $(NETMSG_HDR) | build
+	$(CC) $(TEST_CFLAGS) $(CFLAGS) -pthread -o $@ tests/net_test.c src/net.c $(NETMSG_SRC) $(TEST_LIBS)
+
 build/core_test: tests/core_test.c tests/core_stubs.c $(CORE_SRC) $(wildcard src/*.h) | build
 	$(CC) $(TOH_CFLAGS) $(CFLAGS) -Isrc -o $@ tests/core_test.c tests/core_stubs.c $(CORE_SRC) $(CORE_LIBS)
 
-test: build/save_test build/core_test build/netmsg_test
+test: build/save_test build/core_test build/netmsg_test build/net_test
 	./build/save_test
 	./build/core_test
 	./build/netmsg_test
+	./build/net_test
 
 build/fuzz_savefmt: tests/fuzz_savefmt.c src/savefmt.c src/savefmt.h | build
 	$(FUZZ_CC) $(TEST_CFLAGS) -DSAVEFMT_FUZZING -g -O1 -fsanitize=fuzzer,address,undefined \
