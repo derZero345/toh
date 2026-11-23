@@ -25,7 +25,7 @@ occupied() {
 A="300 200"; A2="300 260"    # Bob moves A one tile down
 B="380 260"; B2="380 320"    # Bob tries to move B (refused); the GM moves B to B3
 B3="440 260"
-C="200 320"
+C="200 320"; C2="200 380"    # Bob claims C, the GM agrees, Bob moves it
 
 TOH_JOINCODE_FILE="$out/code" timeout 90 ./toh --size 600x400 --port "$port" --auto-file "$icon" \
     --exec "@click $A" --exec ":c speed 6" --exec "@click $A" --exec ":c owner Bob" --exec "@click $A" \
@@ -38,7 +38,9 @@ TOH_JOINCODE_FILE="$out/code" timeout 90 ./toh --size 600x400 --port "$port" --a
     --exec "@click $C" --exec ":c speed 6" \
     --exec ":r 2d6" \
     --exec "@touch $out/host-changed" \
-    --exec "@waitfile $out/client-checked" \
+    --exec "@waitfile $out/claimed" --exec "@wait 30" --exec "y" --exec "@touch $out/granted" \
+    --exec "@waitfile $out/client-checked" --exec "@wait 30" \
+    --exec "@shot $out/host-claim.png" \
     --exec ":unhost" --exec "@wait 10" --exec ":q!" \
     > "$out/host.log" 2>&1 &
 host=$!
@@ -57,7 +59,11 @@ timeout 90 ./toh --size 600x400 \
     --exec "@click $B" --exec "@down lshift" --exec "@click $B2" --exec "@up lshift" --exec "@wait 30" \
     --exec "@shot $out/client-moved.png" --exec "@touch $out/client-moved" \
     --exec "@waitfile $out/host-changed" --exec "@wait 30" \
-    --exec "@shot $out/client-changed.png" --exec "@touch $out/client-checked" \
+    --exec "@shot $out/client-changed.png" \
+    --exec "@click $C" --exec ":claim" --exec "@touch $out/claimed" \
+    --exec "@waitfile $out/granted" --exec "@wait 30" \
+    --exec "@down lshift" --exec "@click $C2" --exec "@up lshift" --exec "@wait 30" \
+    --exec "@shot $out/client-claim.png" --exec "@touch $out/client-checked" \
     --exec "@wait 60" \
     --exec ":q" --exec "@shot $out/client-quit-refused.png" --exec ":q!" \
     > "$out/client.log" 2>&1 || fail "the client exited with status $? (see $out/client.log)"
@@ -74,6 +80,9 @@ occupied "$out/host-moved.png" $B || fail "the GM's character moved although Bob
 # the GM's move and new character reached the client (the image too)
 occupied "$out/client-changed.png" $B3 || fail "the GM's move did not show on the client"
 occupied "$out/client-changed.png" $C || fail "the character the GM spawned did not show on the client"
+# the GM granted Bob's claim, so Bob could move the new character
+occupied "$out/host-claim.png" $C2 || fail "Bob could not move the character he claimed"
+! occupied "$out/host-claim.png" $C || fail "the claimed character is still at its old tile"
 [ -f "$out/client-quit-refused.png" ] || fail ":q quit the client although the session ended"
 
 echo "e2e net: OK"

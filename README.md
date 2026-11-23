@@ -13,7 +13,8 @@ Dependencies:
 | Vulkan loader + headers | rendering |
 | FreeType 2 + fontconfig | text (looks up "Arial", falls back to the system sans font) |
 | `glslc` (shaderc) | compiles `shaders/*.vert/frag` to SPIR-V at build time |
-| libwebp, libzstd, libsodium | save files: image compression, state compression, integrity tag |
+| libwebp, libzstd, libsodium | save files: image compression, state compression, integrity tag; multiplayer encryption |
+| miniupnpc, libnatpmp (optional) | `:host` opens the port on the router; without them the build prints a note and hosting works on LAN / VPN or with a manually forwarded port |
 
 ```sh
 make            # builds ./toh
@@ -23,7 +24,8 @@ make            # builds ./toh
 Sanitizer build: `make clean && make CFLAGS="-O1 -g -fsanitize=address,undefined"`.
 
 Tests: `make test` (save format, game core and network message unit tests), `make fuzz` (libFuzzer on the save file
-and network message decoders, needs clang; `FUZZ_TIME=600` fuzzes each longer) and `make e2e` (saves and loads in a real window, needs a display and ImageMagick).
+and network message decoders, needs clang; `FUZZ_TIME=600` fuzzes each longer) and `make e2e` (saves and loads in a real
+window, then runs a host and a client on localhost; needs a display and ImageMagick).
 Set `TOH_VK_VALIDATION=1` to enable the Khronos validation layer when it is installed.
 
 ## Controls
@@ -52,7 +54,28 @@ Console commands: `:q` quit, `:b [file.png]` background, `:d` debug, `:c` charac
 (`delete`, `size n`, `maxhealth n`, `armorclass n`, `speed n`, `initiative n`, `icon`, `owner <player|none>`),
 `:w [delete]` wall, `:e delete`, `:r 2d6+3` roll, `:g` grid orientation, `:gm` gamemaster,
 `:i [add|remove|clear|show|next]` initiative, `:cl` clear, `:t [name]` theme, `:h [command]` help,
-`:save [file]` / `:load[!] [file]` save files (see below), `:q!` quit without saving.
+`:save [file]` / `:load[!] [file]` save files (see below), `:q!` quit without saving,
+`:host`, `:join`, `:leave`, `:unhost`, `:players`, `:kick`, `:claim` multiplayer (see below).
+
+## Playing together
+
+The GM hosts the table on their own computer; players connect to it directly. There is no server in between.
+
+1. GM: `:host [name]` (name defaults to `GM`). The game listens on TCP port 41234 (`./toh --port N` for another),
+   tries to open that port on the router (UPnP, then NAT-PMP) and copies a join code (`toh1-…`) to the clipboard.
+   The log says whether the router opened the port. If it didn't, forward the port by hand or use a VPN such as
+   Tailscale; a router behind carrier-grade NAT (100.64.x.x) always needs a VPN.
+2. Players: `:join <code> <name>`. Their table is replaced by the GM's; camera, zoom and theme stay their own.
+3. The GM gives characters to players with `:c owner <name>`, or a player selects an unowned character and asks
+   with `:claim` (the GM answers y/n in the console).
+
+Players can move their own characters (Shift + click inside the green range; while initiative runs only on their
+turn), end their turn with `:i next`, roll dice (`:r`, rolled by the host and shown to everyone) and save a copy of
+the table. Everything else is the GM's. `:players` lists who is at the table, `:kick <name>` removes someone,
+`:leave` / `:unhost` end it; players keep the last table as an unsaved offline table.
+
+The connection is encrypted (libsodium) with a key from the join code; each `:host` makes a new code, so old codes
+stop working. `TOH_NO_PORTMAP=1` skips the router (LAN-only use, tests).
 
 ## Saving
 
@@ -86,7 +109,10 @@ sizes, counts and references are checked against fixed limits before use.
 | `src/graphics.c` | `main/GraphicsHandler` – state, zoom/pan, dialogs, scene rendering |
 | `src/game.c` | `main/GameHandler` – camera tick, movement, initiative |
 | `src/ops.c` | – (new) every change to the table as a checked operation; GM / player rules |
-| `src/netmsg.c` | – (new) multiplayer wire format: messages, ops and join codes (no sockets yet) |
+| `src/netmsg.c` | – (new) multiplayer wire format: messages, ops and join codes |
+| `src/net.c` | – (new) network thread: sockets, handshake, encryption, send queues |
+| `src/session.c` | – (new) `:host` / `:join` and the other session commands; host and client message handling |
+| `src/portmap.c` | – (new) router port mapping (UPnP / NAT-PMP) and the addresses in the join code |
 | `src/wire.h` | – (new) varint / string reader and writer shared by the save format and `netmsg.c` |
 | `src/input.c` | `main/IOHandler` – mouse and keyboard |
 | `src/console.c` | `main/Consol`, `ConsolPanel`, `CommandCompleter` |
@@ -111,7 +137,8 @@ screenshot, which makes headless-ish regression checks possible:
              --exec "@click 300 250" --exec "@shot out.png" --exec "@quit"
 ```
 
-See the comment at the top of `src/main.c` for the full action list.
+See the comment at the top of `src/main.c` for the full action list (including `@waitnet`, `@waitfile` and
+`@touch`, which `tests/e2e_net.sh` uses to synchronize a host and a client).
 
 ## Differences from the Java version
 
