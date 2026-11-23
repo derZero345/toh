@@ -114,7 +114,7 @@ u8  address count (1..8)
 { u8 family (4 | 6), 4 or 16 bytes address }...
 ```
 
-A typical code with one IPv4 and one IPv6 address is about 75 characters. `:host` makes a new secret each time,
+A typical code with one IPv4 and one IPv6 address is 89 characters (with the group dashes). `:host` makes a new secret each time,
 so old codes stop working when the GM hosts again.
 
 ### 2.3 Handshake and encryption (libsodium)

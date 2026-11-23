@@ -22,8 +22,8 @@ make            # builds ./toh
 
 Sanitizer build: `make clean && make CFLAGS="-O1 -g -fsanitize=address,undefined"`.
 
-Tests: `make test` (save format and game core unit tests), `make fuzz` (libFuzzer on the save file decoder, needs clang;
-`FUZZ_TIME=600` fuzzes longer) and `make e2e` (saves and loads in a real window, needs a display and ImageMagick).
+Tests: `make test` (save format, game core and network message unit tests), `make fuzz` (libFuzzer on the save file
+and network message decoders, needs clang; `FUZZ_TIME=600` fuzzes each longer) and `make e2e` (saves and loads in a real window, needs a display and ImageMagick).
 Set `TOH_VK_VALIDATION=1` to enable the Khronos validation layer when it is installed.
 
 ## Controls
@@ -86,6 +86,8 @@ sizes, counts and references are checked against fixed limits before use.
 | `src/graphics.c` | `main/GraphicsHandler` – state, zoom/pan, dialogs, scene rendering |
 | `src/game.c` | `main/GameHandler` – camera tick, movement, initiative |
 | `src/ops.c` | – (new) every change to the table as a checked operation; GM / player rules |
+| `src/netmsg.c` | – (new) multiplayer wire format: messages, ops and join codes (no sockets yet) |
+| `src/wire.h` | – (new) varint / string reader and writer shared by the save format and `netmsg.c` |
 | `src/input.c` | `main/IOHandler` – mouse and keyboard |
 | `src/console.c` | `main/Consol`, `ConsolPanel`, `CommandCompleter` |
 | `src/tools.c` | `main/Toolbox`, `tools/*` (measure, line, area, cone) |
