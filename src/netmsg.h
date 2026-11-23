@@ -34,6 +34,14 @@
 #define NET_SECRET_SIZE      16
 #define NET_MAX_ADDRS        8
 #define NET_COLOR_MAX        0xFFFFFFu              /* colors are 0xRRGGBB */
+#define NETMSG_MAX_SEL_TILES    4096 /* presence: selected tiles (longer selections are cut off) */
+#define NETMSG_MAX_SEL_ENTITIES 256
+#define NETMSG_MAX_PATH         4096
+#define NETMSG_MAX_FOOTPRINT    64
+#define NETMSG_MAX_LINES        256
+#define NETMSG_MAX_WORLD        1000000000 /* world coordinates, in 1/256 of the hex size */
+#define NETMSG_MAX_LABEL        10000000   /* tool length labels, in feet */
+#define NET_WORLD_SCALE         256        /* world units per hex size */
 
 typedef enum {
     NM_HELLO = 1,     /* C->H protocol, name */
@@ -46,7 +54,7 @@ typedef enum {
     NM_OP,            /* C->H seq, op */
     NM_OP_APPLIED,    /* H->C player: author, op (spawn ops carry the assigned ids) */
     NM_OP_REJECTED,   /* H->C seq, reason (an OpResult, 1..NETMSG_MAX_REASON) */
-    NM_PRESENCE,      /* reserved; plan 4 defines the body. Encoding and decoding fail until then. */
+    NM_PRESENCE,      /* C->H, H->C player (H->C: whose presence; C->H: 0, the host knows), presence */
     NM_IMAGE,         /* H->C hash, image_kind (SAVE_IMG_*), data: WebP bytes */
     NM_LOG,           /* H->C text */
     NM_CLOSE,         /* H->C reason (NET_CLOSE_*) */
@@ -118,6 +126,42 @@ typedef struct {
     char name[SAVEFMT_OWNER_MAX];
 } NetPlayer;
 
+typedef struct {
+    int32_t row, col;
+} NetHex;
+
+/* A point or line end in world coordinates: (pixel - grid offset) / hex size * NET_WORLD_SCALE.
+ * Every screen converts them with its own zoom and pan. */
+typedef struct {
+    int32_t ax, ay, bx, by;
+    int32_t label; /* length in feet, shown at the middle */
+} NetLine;
+
+typedef struct {
+    int32_t x, y, radius; /* world units */
+    int32_t label;        /* feet */
+} NetCircle;
+
+/* What a person is pointing at: shown to the others in their color (spec section 4). */
+typedef struct {
+    NetHex *tiles;      /* selected tiles */
+    uint32_t ntiles;
+    uint32_t *entities; /* selected entities (never 0) */
+    uint32_t nentities;
+    NetHex *path;       /* movement preview while Shift is held: path and footprint */
+    uint32_t npath;
+    NetHex *footprint;
+    uint32_t nfootprint;
+    NetLine *lines;     /* measurements and the line attack */
+    uint32_t nlines;
+    bool has_circle;    /* area attack */
+    NetCircle circle;
+    bool has_cone;      /* cone attack: circle.x/y/radius/label plus the angles in degrees */
+    NetCircle cone;
+    int32_t cone_start; /* 0..359, counter-clockwise from 3 o'clock */
+    int32_t cone_extent; /* 0..360 */
+} NetPresence;
+
 /* One message. Only the fields of its type are used; the rest stay zero.
  * After netmsg_decode the arrays belong to the message (netmsg_free) and data points into
  * the decoded buffer, so that buffer has to outlive the message. */
@@ -139,6 +183,7 @@ typedef struct {
     const uint8_t *data;               /* SNAPSHOT, IMAGE: 1..NETMSG_MAX_BLOB bytes */
     size_t data_len;
     char text[NETMSG_MAX_TEXT];        /* LOG */
+    NetPresence presence;              /* PRESENCE (with player) */
 } NetMsg;
 
 /* Encodes m into a new buffer (*out, free with free()). Returns false when m breaks a rule
@@ -147,6 +192,10 @@ bool netmsg_encode(const NetMsg *m, uint8_t **out, size_t *out_len);
 /* Decodes one whole message. On failure *out is left empty (netmsg_free is still safe). */
 bool netmsg_decode(const uint8_t *buf, size_t len, NetMsg *out);
 void netmsg_free(NetMsg *m);
+
+/* Deep copy of a presence; free it with netpresence_free (decoded messages: netmsg_free). */
+void netpresence_copy(NetPresence *dst, const NetPresence *src);
+void netpresence_free(NetPresence *p);
 
 /* Hash that names an image on the wire: BLAKE2b-256 of its WebP bytes. */
 void netmsg_image_hash(const uint8_t *webp, size_t len, uint8_t out[NET_HASH_SIZE]);

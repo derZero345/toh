@@ -3,6 +3,7 @@
 #include "draw.h"
 #include "image.h"
 #include "ops.h"
+#include "session.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -523,6 +524,11 @@ static void draw_grid(void) {
     int r0, r1, c0, c1;
     grid_visible_range(&r0, &r1, &c0, &c1);
     draw_grid_lines(r0, r1, c0, c1, th, t->secondary);
+
+    /* other people's presence, under our own highlights */
+    dr_set_alpha(1.0f);
+    session_draw_presence();
+    dr_set_alpha(0.5f);
 
     if (gh->hasTileUnderMouse && !gh->hasDragStart)
         draw_hex(gh->tileUnderMouse, th + (gh->mouseActive ? 2 : 4), t->secondary);

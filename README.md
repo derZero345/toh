@@ -74,6 +74,10 @@ turn), end their turn with `:i next`, roll dice (`:r`, rolled by the host and sh
 the table. Everything else is the GM's. `:players` lists who is at the table, `:kick <name>` removes someone,
 `:leave` / `:unhost` end it; players keep the last table as an unsaved offline table.
 
+Everyone sees what the others are pointing at, in their color (the GM is gold, players get blue, red, green,
+...; `:players` lists the colors): selected tiles and characters with a name label, the movement preview while
+Shift is held, and measurements and line / area / cone attacks. Your own selection and tools look as before.
+
 The connection is encrypted (libsodium) with a key from the join code; each `:host` makes a new code, so old codes
 stop working. `TOH_NO_PORTMAP=1` skips the router (LAN-only use, tests).
 
@@ -112,6 +116,7 @@ sizes, counts and references are checked against fixed limits before use.
 | `src/netmsg.c` | – (new) multiplayer wire format: messages, ops and join codes |
 | `src/net.c` | – (new) network thread: sockets, handshake, encryption, send queues |
 | `src/session.c` | – (new) `:host` / `:join` and the other session commands; host and client message handling |
+| `src/presence.c` | – (new) what each person points at: collected from the local state, drawn for the others |
 | `src/portmap.c` | – (new) router port mapping (UPnP / NAT-PMP) and the addresses in the join code |
 | `src/wire.h` | – (new) varint / string reader and writer shared by the save format and `netmsg.c` |
 | `src/input.c` | `main/IOHandler` – mouse and keyboard |

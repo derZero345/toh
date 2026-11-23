@@ -75,6 +75,38 @@ static bool op_ok(const NetOp *o) {
     }
 }
 
+static bool hexes_ok(const NetHex *h, uint32_t n, uint32_t max) {
+    if (n > max || (n && !h)) return false;
+    for (uint32_t i = 0; i < n; i++)
+        if (!coord_ok(h[i].row) || !coord_ok(h[i].col)) return false;
+    return true;
+}
+
+static bool world_ok(int32_t v) { return v >= -NETMSG_MAX_WORLD && v <= NETMSG_MAX_WORLD; }
+static bool label_ok(int32_t v) { return v >= 0 && v <= NETMSG_MAX_LABEL; }
+
+static bool circle_ok(const NetCircle *c) {
+    return world_ok(c->x) && world_ok(c->y) && c->radius >= 0 && c->radius <= NETMSG_MAX_WORLD && label_ok(c->label);
+}
+
+static bool presence_ok(const NetPresence *p) {
+    if (!hexes_ok(p->tiles, p->ntiles, NETMSG_MAX_SEL_TILES) || !hexes_ok(p->path, p->npath, NETMSG_MAX_PATH) ||
+        !hexes_ok(p->footprint, p->nfootprint, NETMSG_MAX_FOOTPRINT))
+        return false;
+    if (p->nentities > NETMSG_MAX_SEL_ENTITIES || !ids_ok(p->entities, p->nentities)) return false;
+    if (p->nlines > NETMSG_MAX_LINES || (p->nlines && !p->lines)) return false;
+    for (uint32_t i = 0; i < p->nlines; i++) {
+        const NetLine *l = &p->lines[i];
+        if (!world_ok(l->ax) || !world_ok(l->ay) || !world_ok(l->bx) || !world_ok(l->by) || !label_ok(l->label))
+            return false;
+    }
+    if (p->has_circle && !circle_ok(&p->circle)) return false;
+    if (p->has_cone && (!circle_ok(&p->cone) || p->cone_start < 0 || p->cone_start > 359 || p->cone_extent < 0 ||
+                        p->cone_extent > 360))
+        return false;
+    return true;
+}
+
 static bool player_ok(const NetPlayer *p) {
     return p->role <= NET_ROLE_PLAYER && p->color <= NET_COLOR_MAX && savefmt_owner_valid(p->name);
 }
@@ -95,13 +127,14 @@ static bool msg_ok(const NetMsg *m) {
     case NM_OP:
     case NM_OP_APPLIED:    return op_ok(&m->op);
     case NM_LOG:           return text_ok(m->text, sizeof(m->text));
+    case NM_PRESENCE:      return presence_ok(&m->presence);
     case NM_SESSION:
         if (!ids_ok(m->entity_ids, m->nentity_ids)) return false;
         if (m->nplayers < 1 || m->nplayers > NETMSG_MAX_PLAYERS || !m->players) return false;
         for (uint32_t i = 0; i < m->nplayers; i++)
             if (!player_ok(&m->players[i])) return false;
         return true;
-    default:               return false; /* 0, NM_PRESENCE (plan 4), unknown */
+    default:               return false; /* 0, unknown */
     }
 }
 
@@ -117,6 +150,45 @@ static void put_player(Buf *b, const NetPlayer *p) {
     put_u8(b, p->role);
     put_uv(b, p->color);
     put_str(b, p->name);
+}
+
+static void put_hexes(Buf *b, const NetHex *h, uint32_t n) {
+    put_uv(b, n);
+    for (uint32_t i = 0; i < n; i++) {
+        put_sv(b, h[i].row);
+        put_sv(b, h[i].col);
+    }
+}
+
+static void put_circle(Buf *b, const NetCircle *c) {
+    put_sv(b, c->x);
+    put_sv(b, c->y);
+    put_sv(b, c->radius);
+    put_sv(b, c->label);
+}
+
+static void put_presence(Buf *b, const NetPresence *p) {
+    put_hexes(b, p->tiles, p->ntiles);
+    put_ids(b, p->entities, p->nentities);
+    put_hexes(b, p->path, p->npath);
+    put_hexes(b, p->footprint, p->nfootprint);
+    put_uv(b, p->nlines);
+    for (uint32_t i = 0; i < p->nlines; i++) {
+        const NetLine *l = &p->lines[i];
+        put_sv(b, l->ax);
+        put_sv(b, l->ay);
+        put_sv(b, l->bx);
+        put_sv(b, l->by);
+        put_sv(b, l->label);
+    }
+    put_u8(b, p->has_circle);
+    if (p->has_circle) put_circle(b, &p->circle);
+    put_u8(b, p->has_cone);
+    if (p->has_cone) {
+        put_circle(b, &p->cone);
+        put_sv(b, p->cone_start);
+        put_sv(b, p->cone_extent);
+    }
 }
 
 static void put_op(Buf *b, const NetOp *o) {
@@ -247,6 +319,10 @@ bool netmsg_encode(const NetMsg *m, uint8_t **out, size_t *out_len) {
     case NM_LOG:
         put_str(&b, m->text);
         break;
+    case NM_PRESENCE:
+        put_u8(&b, m->player);
+        put_presence(&b, &m->presence);
+        break;
     }
     if (b.oom) {
         free(b.p);
@@ -301,6 +377,57 @@ static void get_player(Rd *r, NetPlayer *p) {
     p->role = get_u8(r);
     p->color = get_uv(r);
     get_str(r, p->name, sizeof(p->name));
+}
+
+static NetHex *get_hexes(Rd *r, uint32_t max, uint32_t *n_out) {
+    uint32_t n = get_count(r, max, 2);
+    NetHex *h = get_array(r, n, sizeof(NetHex));
+    for (uint32_t i = 0; i < n && h && !r->bad; i++) {
+        h[i].row = get_sv(r);
+        h[i].col = get_sv(r);
+    }
+    *n_out = h ? n : 0;
+    return h;
+}
+
+static bool get_flag(Rd *r) {
+    uint8_t f = get_u8(r);
+    if (f > 1) r->bad = true;
+    return f == 1;
+}
+
+static void get_circle(Rd *r, NetCircle *c) {
+    c->x = get_sv(r);
+    c->y = get_sv(r);
+    c->radius = get_sv(r);
+    c->label = get_sv(r);
+}
+
+static void get_presence(Rd *r, NetPresence *p) {
+    p->tiles = get_hexes(r, NETMSG_MAX_SEL_TILES, &p->ntiles);
+    p->entities = get_ids(r, &p->nentities);
+    if (p->nentities > NETMSG_MAX_SEL_ENTITIES) r->bad = true;
+    p->path = get_hexes(r, NETMSG_MAX_PATH, &p->npath);
+    p->footprint = get_hexes(r, NETMSG_MAX_FOOTPRINT, &p->nfootprint);
+    uint32_t n = get_count(r, NETMSG_MAX_LINES, 5);
+    p->lines = get_array(r, n, sizeof(NetLine));
+    p->nlines = p->lines ? n : 0;
+    for (uint32_t i = 0; i < p->nlines && !r->bad; i++) {
+        NetLine *l = &p->lines[i];
+        l->ax = get_sv(r);
+        l->ay = get_sv(r);
+        l->bx = get_sv(r);
+        l->by = get_sv(r);
+        l->label = get_sv(r);
+    }
+    p->has_circle = get_flag(r);
+    if (p->has_circle) get_circle(r, &p->circle);
+    p->has_cone = get_flag(r);
+    if (p->has_cone) {
+        get_circle(r, &p->cone);
+        p->cone_start = get_sv(r);
+        p->cone_extent = get_sv(r);
+    }
 }
 
 static void get_op(Rd *r, NetOp *o) {
@@ -463,6 +590,10 @@ bool netmsg_decode(const uint8_t *buf, size_t len, NetMsg *out) {
     case NM_LOG:
         get_str(&r, out->text, sizeof(out->text));
         break;
+    case NM_PRESENCE:
+        out->player = get_u8(&r);
+        get_presence(&r, &out->presence);
+        break;
     default:
         r.bad = true;
         break;
@@ -474,7 +605,34 @@ bool netmsg_decode(const uint8_t *buf, size_t len, NetMsg *out) {
     return true;
 }
 
+void netpresence_free(NetPresence *p) {
+    free(p->tiles);
+    free(p->entities);
+    free(p->path);
+    free(p->footprint);
+    free(p->lines);
+    memset(p, 0, sizeof(*p));
+}
+
+static void *dup_array(const void *src, uint32_t n, size_t size) {
+    if (n == 0 || !src) return NULL;
+    void *p = malloc((size_t)n * size);
+    if (!p) abort();
+    memcpy(p, src, (size_t)n * size);
+    return p;
+}
+
+void netpresence_copy(NetPresence *dst, const NetPresence *src) {
+    *dst = *src;
+    dst->tiles = dup_array(src->tiles, src->ntiles, sizeof(NetHex));
+    dst->entities = dup_array(src->entities, src->nentities, sizeof(uint32_t));
+    dst->path = dup_array(src->path, src->npath, sizeof(NetHex));
+    dst->footprint = dup_array(src->footprint, src->nfootprint, sizeof(NetHex));
+    dst->lines = dup_array(src->lines, src->nlines, sizeof(NetLine));
+}
+
 void netmsg_free(NetMsg *m) {
+    netpresence_free(&m->presence);
     free(m->op.ids);
     free(m->op.values);
     free(m->op.specs);

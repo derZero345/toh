@@ -258,6 +258,8 @@ void dr_polygon(const Vec2 *pts, int n, float thickness, Color c) {
     stroke_polyline(pts, n, true, thickness, c);
 }
 
+void dr_fill_polygon(const Vec2 *pts, int n, Color c) { fill_convex(pts, n, c); }
+
 void dr_image(Texture *t, float x, float y, float w, float h) {
     if (!t || w == 0 || h == 0) return;
     if (offscreen(fminf(x, x + w), fminf(y, y + h), fmaxf(x, x + w), fmaxf(y, y + h))) return;

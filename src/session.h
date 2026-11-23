@@ -44,4 +44,12 @@ void session_cmd_claim(void);
 /* The console's yes/no prompt became free: asks the next queued claim. */
 void session_prompt_free(void);
 
+/* Presence (spec section 4). After a frame was drawn the local presence may have changed; session_tick
+ * sends it (at most every SESSION_PRESENCE_MS) and, on the host, forwards the players'. It returns the
+ * milliseconds until it needs to run again, or -1. session_draw_presence draws the other people's. */
+#define SESSION_PRESENCE_MS 50
+void session_presence_changed(void);
+int  session_tick(void);
+void session_draw_presence(void);
+
 #endif

@@ -2,6 +2,7 @@
 #include "session.h"
 #include "net.h"
 #include "portmap.h"
+#include "presence.h"
 #include "savefmt.h"
 
 #include <sodium.h>
@@ -27,6 +28,9 @@ typedef struct {
     char name[PLAYER_NAME_MAX];
     uint32_t color;
     HashList known; /* host: images this player has */
+    NetPresence presence; /* the latest; never our own on a client */
+    bool presenceDirty;   /* host: not forwarded yet */
+    uint64_t presenceSent; /* host: when it was last forwarded */
 } Player;
 
 typedef struct {
@@ -62,6 +66,11 @@ static struct {
     /* client */
     uint32_t seq;
     bool rejoined;
+    /* own presence */
+    bool presenceDirty;
+    uint64_t presenceSent;
+    uint8_t *sentPresence; /* the last one sent, encoded; NULL = send the next one in any case */
+    size_t sentPresenceLen;
 } S = { .port = NET_DEFAULT_PORT };
 
 static const OpAuthor GM_AUTHOR = { .gm = true };
@@ -116,11 +125,20 @@ static Player *player_by_conn(int conn) {
 
 static void player_clear(Player *p) {
     da_free(&p->known);
+    netpresence_free(&p->presence);
     memset(p, 0, sizeof(*p));
+}
+
+static void forget_sent_presence(void) {
+    free(S.sentPresence);
+    S.sentPresence = NULL;
+    S.sentPresenceLen = 0;
+    S.presenceDirty = true;
 }
 
 static void players_clear(void) {
     for (int i = 0; i < MAX_PLAYERS; i++) player_clear(&S.players[i]);
+    forget_sent_presence();
 }
 
 /* ---- image cache: hash -> texture -------------------------------------------------------------- */
@@ -437,6 +455,12 @@ static void welcome(Player *p, const char *name) {
 
     NetMsg j = { .type = NM_PLAYER_JOINED, .info = net_player(p) };
     broadcast(&j, p);
+    for (int i = 0; i < MAX_PLAYERS; i++) { /* everyone's current presence */
+        const Player *q = &S.players[i];
+        if (!q->welcomed || q == p) continue;
+        NetMsg pm = { .type = NM_PRESENCE, .player = q->id, .presence = q->presence };
+        net_send(S.net, p->conn, &pm);
+    }
     console_log("%s joined the table.", p->name);
 }
 
@@ -510,8 +534,16 @@ static void host_message(Player *p, const NetMsg *m) {
         }
         return;
     }
-    if (m->type == NM_OP) host_op(p, &m->op, m->seq);
-    else drop(p, "it sent an unexpected message");
+    if (m->type == NM_OP) {
+        host_op(p, &m->op, m->seq);
+    } else if (m->type == NM_PRESENCE) {
+        netpresence_free(&p->presence);
+        netpresence_copy(&p->presence, &m->presence);
+        p->presenceDirty = true; /* forwarded by session_tick */
+        session_tick();
+    } else {
+        drop(p, "it sent an unexpected message");
+    }
 }
 
 static void host_event(NetEvent *ev) {
@@ -661,6 +693,11 @@ static void client_applied(const NetMsg *m) {
     }
     op.remote = m->player != S.myId;
     ops_apply(&op);
+    /* our own move: input.c dropped the selection when it sent the move; select the character again */
+    if (op.type == OP_MOVE && !op.remote && gh->selectedEntityTiles.count == 0) {
+        Entity *e = entity_by_id(op.id);
+        if (e) io_select_entity(e);
+    }
     op_free(&op);
 }
 
@@ -712,6 +749,7 @@ static void client_message(const NetMsg *m) {
             snprintf(p->name, sizeof(p->name), "%s", m->players[i].name);
             if (p->role == NET_ROLE_GM) gm = p->name;
         }
+        forget_sent_presence(); /* the host gets ours again */
         if (S.role == ROLE_JOINING) {
             S.role = ROLE_CLIENT;
             gh->gameMaster = false;
@@ -747,6 +785,13 @@ static void client_message(const NetMsg *m) {
     case NM_LOG:
         console_log("%s", m->text);
         break;
+    case NM_PRESENCE: {
+        Player *p = player_by_id(m->player);
+        if (!p || p->id == S.myId) break;
+        netpresence_free(&p->presence);
+        netpresence_copy(&p->presence, &m->presence);
+        break;
+    }
     case NM_REJECT: {
         const char *msg = "The host refused the connection.";
         char buf[96];
@@ -1058,4 +1103,90 @@ void session_shutdown(void) {
         players_clear();
         cache_clear();
     }
+}
+
+/* ---- presence ------------------------------------------------------------------------------------------ */
+
+void session_presence_changed(void) { S.presenceDirty = true; }
+
+static bool presence_empty(const NetPresence *p) {
+    return !p->ntiles && !p->nentities && !p->npath && !p->nfootprint && !p->nlines && !p->has_circle && !p->has_cone;
+}
+
+/* Collects our presence and sends it when it differs from the last one sent. */
+static void send_own_presence(uint64_t now) {
+    NetMsg m = { .type = NM_PRESENCE, .player = S.role == ROLE_HOST ? S.players[0].id : 0 };
+    presence_collect(&m.presence);
+    uint8_t *buf;
+    size_t len;
+    if (!netmsg_encode(&m, &buf, &len)) {
+        netpresence_free(&m.presence);
+        return;
+    }
+    if (S.sentPresence && len == S.sentPresenceLen && memcmp(buf, S.sentPresence, len) == 0) {
+        free(buf);
+        netpresence_free(&m.presence);
+        return;
+    }
+    free(S.sentPresence);
+    S.sentPresence = buf;
+    S.sentPresenceLen = len;
+    S.presenceSent = now;
+    if (S.role == ROLE_HOST) {
+        broadcast(&m, NULL);
+        Player *gm = &S.players[0];
+        netpresence_free(&gm->presence);
+        gm->presence = m.presence; /* new players get it in welcome */
+        return;
+    }
+    net_send(S.net, 1, &m);
+    netpresence_free(&m.presence);
+}
+
+static int wait_left(uint64_t now, uint64_t last) {
+    uint64_t gone = now - last;
+    return gone >= SESSION_PRESENCE_MS ? 0 : (int)(SESSION_PRESENCE_MS - gone);
+}
+
+int session_tick(void) {
+    if (S.role != ROLE_HOST && S.role != ROLE_CLIENT) return -1;
+    uint64_t now = SDL_GetTicks();
+    int next = -1;
+    if (S.presenceDirty) {
+        int w = wait_left(now, S.presenceSent);
+        if (w == 0) {
+            S.presenceDirty = false;
+            send_own_presence(now);
+        } else {
+            next = w;
+        }
+    }
+    if (S.role != ROLE_HOST) return next;
+    for (int i = 1; i < MAX_PLAYERS; i++) { /* forward the players' latest presence, coalesced */
+        Player *p = &S.players[i];
+        if (!p->welcomed || !p->presenceDirty) continue;
+        int w = wait_left(now, p->presenceSent);
+        if (w > 0) {
+            if (next < 0 || w < next) next = w;
+            continue;
+        }
+        p->presenceDirty = false;
+        p->presenceSent = now;
+        NetMsg m = { .type = NM_PRESENCE, .player = p->id, .presence = p->presence };
+        broadcast(&m, p);
+    }
+    return next;
+}
+
+void session_draw_presence(void) {
+    if (S.role != ROLE_HOST && S.role != ROLE_CLIENT) return;
+    RemotePresence list[MAX_PLAYERS];
+    int n = 0;
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        const Player *p = &S.players[i];
+        if (!p->welcomed || presence_empty(&p->presence)) continue;
+        if (S.role == ROLE_HOST ? i == 0 : p->id == S.myId) continue;
+        list[n++] = (RemotePresence){ &p->presence, p->color, p->name };
+    }
+    presence_draw(list, n);
 }

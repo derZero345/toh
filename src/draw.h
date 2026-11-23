@@ -28,6 +28,7 @@ void dr_stroke_arc(float x, float y, float w, float h, float start_deg, float ex
                    float thickness, Color c);
 void dr_line(float x1, float y1, float x2, float y2, float thickness, Color c);
 void dr_polygon(const Vec2 *pts, int n, float thickness, Color c);
+void dr_fill_polygon(const Vec2 *pts, int n, Color c); /* convex polygons only */
 
 void dr_image(Texture *t, float x, float y, float w, float h);
 

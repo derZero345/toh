@@ -21,20 +21,32 @@ occupied() {
     awk -v v="$v" 'BEGIN { exit !(v < 0.8) }'
 }
 
+# Tint of the tile at pixel X Y: "gold", "blue" or "none" (other people's selections are filled
+# with their color at 35 % alpha; the GM is gold, the first player blue).
+tint() {
+    local rb
+    rb=$(magick "$1" -crop 12x12+$(($2 - 6))+$(($3 - 6)) +repage -format '%[fx:mean.r] %[fx:mean.b]' info:)
+    awk -v r="${rb% *}" -v b="${rb#* }" 'BEGIN { print (r - b > 0.1) ? "gold" : (b - r > 0.1) ? "blue" : "none" }'
+}
+
 # Tiles (pixel coordinates): A = Bob's character, B = the GM's, C = spawned after Bob joined.
 A="300 200"; A2="300 260"    # Bob moves A one tile down
 B="380 260"; B2="380 320"    # Bob tries to move B (refused); the GM moves B to B3
 B3="440 260"
 C="200 320"; C2="200 380"    # Bob claims C, the GM agrees, Bob moves it
+P="500 140"; Q="140 140"     # empty tiles: the GM selects P, Bob selects Q (presence)
 
 TOH_JOINCODE_FILE="$out/code" timeout 90 ./toh --size 600x400 --port "$port" --auto-file "$icon" \
     --exec "@click $A" --exec ":c speed 6" --exec "@click $A" --exec ":c owner Bob" --exec "@click $A" \
     --exec "@click $B" --exec ":c speed 6" --exec "@click $B" \
     --exec ":host" \
     --exec "@waitnet 1" \
+    --exec "@waitfile $out/client-joined" --exec "@click $P" --exec "@touch $out/host-selected" \
+    --exec "@waitfile $out/client-selected" --exec "@wait 30" --exec "@shot $out/host-presence.png" \
+    --exec "@touch $out/host-saw" \
     --exec "@waitfile $out/client-moved" --exec "@wait 30" \
     --exec "@shot $out/host-moved.png" \
-    --exec "@down lshift" --exec "@click $B3" --exec "@up lshift" \
+    --exec "@click $B" --exec "@down lshift" --exec "@click $B3" --exec "@up lshift" \
     --exec "@click $C" --exec ":c speed 6" \
     --exec ":r 2d6" \
     --exec "@touch $out/host-changed" \
@@ -54,7 +66,9 @@ code=$(cat "$out/code")
 # :q! then quits.
 timeout 90 ./toh --size 600x400 \
     --exec ":join $code Bob" --exec "@waitnet 1" --exec "@wait 10" \
-    --exec "@shot $out/client-joined.png" \
+    --exec "@shot $out/client-joined.png" --exec "@touch $out/client-joined" \
+    --exec "@waitfile $out/host-selected" --exec "@wait 30" --exec "@shot $out/client-presence.png" \
+    --exec "@click $Q" --exec "@wait 10" --exec "@touch $out/client-selected" --exec "@waitfile $out/host-saw" \
     --exec "@click $A" --exec "@down lshift" --exec "@click $A2" --exec "@up lshift" --exec "@wait 30" \
     --exec "@click $B" --exec "@down lshift" --exec "@click $B2" --exec "@up lshift" --exec "@wait 30" \
     --exec "@shot $out/client-moved.png" --exec "@touch $out/client-moved" \
@@ -72,6 +86,12 @@ wait "$host" || fail "the host exited with status $? (see $out/host.log)"
 # the client got the host's table
 occupied "$out/client-joined.png" $A || fail "the client does not show Bob's character"
 occupied "$out/client-joined.png" $B || fail "the client does not show the GM's character"
+# presence: each side sees the other's selected tile in their color, and nothing on the others
+[ "$(tint "$out/client-joined.png" $P)" = none ] || fail "tile P is tinted before the GM selected it"
+[ "$(tint "$out/client-presence.png" $P)" = gold ] || fail "Bob does not see the GM's selection in gold"
+[ "$(tint "$out/client-presence.png" $Q)" = none ] || fail "Bob sees a selection on Q that nobody made"
+[ "$(tint "$out/host-presence.png" $Q)" = blue ] || fail "the GM does not see Bob's selection in blue"
+[ "$(tint "$out/host-presence.png" $P)" = none ] || fail "the GM's own selection is drawn as presence"
 # Bob's legal move reached the host; his move of the GM's character did not
 occupied "$out/host-moved.png" $A2 || fail "Bob's move did not show on the host"
 ! occupied "$out/host-moved.png" $A || fail "Bob's character is still at its old tile on the host"

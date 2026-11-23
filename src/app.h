@@ -435,6 +435,7 @@ void save_mark_modified(void); /* a player left a session: :q asks before throwi
 
 /* input.c */
 void io_handle_event(const SDL_Event *e);
+void io_select_entity(const Entity *e); /* selects e as if it was clicked (range included) */
 void io_update_total_length(void);
 void io_toggle_game_master(void);
 

@@ -29,6 +29,21 @@ static NetPlayer players[2] = {
 };
 static const uint8_t blob[5] = { 'R', 'I', 'F', 'F', 0 };
 static NetSpec specs2[2];
+static NetHex sel_tiles[3] = { { 1, 2 }, { -3, 4 }, { 1000000, -1000000 } };
+static uint32_t sel_ids[2] = { 5, 70000 };
+static NetHex path3[3] = { { 0, 0 }, { 0, 1 }, { 1, 1 } };
+static NetHex foot1[1] = { { 1, 1 } };
+static NetLine lines2[2] = { { 0, 0, 512, 256, 10 }, { -256, 300, 1000, -4000, 35 } };
+
+/* Presence with every part set. */
+static NetPresence sample_presence(void) {
+    return (NetPresence){ .tiles = sel_tiles, .ntiles = 3, .entities = sel_ids, .nentities = 2,
+                          .path = path3, .npath = 3, .footprint = foot1, .nfootprint = 1,
+                          .lines = lines2, .nlines = 2,
+                          .has_circle = true, .circle = { .x = 256, .y = -512, .radius = 700, .label = 15 },
+                          .has_cone = true, .cone = { .x = 10, .y = 20, .radius = 900, .label = 25 },
+                          .cone_start = 350, .cone_extent = 90 };
+}
 
 static void fill_hash(uint8_t h[NET_HASH_SIZE], uint8_t seed) {
     for (int i = 0; i < NET_HASH_SIZE; i++) h[i] = (uint8_t)(seed + i * 7);
@@ -110,6 +125,7 @@ static NetMsg sample_msg(int t, int op_type) {
     case NM_IMAGE: fill_hash(m.hash, 5); m.image_kind = SAVE_IMG_LOSSY; m.data = blob; m.data_len = 4; break;
     case NM_LOG: strcpy(m.text, "Alice rolled 2d6+3: 4 + 2 + 3 = 9"); break;
     case NM_CLOSE: m.reason = NET_CLOSE_KICKED; break;
+    case NM_PRESENCE: m.player = 3; m.presence = sample_presence(); break;
     }
     return m;
 }
@@ -156,7 +172,7 @@ static void drop_last(uint8_t **buf, size_t *len) {
 
 static void test_every_message_round_trips(void) {
     for (int t = NM_HELLO; t < NM_COUNT; t++) {
-        if (t == NM_PRESENCE || t == NM_OP || t == NM_OP_APPLIED) continue;
+        if (t == NM_OP || t == NM_OP_APPLIED) continue;
         NetMsg m = sample_msg(t, 0), d;
         CHECK(round_trip(&m, &d));
         CHECK(d.type == t);
@@ -218,6 +234,26 @@ static void test_fields_survive(void) {
     CHECK(round_trip(&m, &d) && strcmp(d.text, m.text) == 0);
     netmsg_free(&d);
 
+    m = sample_msg(NM_PRESENCE, 0);
+    CHECK(round_trip(&m, &d) && d.player == 3 && d.presence.ntiles == 3 && d.presence.tiles[2].col == -1000000);
+    CHECK(d.presence.nentities == 2 && d.presence.entities[1] == 70000 && d.presence.npath == 3 &&
+          d.presence.path[2].row == 1 && d.presence.nfootprint == 1 && d.presence.nlines == 2 &&
+          d.presence.lines[1].by == -4000 && d.presence.lines[1].label == 35);
+    CHECK(d.presence.has_circle && d.presence.circle.y == -512 && d.presence.circle.radius == 700 &&
+          d.presence.has_cone && d.presence.cone.radius == 900 && d.presence.cone_start == 350 &&
+          d.presence.cone_extent == 90 && d.presence.cone.label == 25);
+    /* netpresence_copy makes an independent deep copy */
+    NetPresence copy;
+    netpresence_copy(&copy, &d.presence);
+    netmsg_free(&d);
+    CHECK(copy.ntiles == 3 && copy.tiles[1].row == -3 && copy.lines[0].bx == 512 && copy.has_cone);
+    netpresence_free(&copy);
+    CHECK(copy.tiles == NULL && copy.ntiles == 0);
+    /* an empty presence (nothing selected) is valid */
+    m = (NetMsg){ .type = NM_PRESENCE };
+    CHECK(round_trip(&m, &d) && d.presence.ntiles == 0 && !d.presence.has_circle);
+    netmsg_free(&d);
+
     m = sample_msg(NM_OP, NOP_ROLL);
     CHECK(round_trip(&m, &d) && strcmp(d.op.dice, "2d6+3") == 0 && d.op.nvalues == 3 && d.op.values[2] == 19.0);
     netmsg_free(&d);
@@ -241,7 +277,6 @@ static void test_fields_survive(void) {
 
 static void test_truncated_and_trailing(void) {
     for (int t = NM_HELLO; t < NM_COUNT; t++) {
-        if (t == NM_PRESENCE) continue;
         for (int o = 0; o < ((t == NM_OP || t == NM_OP_APPLIED) ? NOP_COUNT : 1); o++) {
             NetMsg m = sample_msg(t, o);
             /* SNAPSHOT and IMAGE data run to the end of the message, so extra bytes are data */
@@ -291,7 +326,17 @@ static void test_encoder_refuses_invalid(void) {
     m = sample_msg(NM_PLAYER_JOINED, 0); m.info.role = 2; check_invalid(m, "unknown role");
     m = sample_msg(NM_SESSION, 0); m.nplayers = NETMSG_MAX_PLAYERS + 1; check_invalid(m, "too many players");
     m = sample_msg(NM_SESSION, 0); entity_ids[0] = 0; check_invalid(m, "entity id 0"); entity_ids[0] = 1;
-    m = sample_msg(NM_PRESENCE, 0); check_invalid(m, "presence (reserved)");
+    m = sample_msg(NM_PRESENCE, 0); m.presence.ntiles = NETMSG_MAX_SEL_TILES + 1; check_invalid(m, "too many tiles");
+    m = sample_msg(NM_PRESENCE, 0); m.presence.nentities = NETMSG_MAX_SEL_ENTITIES + 1; check_invalid(m, "too many entities");
+    m = sample_msg(NM_PRESENCE, 0); m.presence.nfootprint = NETMSG_MAX_FOOTPRINT + 1; check_invalid(m, "footprint too large");
+    m = sample_msg(NM_PRESENCE, 0); m.presence.nlines = NETMSG_MAX_LINES + 1; check_invalid(m, "too many lines");
+    m = sample_msg(NM_PRESENCE, 0); sel_ids[0] = 0; check_invalid(m, "entity id 0"); sel_ids[0] = 5;
+    m = sample_msg(NM_PRESENCE, 0); sel_tiles[0].row = SAVEFMT_MAX_COORD + 1; check_invalid(m, "tile out of range"); sel_tiles[0].row = 1;
+    m = sample_msg(NM_PRESENCE, 0); lines2[0].ax = NETMSG_MAX_WORLD + 1; check_invalid(m, "line out of range"); lines2[0].ax = 0;
+    m = sample_msg(NM_PRESENCE, 0); lines2[1].label = -1; check_invalid(m, "negative label"); lines2[1].label = 35;
+    m = sample_msg(NM_PRESENCE, 0); m.presence.circle.radius = -1; check_invalid(m, "negative radius");
+    m = sample_msg(NM_PRESENCE, 0); m.presence.cone_start = 360; check_invalid(m, "cone start 360");
+    m = sample_msg(NM_PRESENCE, 0); m.presence.cone_extent = 361; check_invalid(m, "cone wider than a circle");
     m = sample_msg(0, 0); check_invalid(m, "type 0");
     m = sample_msg(NM_COUNT, 0); check_invalid(m, "type NM_COUNT");
     m = sample_msg(NM_OP, NOP_COUNT); check_invalid(m, "op type NOP_COUNT");
@@ -325,7 +370,8 @@ static void test_decoder_refuses_bytes(void) {
         { "empty", { 0 }, 0 },
         { "type 0", { 0 }, 1 },
         { "type NM_COUNT", { NM_COUNT }, 1 },
-        { "presence", { NM_PRESENCE, 0 }, 2 },
+        { "presence without body", { NM_PRESENCE, 0 }, 2 },
+        { "presence circle flag 2", { NM_PRESENCE, 0, 0, 0, 0, 0, 0, 2 }, 8 },
         { "welcome without player", { NM_WELCOME }, 1 },
         { "hello name length past the end", { NM_HELLO, 1, 9, 'B', 'o', 'b' }, 6 },
         { "hello name too long", { NM_HELLO, 1, 25, 'a' }, 4 },
@@ -450,7 +496,6 @@ static void write_seed(const char *dir, const char *name, uint8_t kind, const vo
 
 static void write_seeds(const char *dir) {
     for (int t = NM_HELLO; t < NM_COUNT; t++) {
-        if (t == NM_PRESENCE) continue;
         for (int o = 0; o < ((t == NM_OP) ? NOP_COUNT : 1); o++) {
             NetMsg m = sample_msg(t, o);
             uint8_t *buf;

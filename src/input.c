@@ -110,6 +110,12 @@ static void select_entity(void) {
     select_entity_no_deselection();
 }
 
+void io_select_entity(const Entity *e) {
+    gh->currentHexagon = e->tile;
+    gh->hasCurrentHex = true;
+    select_entity_no_deselection();
+}
+
 static void select_entity_no_deselection(void) {
     for (int i = 0; i < gh->entities.count; i++) {
         Entity *en = gh->entities.items[i];

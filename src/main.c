@@ -249,6 +249,8 @@ int main(int argc, char **argv) {
         if (!redraw && !scrolling && !scripted) {
             /* idle: wake for the next event, or for the next caret blink phase */
             Sint32 timeout = app.console.active ? (Sint32)(500 - SDL_GetTicks() % 500) + 1 : 1000;
+            int pending = session_tick(); /* presence waiting for its send slot */
+            if (pending >= 0 && pending + 1 < timeout) timeout = pending + 1;
             have_event = SDL_WaitEventTimeout(&e, timeout);
             if (!have_event && app.console.active) redraw = true;
             /* don't replay the idle time as camera ticks */
@@ -309,6 +311,8 @@ int main(int argc, char **argv) {
         gfx_update_tools();
         gfx_draw_frame(screenshot);
         redraw = false;
+        session_presence_changed();
+        session_tick();
     }
 
     session_shutdown(); /* tells the players, removes the router mapping */
