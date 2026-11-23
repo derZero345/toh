@@ -21,6 +21,8 @@ typedef struct {
     bool have_external;  /* external IPv4 address from the router */
     uint8_t external[4];
     bool cgnat;          /* the router's external address is private or shared (100.64/10) */
+    char why[160];       /* when method is NULL: what went wrong, for the log */
+    const char *hint;    /* how to fix it, or NULL */
 } PortmapStatus;
 
 bool     portmap_available(void);

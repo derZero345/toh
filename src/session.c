@@ -876,8 +876,11 @@ static void finish_hosting(const PortmapStatus *st) {
     } else if (st->method) {
         console_log("Hosting on port %u. Router port opened via %s. Join code copied to clipboard.", S.code.port, st->method);
     } else {
-        console_log("Hosting on port %u. Router did not open the port: forward TCP %u to this computer, or use a VPN "
-                    "such as Tailscale. Join code copied (LAN/VPN address only).", S.code.port, S.code.port);
+        console_log("Hosting on port %u. The router did not open the port (%s).", S.code.port,
+                    st->why[0] ? st->why : "no answer");
+        if (st->hint) console_log("%s", st->hint);
+        console_log("Forward TCP %u to this computer by hand, or use a VPN such as Tailscale. Join code copied%s.",
+                    S.code.port, st->have_external && !st->cgnat ? "" : " (LAN/VPN addresses only)");
     }
     if (st && st->cgnat)
         console_log("Your router is behind carrier-grade NAT (%u.%u.x.x): players outside your network cannot "

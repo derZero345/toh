@@ -15,6 +15,7 @@
 #ifdef TOH_HAVE_PORTMAP
 #include <miniupnpc/miniupnpc.h>
 #include <miniupnpc/upnpcommands.h>
+#include <miniupnpc/upnperrors.h>
 #include <natpmp.h>
 #include <sys/select.h>
 #endif
@@ -113,7 +114,8 @@ static void set_external(PortmapStatus *st, const char *text) {
     st->cgnat = portmap_is_cgnat(st->external);
 }
 
-static bool upnp_add(Portmap *pm) {
+/* Returns UPNPCOMMAND_SUCCESS or the router's error code. */
+static int upnp_add(Portmap *pm) {
     char port[8], lease[16];
     snprintf(port, sizeof(port), "%u", pm->port);
     snprintf(lease, sizeof(lease), "%d", PORTMAP_LEASE_S);
@@ -122,13 +124,16 @@ static bool upnp_add(Portmap *pm) {
     if (r == 725) /* OnlyPermanentLeasesSupported */
         r = UPNP_AddPortMapping(pm->urls.controlURL, pm->data.first.servicetype, port, port, pm->lanaddr,
                                 "Tales of Honor", "TCP", NULL, "0");
-    return r == UPNPCOMMAND_SUCCESS;
+    return r;
 }
 
 static bool upnp_map(Portmap *pm, PortmapStatus *st) {
     int err = 0;
     struct UPNPDev *devs = upnpDiscover(DISCOVER_MS, NULL, NULL, 0, 0, 2, &err);
-    if (!devs) return false;
+    if (!devs) {
+        snprintf(st->why, sizeof(st->why), "no UPnP router found");
+        return false;
+    }
     char wanaddr[64] = "";
 #if defined(MINIUPNPC_API_VERSION) && MINIUPNPC_API_VERSION >= 18
     int r = UPNP_GetValidIGD(devs, &pm->urls, &pm->data, pm->lanaddr, sizeof(pm->lanaddr), wanaddr, sizeof(wanaddr));
@@ -137,8 +142,12 @@ static bool upnp_map(Portmap *pm, PortmapStatus *st) {
     if (r == 2) r = 3; /* before API 18, 2 meant "IGD not connected" */
 #endif
     freeUPNPDevlist(devs);
-    if (r <= 0) return false;
+    if (r <= 0) {
+        snprintf(st->why, sizeof(st->why), "no UPnP internet gateway found");
+        return false;
+    }
     if (r != 1 && r != 2) { /* 1: connected IGD, 2: IGD with a private external address */
+        snprintf(st->why, sizeof(st->why), "the UPnP router is not connected to the internet");
         FreeUPNPUrls(&pm->urls);
         return false;
     }
@@ -148,7 +157,13 @@ static bool upnp_map(Portmap *pm, PortmapStatus *st) {
     else if (wanaddr[0])
         set_external(st, wanaddr);
     if (r == 2) st->cgnat = true;
-    if (!upnp_add(pm)) {
+    int add = upnp_add(pm);
+    if (add != UPNPCOMMAND_SUCCESS) {
+        const char *text = strupnperror(add);
+        snprintf(st->why, sizeof(st->why), "the router refused UPnP port mapping (%d %s)", add, text ? text : "");
+        if (add == 606 || add == 403) /* not authorized */
+            st->hint = "The router does not let this computer open ports. Allow it in the router's settings "
+                       "(FRITZ!Box: Internet > Permit Access > this computer > Permit independent port sharing).";
         FreeUPNPUrls(&pm->urls);
         return false;
     }
@@ -197,15 +212,21 @@ static bool natpmp_request(uint16_t port, int lifetime, PortmapStatus *st) {
 static void map_once(Portmap *pm, PortmapStatus *st) {
     memset(st, 0, sizeof(*st));
     if (pm->upnp_ok) { /* renewal */
-        if (upnp_add(pm)) {
+        if (upnp_add(pm) == UPNPCOMMAND_SUCCESS) {
             st->method = "UPnP";
             return;
         }
         FreeUPNPUrls(&pm->urls);
         pm->upnp_ok = false;
     }
-    if (upnp_map(pm, st)) st->method = "UPnP";
-    else if (natpmp_request(pm->port, PORTMAP_LEASE_S, st)) st->method = "NAT-PMP";
+    if (upnp_map(pm, st)) {
+        st->method = "UPnP";
+    } else if (natpmp_request(pm->port, PORTMAP_LEASE_S, st)) {
+        st->method = "NAT-PMP";
+    } else {
+        size_t n = strlen(st->why);
+        snprintf(st->why + n, sizeof(st->why) - n, "%sno NAT-PMP answer", n ? "; " : "");
+    }
 }
 
 static void unmap(Portmap *pm, const PortmapStatus *st) {
