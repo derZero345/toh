@@ -20,18 +20,19 @@ UPnP fails on common routers (e.g. a FRITZ!Box refuses `AddPortMapping` with 403
 
 | Command | Change |
 |---|---|
-| `:host [name]` | Hosts via the relay. Logs `Hosting via relay <host:port>. Join code copied to clipboard.` No port mapping. |
+| `:host [name]` | Hosts via the relay. Logs `Connecting to the relay <host:port>...`, then `Hosting via relay <host:port>. Join code copied to clipboard.` No port mapping. |
 | `:host --direct [name]` | The current behaviour: listen on the port (`--port N`), UPnP / NAT-PMP, address join code. |
 | `:join <code>` | Unchanged for the user. A v1 code connects directly, a v2 code goes through the relay. |
 
 The relay address is compiled in from the Makefile variable `RELAY` (`host:port`, default port 41234). The
-environment variable `TOH_RELAY=host:port` overrides it. If neither is set, `:host` behaves like `:host --direct`.
+environment variable `TOH_RELAY=host:port` overrides it (`TOH_RELAY=` turns the relay off). If neither is set,
+`:host` behaves like `:host --direct`, and `:join` with a relay code says that no relay is set.
 
 ### Log lines and errors
 
 | Situation | Log line |
 |---|---|
-| relay unreachable on `:host` | `Could not reach the relay <host:port>. Use :host --direct to host without it.` (not hosting) |
+| relay unreachable on `:host` (first attempt) | `Could not reach the relay <host:port>. Use :host --direct to host without it.` (not hosting) |
 | room already exists (same secret, practically never) | `The relay refused the room. Try :host again.` |
 | relay full | `The relay is full (too many rooms). Try again later.` |
 | relay lost while hosting | `Lost the relay; players cannot join until it is back. Retrying...` — connected players keep playing |
@@ -84,14 +85,16 @@ magic `"TOHR"` and a `u8` type. Version 1.
 
 - `HOST` → `STATUS`. After OK the control connection only carries `WAITING` and `PING`.
 - `JOIN` → nothing until the GM attaches; then `STATUS OK` and the link. Otherwise `STATUS` with an error and close.
-- `ATTACH` → `STATUS OK` and the link, or an error and close. Tickets are random, single use.
+- `ATTACH` → `STATUS OK` and the link, or an error and close. Tickets are unique (a counter) and single use; the
+  room ID is what only secret holders know.
 - A connection that sends anything else, or no complete first message within 5 s, is closed (`bad request`).
 
 ### 2.4 Relay limits
 
 - 64 rooms, 32 waiting or linked players per room (matches `NET_MAX_CONNS`), 1024 sockets in total.
 - At most 5 `JOIN` per source address per minute (moved from the GM: behind the relay every player has the
-  relay's address). `net.c` skips its own per-address check for relay connections.
+  relay's address); over the limit the answer is `STATUS full`. `net.c` skips its own per-address check for relay
+  connections.
 - A `JOIN` waits at most 10 s for its `ATTACH` (`STATUS timeout`).
 - A room ends when its control connection closes or misses two pings (60 s). Waiting players get `no such room`;
   linked players stay linked (their sockets are independent).
@@ -100,15 +103,18 @@ magic `"TOHR"` and a `u8` type. Version 1.
 
 ### 2.5 GM side (`net.c`)
 
-- New `net_host_relay(relay, secret, wake, ctx, err, errcap)`: connects (IPv6 first, `getaddrinfo`), sends `HOST`,
-  waits for `STATUS` (4 s). On failure returns NULL with the log text from section 1 in `err`.
+- New `net_host_relay(relay, secret, wake, ctx)`: returns at once; the network thread connects (IPv6 first,
+  `getaddrinfo`), sends `HOST` and waits for `STATUS` (4 s). The outcome arrives as a `NET_EV_RELAY` event
+  (`up`, or `end` = why not: `NET_END_UNREACHABLE`, `NET_END_ROOM_TAKEN`, `NET_END_RELAY_FULL`, `NET_END_VERSION`,
+  `NET_END_LOST`). The session stops hosting when the first attempt fails. Connecting to the relay blocks the
+  network thread (at most 4 s per address), which only matters while the relay is down and nobody can play anyway.
 - On `WAITING`: open a new connection to the relay, send `ATTACH`, wait for `STATUS OK`, then treat it as an
   accepted connection with the address from `WAITING` as its log address. A failed attach only drops that player.
-- Control connection lost: report it with a new event `NET_EV_RELAY` (`up = false`), retry `HOST` every 5 s with
-  the same room ID, `NET_EV_RELAY` (`up = true`) when back. If the relay answers "room taken" on a retry (old room
+- Control connection lost (or silent for 70 s): report it with `NET_EV_RELAY` (`up = false`), retry `HOST` every
+  5 s with the same room ID, `NET_EV_RELAY` (`up = true`) when back. Events are sent only when the state changes. If the relay answers "room taken" on a retry (old room
   not expired yet), keep retrying.
-- `net_join` with a v2 code: connect to the relay, send `JOIN`, wait up to 12 s for `STATUS`, then continue as
-  today. Errors end with `NET_EV_CLOSED` and new `NetEnd` values `NET_END_NO_ROOM`, `NET_END_RELAY_FULL`,
+- New `net_join_relay(relay, secret, wake, ctx)` for v2 codes: connect to the relay, send `JOIN`, wait up to 12 s
+  for `STATUS`, then continue as `net_join` does. Errors end with `NET_EV_CLOSED` and new `NetEnd` values `NET_END_NO_ROOM`, `NET_END_RELAY_FULL`,
   `NET_END_TIMEOUT` (reused), `NET_END_VERSION`.
 
 ## 3. Code structure
@@ -118,8 +124,9 @@ magic `"TOHR"` and a `u8` type. Version 1.
 | File | Purpose |
 |---|---|
 | `src/relaymsg.c/.h` | Encode / decode of the relay messages and the room ID helper. Plain C, used by the game and the relay. |
-| `src/relay.c/.h` | The relay: `relay_start(port, limits)` runs a poll loop in a thread, `relay_stop`. POSIX only (no SDL, no libsodium), so tests run it in-process. |
-| `tools/toh-relay.c` | `main`: `--port N` (default 41234), logs to stdout, stops on SIGTERM. |
+| `relay/relay.c/.h` | The relay: `relay_start(limits, log)` runs a poll loop in a thread, `relay_stop`. POSIX only (no SDL, no libsodium), so tests run it in-process. Outside `src/` so the game does not link it. |
+| `relay/main.c` | `main` of `toh-relay`: `--port N` (default 41234), logs to stdout, stops on SIGTERM / SIGINT. |
+| `tests/relay_test.c` | relaymsg and relay tests with raw sockets. |
 | `deploy/relay/compose.yaml` | TrueNAS custom app (see section 4). |
 | `deploy/relay/README.md` | Deployment and FRITZ!Box steps. |
 
@@ -129,17 +136,19 @@ The room ID needs BLAKE2b, so it lives in the game (`netmsg.c`, next to the join
 
 - `netmsg.c/.h`: join code v2, `JoinCode.relay`, `joincode_room_id`.
 - `net.c/.h`: section 2.5.
-- `session.c`: `:host` / `--direct` choice, relay log lines, `NET_EV_RELAY`, new `NetEnd` texts; port mapping only
-  for direct hosting.
-- `main.c`: nothing beyond passing `TOH_RELAY` / the compiled default to the session.
-- `Makefile`: `RELAY ?=` define, `relay` target (static `toh-relay` binary: `-static`, no other libraries).
+- `session.c`: reads `TOH_RELAY` / the compiled default in `session_init`; `:host` / `--direct` choice, relay log
+  lines, `NET_EV_RELAY`, new `NetEnd` texts; port mapping only for direct hosting.
+- `console.c`: `:host [--direct] [name]` and its help text.
+- `Makefile`: `RELAY ?=` define, `relay` target (static `build/toh-relay`: `-static`, no other libraries),
+  `relay_test` in `make test`.
 
 ## 4. Deployment on TrueNAS
 
 - `make relay`, then `scp build/toh-relay` to `/mnt/Main/apps/toh-relay/` on the NAS.
-- Custom app (Apps → Discover → Custom App → YAML) from `deploy/relay/compose.yaml`: image `debian:stable-slim`,
-  bind mount `/mnt/Main/apps/toh-relay:/relay:ro`, command `/relay/toh-relay --port 41234`, port `41234:41234/tcp`
-  (published on IPv4 and IPv6), `restart: unless-stopped`, runs as an unprivileged user.
+- Custom app (Apps → Discover → Install via YAML) from `deploy/relay/compose.yaml`: image `debian:stable-slim`,
+  bind mount `/mnt/Main/apps/toh-relay:/relay:ro`, command `/relay/toh-relay --port 41234`, host networking (a
+  published port would hide the players' IPv6 addresses behind Docker's proxy and break the rate limit),
+  `restart: unless-stopped`, runs as the unprivileged `apps` user (568).
 - Updating: copy the new binary, restart the app.
 - FRITZ!Box, once: Internet → Permit Access → Port Sharing → the NAS → new sharing TCP 41234, IPv4 and IPv6. The
   MyFRITZ! name of the NAS becomes the `RELAY` default.
@@ -155,9 +164,10 @@ The room ID needs BLAKE2b, so it lives in the game (`netmsg.c`, next to the join
 - **Unit (`make test`):** relaymsg round trip and rejection of short / bad messages; join code v2 round trip,
   v1 still decodes; room ID is stable for a secret and differs between secrets.
 - **Integration (`net_test`):** relay thread + GM + two players on loopback: handshake and message exchange through
-  the relay; `JOIN` for an unknown room → `NET_END_NO_ROOM`; GM that never attaches → timeout; relay stopped and
-  restarted → `NET_EV_RELAY` down then up, existing players keep their connection, a new player can join after.
-- **Fuzz (`make fuzz`):** a relaymsg decode target.
+  the relay; `JOIN` for an unknown room → `NET_END_NO_ROOM`; the same secret hosted twice → `NET_END_ROOM_TAKEN`;
+  GM that never attaches → `NET_END_TIMEOUT`; no relay → `NET_END_UNREACHABLE`; relay stopped and restarted →
+  `NET_EV_RELAY` down (linked players are disconnected with it) then up, a new player can join after.
+- **Fuzz (`make fuzz`):** `fuzz_netmsg` also decodes relay messages (first byte picks the parser).
 - **End to end (`tests/e2e_net.sh`):** runs `toh-relay` on a free port and sets `TOH_RELAY` for the GM and the
   players; the existing direct test stays with `--direct`.
 
