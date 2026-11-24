@@ -408,7 +408,8 @@ static JoinCode sample_code(void) {
 }
 
 static bool codes_equal(const JoinCode *a, const JoinCode *b) {
-    if (a->port != b->port || a->naddrs != b->naddrs || memcmp(a->secret, b->secret, NET_SECRET_SIZE)) return false;
+    if (a->relay != b->relay || a->port != b->port || a->naddrs != b->naddrs ||
+        memcmp(a->secret, b->secret, NET_SECRET_SIZE)) return false;
     for (int i = 0; i < a->naddrs; i++) {
         int n = a->addrs[i].family == 4 ? 4 : 16;
         if (a->addrs[i].family != b->addrs[i].family || memcmp(a->addrs[i].addr, b->addrs[i].addr, (size_t)n)) return false;
@@ -481,6 +482,39 @@ static void test_joincode_rejects(void) {
     }
 }
 
+static void test_joincode_relay(void) {
+    JoinCode c = { .relay = true }, d;
+    for (int i = 0; i < NET_SECRET_SIZE; i++) c.secret[i] = (uint8_t)(200 - i);
+    char s[JOINCODE_MAX_LEN];
+    CHECK(joincode_encode(&c, s));
+    CHECK(strncmp(s, "toh1-", 5) == 0 && strlen(s) == 39); /* 17 bytes: 28 characters in 7 groups */
+    CHECK(joincode_decode(s, &d) && d.relay && d.port == 0 && d.naddrs == 0 && codes_equal(&c, &d));
+
+    /* address codes still work and are not relay codes */
+    JoinCode v1 = sample_code();
+    CHECK(joincode_encode(&v1, s) && joincode_decode(s, &d) && !d.relay && codes_equal(&v1, &d));
+
+    /* relay codes carry no port and no addresses */
+    JoinCode bad = c;
+    bad.port = 1;
+    CHECK(!joincode_encode(&bad, s));
+    bad = c;
+    bad.naddrs = 1;
+    bad.addrs[0].family = 4;
+    CHECK(!joincode_encode(&bad, s));
+
+    /* the room ID depends on the secret only, and does not reveal it */
+    uint8_t r1[NET_ROOM_SIZE], r2[NET_ROOM_SIZE], r3[NET_ROOM_SIZE];
+    joincode_room_id(c.secret, r1);
+    joincode_room_id(c.secret, r2);
+    JoinCode other = c;
+    other.secret[0] ^= 1;
+    joincode_room_id(other.secret, r3);
+    CHECK(memcmp(r1, r2, NET_ROOM_SIZE) == 0);
+    CHECK(memcmp(r1, r3, NET_ROOM_SIZE) != 0);
+    CHECK(memcmp(r1, c.secret, NET_ROOM_SIZE) != 0);
+}
+
 /* ---- fuzzer seeds ------------------------------------------------------------------------ */
 
 /* Fuzzer input: first byte 0 = message, 1 = join code (see tests/fuzz_netmsg.c). */
@@ -523,6 +557,7 @@ int main(int argc, char **argv) {
     test_image_hash();
     test_joincode_round_trip();
     test_joincode_rejects();
+    test_joincode_relay();
     if (argc > 1) write_seeds(argv[1]);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;

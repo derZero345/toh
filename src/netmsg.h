@@ -203,6 +203,8 @@ void netmsg_image_hash(const uint8_t *webp, size_t len, uint8_t out[NET_HASH_SIZ
 /* ---- join codes ----------------------------------------------------------------------------- */
 
 #define JOINCODE_VERSION 1
+#define JOINCODE_VERSION_RELAY 2 /* payload: version | secret; players reach the GM through the relay */
+#define NET_ROOM_SIZE          16
 #define JOINCODE_MAX_LEN 320 /* buffer size for joincode_encode, incl. the terminating NUL */
 
 typedef struct {
@@ -215,6 +217,7 @@ typedef struct {
     uint8_t secret[NET_SECRET_SIZE];
     uint8_t naddrs; /* 1..NET_MAX_ADDRS */
     NetAddr addrs[NET_MAX_ADDRS];
+    bool relay; /* version 2: secret only; port and addrs stay 0 */
 } JoinCode;
 
 /* "toh1-" + Crockford base32 in groups of 4 separated by '-'. out needs JOINCODE_MAX_LEN bytes.
@@ -222,5 +225,9 @@ typedef struct {
 bool joincode_encode(const JoinCode *c, char out[JOINCODE_MAX_LEN]);
 /* Accepts any case, ignores '-' after the prefix and reads O as 0 and I / L as 1. */
 bool joincode_decode(const char *s, JoinCode *out);
+
+/* The relay room of a session: BLAKE2b-128 keyed with the secret over "toh-room". Players and the GM
+ * compute it; the relay only ever sees this, never the secret. */
+void joincode_room_id(const uint8_t secret[NET_SECRET_SIZE], uint8_t room[NET_ROOM_SIZE]);
 
 #endif

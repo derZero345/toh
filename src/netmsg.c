@@ -661,6 +661,7 @@ static int b32_value(char c) {
 }
 
 static bool code_ok(const JoinCode *c) {
+    if (c->relay) return c->port == 0 && c->naddrs == 0;
     if (c->port == 0 || c->naddrs < 1 || c->naddrs > NET_MAX_ADDRS) return false;
     for (int i = 0; i < c->naddrs; i++)
         if (c->addrs[i].family != 4 && c->addrs[i].family != 6) return false;
@@ -672,17 +673,23 @@ bool joincode_encode(const JoinCode *c, char out[JOINCODE_MAX_LEN]) {
     if (!code_ok(c)) return false;
     uint8_t p[JOIN_MAX_PAYLOAD];
     size_t n = 0;
-    p[n++] = JOINCODE_VERSION;
-    p[n++] = (uint8_t)c->port;
-    p[n++] = (uint8_t)(c->port >> 8);
-    memcpy(p + n, c->secret, NET_SECRET_SIZE);
-    n += NET_SECRET_SIZE;
-    p[n++] = c->naddrs;
-    for (int i = 0; i < c->naddrs; i++) {
-        size_t alen = c->addrs[i].family == 4 ? 4 : 16;
-        p[n++] = c->addrs[i].family;
-        memcpy(p + n, c->addrs[i].addr, alen);
-        n += alen;
+    if (c->relay) {
+        p[n++] = JOINCODE_VERSION_RELAY;
+        memcpy(p + n, c->secret, NET_SECRET_SIZE);
+        n += NET_SECRET_SIZE;
+    } else {
+        p[n++] = JOINCODE_VERSION;
+        p[n++] = (uint8_t)c->port;
+        p[n++] = (uint8_t)(c->port >> 8);
+        memcpy(p + n, c->secret, NET_SECRET_SIZE);
+        n += NET_SECRET_SIZE;
+        p[n++] = c->naddrs;
+        for (int i = 0; i < c->naddrs; i++) {
+            size_t alen = c->addrs[i].family == 4 ? 4 : 16;
+            p[n++] = c->addrs[i].family;
+            memcpy(p + n, c->addrs[i].addr, alen);
+            n += alen;
+        }
     }
 
     size_t o = 0;
@@ -737,19 +744,30 @@ bool joincode_decode(const char *s, JoinCode *out) {
     if (bits >= 5 || (acc & ((1u << bits) - 1)) != 0) return false;
 
     Rd r = { .p = p, .len = n };
-    if (get_u8(&r) != JOINCODE_VERSION) return false;
-    out->port = get_u16(&r);
-    get_bytes(&r, out->secret, NET_SECRET_SIZE);
-    out->naddrs = get_u8(&r);
-    if (r.bad || out->naddrs < 1 || out->naddrs > NET_MAX_ADDRS) return false;
-    for (int i = 0; i < out->naddrs; i++) {
-        out->addrs[i].family = get_u8(&r);
-        if (out->addrs[i].family != 4 && out->addrs[i].family != 6) return false;
-        get_bytes(&r, out->addrs[i].addr, out->addrs[i].family == 4 ? 4 : 16);
+    uint8_t version = get_u8(&r);
+    if (version == JOINCODE_VERSION_RELAY) {
+        out->relay = true;
+        get_bytes(&r, out->secret, NET_SECRET_SIZE);
+    } else if (version == JOINCODE_VERSION) {
+        out->port = get_u16(&r);
+        get_bytes(&r, out->secret, NET_SECRET_SIZE);
+        out->naddrs = get_u8(&r);
+        if (r.bad || out->naddrs < 1 || out->naddrs > NET_MAX_ADDRS) return false;
+        for (int i = 0; i < out->naddrs; i++) {
+            out->addrs[i].family = get_u8(&r);
+            if (out->addrs[i].family != 4 && out->addrs[i].family != 6) return false;
+            get_bytes(&r, out->addrs[i].addr, out->addrs[i].family == 4 ? 4 : 16);
+        }
+    } else {
+        return false;
     }
     if (r.bad || r.pos != r.len || !code_ok(out)) {
         memset(out, 0, sizeof(*out));
         return false;
     }
     return true;
+}
+
+void joincode_room_id(const uint8_t secret[NET_SECRET_SIZE], uint8_t room[NET_ROOM_SIZE]) {
+    crypto_generichash(room, NET_ROOM_SIZE, (const uint8_t *)"toh-room", 8, secret, NET_SECRET_SIZE);
 }
