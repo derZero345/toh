@@ -893,6 +893,7 @@ static void client_event(NetEvent *ev) {
         else if (ev->end == NET_END_TIMEOUT) console_log("The host did not answer.");
         else if (ev->end == NET_END_VERSION)
             console_log("The relay speaks a different version. Update the game or the relay.");
+        else if (S.code.relay) console_log("The relay closed the connection. Try again.");
         else console_log("The host rejected the join code. Ask the GM for a new one.");
         end_client();
         break;

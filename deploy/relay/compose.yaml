@@ -11,5 +11,11 @@ services:
     user: "568:568"
     read_only: true
     restart: unless-stopped
+    mem_limit: 256m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging: # strangers can make it log; keep at most 30 MB
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     volumes:
       - /mnt/Main/apps/toh-relay:/relay:ro

@@ -31,7 +31,11 @@ Only the server needs one open port.
 
     python3 -c 'import socket,sys; s=socket.create_connection((sys.argv[1],41234),5); s.sendall(b"TOHR\x02\x01"+bytes(16)); print(s.recv(16))' <myfritz-address>
 
-prints `b'TOHR\x04\x02'` (the relay answers "no such room").
+prints `b'TOHR\x04\x02'` (the relay answers "no such room"). Each probe counts as a join: from the sixth
+within a minute it prints `b'TOHR\x04\x03'` (full) instead.
+
+If the router has no public IPv4 address (DS-Lite / carrier-grade NAT, `100.64.x.x`), IPv4 port sharing does
+not work and players with IPv4-only internet cannot reach the relay.
 
 ## Update
 

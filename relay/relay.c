@@ -143,6 +143,7 @@ static Sock *sock_new(Relay *r, int fd, const char *addr, const char *key) {
     snprintf(s->key, sizeof(s->key), "%s", key);
     int one = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+    setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof(one)); /* links whose ends vanished get closed */
     set_nonblocking(fd);
     r->socks[r->nsocks++] = s;
     return s;

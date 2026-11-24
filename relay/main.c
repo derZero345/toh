@@ -11,8 +11,9 @@ int main(int argc, char **argv) {
     relay_default_limits(&lim);
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--port") && i + 1 < argc) {
-            int port = atoi(argv[++i]);
-            if (port < 1 || port > 65535) {
+            char *end;
+            long port = strtol(argv[++i], &end, 10);
+            if (*end || port < 1 || port > 65535) {
                 fprintf(stderr, "--port: expected 1..65535\n");
                 return 2;
             }
