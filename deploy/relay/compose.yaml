@@ -1,0 +1,15 @@
+# TrueNAS custom app for toh-relay (Apps -> Discover Apps -> Install via YAML, name "toh-relay").
+# The binary comes from `make relay` and lives in /mnt/Main/apps/toh-relay on the NAS (change the
+# path if your pool is not called Main).
+# Host networking: the relay sees the players' real IPv4 and IPv6 addresses (rate limit, logs);
+# a published port would hide IPv6 players behind Docker's proxy.
+services:
+  toh-relay:
+    image: debian:stable-slim
+    command: ["/relay/toh-relay", "--port", "41234"]
+    network_mode: host
+    user: "568:568"
+    read_only: true
+    restart: unless-stopped
+    volumes:
+      - /mnt/Main/apps/toh-relay:/relay:ro
