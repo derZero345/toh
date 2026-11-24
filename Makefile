@@ -82,8 +82,11 @@ build/net_test: tests/net_test.c src/net.c src/net.h $(NETMSG_SRC) $(NETMSG_HDR)
 build/core_test: tests/core_test.c tests/core_stubs.c $(CORE_SRC) $(wildcard src/*.h) | build
 	$(CC) $(TOH_CFLAGS) $(CFLAGS) -Isrc -o $@ tests/core_test.c tests/core_stubs.c $(CORE_SRC) $(CORE_LIBS)
 
-build/relay_test: tests/relay_test.c src/relaymsg.c src/relaymsg.h | build
-	$(CC) $(TEST_CFLAGS) $(CFLAGS) -pthread -o $@ tests/relay_test.c src/relaymsg.c
+RELAY_SRC := relay/relay.c src/relaymsg.c
+RELAY_HDR := relay/relay.h src/relaymsg.h
+
+build/relay_test: tests/relay_test.c $(RELAY_SRC) $(RELAY_HDR) | build
+	$(CC) $(TEST_CFLAGS) $(CFLAGS) -Irelay -pthread -o $@ tests/relay_test.c $(RELAY_SRC)
 
 test: build/save_test build/core_test build/netmsg_test build/net_test build/relay_test
 	./build/save_test

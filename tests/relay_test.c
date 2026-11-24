@@ -1,10 +1,16 @@
-/* Tests for src/relaymsg.c (and, from task 3 on, relay/relay.c with raw sockets on localhost).
- * Run with `make test`. */
+/* Tests for src/relaymsg.c and relay/relay.c (raw sockets on localhost). Run with `make test`. */
+#include "relay.h"
 #include "relaymsg.h"
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <poll.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 static int failures, checks;
 
@@ -121,11 +127,314 @@ static void test_parse_addr(void) {
     CHECK(!relay_parse_addr("averyverylonghostname", host, 8, &port));
 }
 
+/* ---- the relay, with raw sockets ------------------------------------------------------------ */
+
+static int dial(uint16_t port) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in sa = { .sin_family = AF_INET, .sin_port = htons(port) };
+    sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    if (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) != 0) {
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+static void put(int fd, const RelayMsg *m) {
+    uint8_t buf[RELAY_MSG_MAX];
+    size_t n = relaymsg_encode(m, buf);
+    CHECK(n > 0 && send(fd, buf, n, MSG_NOSIGNAL) == (ssize_t)n);
+}
+
+/* Reads one message, byte by byte so nothing behind it is consumed. */
+static bool get(int fd, RelayMsg *m, int ms) {
+    uint8_t buf[RELAY_MSG_MAX];
+    size_t n = 0;
+    while (n < sizeof(buf)) {
+        struct pollfd pf = { .fd = fd, .events = POLLIN };
+        if (poll(&pf, 1, ms) <= 0 || recv(fd, buf + n, 1, 0) != 1) return false;
+        int r = relaymsg_decode(buf, ++n, m);
+        if (r > 0) return true;
+        if (r < 0) return false;
+    }
+    return false;
+}
+
+static bool get_status(int fd, int status, int ms) {
+    RelayMsg m;
+    return get(fd, &m, ms) && m.type == RM_STATUS && m.status == status;
+}
+
+/* The relay closed fd within ms (whatever it still sent is skipped). */
+static bool closed(int fd, int ms) {
+    uint8_t b[256];
+    for (;;) {
+        struct pollfd pf = { .fd = fd, .events = POLLIN };
+        if (poll(&pf, 1, ms) <= 0) return false;
+        if (recv(fd, b, sizeof(b), 0) <= 0) return true;
+    }
+}
+
+static bool recv_exact(int fd, void *p, size_t n, int ms) {
+    size_t got = 0;
+    while (got < n) {
+        struct pollfd pf = { .fd = fd, .events = POLLIN };
+        if (poll(&pf, 1, ms) <= 0) return false;
+        ssize_t r = recv(fd, (char *)p + got, n - got, 0);
+        if (r <= 0) return false;
+        got += (size_t)r;
+    }
+    return true;
+}
+
+typedef struct {
+    int fd;
+    const uint8_t *p;
+    size_t n;
+} SendJob;
+
+static void *send_all(void *arg) {
+    SendJob *j = arg;
+    size_t off = 0;
+    while (off < j->n) {
+        ssize_t w = send(j->fd, j->p + off, j->n - off, MSG_NOSIGNAL);
+        if (w <= 0) break;
+        off += (size_t)w;
+    }
+    return NULL;
+}
+
+static RelayMsg room_msg(int type, uint8_t id) {
+    RelayMsg m = { .type = (uint8_t)type, .version = RELAY_VERSION };
+    memset(m.room, id, RELAY_ROOM_SIZE);
+    return m;
+}
+
+static Relay *start(RelayLimits *l) {
+    char err[128];
+    l->port = 0;
+    Relay *r = relay_start(l, NULL, err, sizeof(err));
+    if (!r) fprintf(stderr, "relay_start: %s\n", err);
+    CHECK(r != NULL);
+    return r;
+}
+
+static void test_link(void) {
+    RelayLimits l;
+    relay_default_limits(&l);
+    Relay *r = start(&l);
+    if (!r) return;
+    uint16_t port = relay_port(r);
+
+    int gm = dial(port);
+    RelayMsg host = room_msg(RM_HOST, 1);
+    put(gm, &host);
+    CHECK(get_status(gm, RS_OK, 2000));
+
+    int pl = dial(port);
+    RelayMsg join = room_msg(RM_JOIN, 1), w;
+    put(pl, &join);
+    CHECK(get(gm, &w, 2000) && w.type == RM_WAITING && w.ticket != 0 && strcmp(w.addr, "127.0.0.1") == 0);
+
+    int at = dial(port);
+    RelayMsg attach = room_msg(RM_ATTACH, 1);
+    attach.ticket = w.ticket;
+    put(at, &attach);
+    CHECK(get_status(at, RS_OK, 2000));
+    CHECK(get_status(pl, RS_OK, 2000));
+
+    /* bytes pass both ways, unchanged */
+    char buf[8] = { 0 };
+    CHECK(send(pl, "hello", 5, 0) == 5 && recv_exact(at, buf, 5, 2000) && memcmp(buf, "hello", 5) == 0);
+    CHECK(send(at, "world", 5, 0) == 5 && recv_exact(pl, buf, 5, 2000) && memcmp(buf, "world", 5) == 0);
+
+    /* more than the relay buffers (1 MiB) arrives complete */
+    size_t big = 3u << 20;
+    uint8_t *data = malloc(big), *got = malloc(big);
+    for (size_t i = 0; i < big; i++) data[i] = (uint8_t)(i * 13 + 5);
+    SendJob job = { at, data, big };
+    pthread_t t;
+    pthread_create(&t, NULL, send_all, &job);
+    CHECK(recv_exact(pl, got, big, 5000) && memcmp(got, data, big) == 0);
+    pthread_join(t, NULL);
+    free(data);
+    free(got);
+
+    /* when one side closes, the other is closed too */
+    close(at);
+    CHECK(closed(pl, 2000));
+    close(pl);
+    close(gm);
+    relay_stop(r);
+}
+
+static void test_refusals(void) {
+    RelayLimits l;
+    relay_default_limits(&l);
+    l.first_msg_ms = 200;
+    Relay *r = start(&l);
+    if (!r) return;
+    uint16_t port = relay_port(r);
+
+    int gm = dial(port);
+    RelayMsg host = room_msg(RM_HOST, 1);
+    put(gm, &host);
+    CHECK(get_status(gm, RS_OK, 2000));
+
+    int fd = dial(port); /* the same room twice */
+    put(fd, &host);
+    CHECK(get_status(fd, RS_ROOM_TAKEN, 2000) && closed(fd, 2000));
+    close(fd);
+
+    fd = dial(port); /* a room nobody hosts */
+    RelayMsg join = room_msg(RM_JOIN, 2);
+    put(fd, &join);
+    CHECK(get_status(fd, RS_NO_ROOM, 2000) && closed(fd, 2000));
+    close(fd);
+
+    fd = dial(port); /* an attach without a waiting player */
+    RelayMsg attach = room_msg(RM_ATTACH, 1);
+    attach.ticket = 12345;
+    put(fd, &attach);
+    CHECK(get_status(fd, RS_NO_ROOM, 2000) && closed(fd, 2000));
+    close(fd);
+
+    fd = dial(port); /* another protocol version */
+    RelayMsg newer = room_msg(RM_JOIN, 1);
+    newer.version = RELAY_VERSION + 1;
+    put(fd, &newer);
+    CHECK(get_status(fd, RS_BAD_VERSION, 2000) && closed(fd, 2000));
+    close(fd);
+
+    fd = dial(port); /* not our protocol at all */
+    CHECK(send(fd, "GET / HTTP/1.1\r\n\r\n", 18, 0) == 18);
+    CHECK(get_status(fd, RS_BAD_REQUEST, 2000) && closed(fd, 2000));
+    close(fd);
+
+    fd = dial(port); /* a STATUS is not a request */
+    RelayMsg st = { .type = RM_STATUS, .status = RS_OK };
+    put(fd, &st);
+    CHECK(get_status(fd, RS_BAD_REQUEST, 2000) && closed(fd, 2000));
+    close(fd);
+
+    fd = dial(port); /* silence */
+    CHECK(get_status(fd, RS_BAD_REQUEST, 1000) && closed(fd, 1000));
+    close(fd);
+
+    close(gm);
+    relay_stop(r);
+}
+
+static void test_limits(void) {
+    RelayLimits l;
+    relay_default_limits(&l);
+    l.max_rooms = 1;
+    l.max_players = 1;
+    l.attach_ms = 200;
+    Relay *r = start(&l);
+    if (!r) return;
+    uint16_t port = relay_port(r);
+
+    int gm = dial(port);
+    RelayMsg host = room_msg(RM_HOST, 1);
+    put(gm, &host);
+    CHECK(get_status(gm, RS_OK, 2000));
+
+    int fd = dial(port); /* a second room */
+    RelayMsg host2 = room_msg(RM_HOST, 2);
+    put(fd, &host2);
+    CHECK(get_status(fd, RS_FULL, 2000) && closed(fd, 2000));
+    close(fd);
+
+    /* player 1 waits; player 2 finds the room full; player 1 times out (the GM never attaches) */
+    RelayMsg join = room_msg(RM_JOIN, 1), w;
+    int p1 = dial(port);
+    put(p1, &join);
+    CHECK(get(gm, &w, 2000) && w.type == RM_WAITING);
+    int p2 = dial(port);
+    put(p2, &join);
+    CHECK(get_status(p2, RS_FULL, 2000) && closed(p2, 2000));
+    close(p2);
+    CHECK(get_status(p1, RS_TIMEOUT, 2000) && closed(p1, 2000));
+    close(p1);
+
+    /* the slot is free again; when the GM goes, the waiting player hears that the room is gone */
+    int p3 = dial(port);
+    put(p3, &join);
+    CHECK(get(gm, &w, 2000) && w.type == RM_WAITING);
+    close(gm);
+    CHECK(get_status(p3, RS_NO_ROOM, 2000));
+    close(p3);
+    relay_stop(r);
+}
+
+static void test_rate(void) {
+    RelayLimits l;
+    relay_default_limits(&l);
+    l.joins_per_min = 2;
+    Relay *r = start(&l);
+    if (!r) return;
+    uint16_t port = relay_port(r);
+
+    int gm = dial(port);
+    RelayMsg host = room_msg(RM_HOST, 1), join = room_msg(RM_JOIN, 1), w;
+    put(gm, &host);
+    CHECK(get_status(gm, RS_OK, 2000));
+    int p[3];
+    for (int i = 0; i < 2; i++) {
+        p[i] = dial(port);
+        put(p[i], &join);
+        CHECK(get(gm, &w, 2000) && w.type == RM_WAITING);
+    }
+    p[2] = dial(port); /* the room has space, but this address joined twice this minute */
+    put(p[2], &join);
+    CHECK(get_status(p[2], RS_FULL, 2000));
+    for (int i = 0; i < 3; i++) close(p[i]);
+    close(gm);
+    relay_stop(r);
+}
+
+static void test_ping(void) {
+    RelayLimits l;
+    relay_default_limits(&l);
+    l.ping_ms = 100;
+    Relay *r = start(&l);
+    if (!r) return;
+    uint16_t port = relay_port(r);
+
+    int gm = dial(port);
+    RelayMsg host = room_msg(RM_HOST, 1), m;
+    put(gm, &host);
+    CHECK(get_status(gm, RS_OK, 2000));
+    /* answered pings keep the room */
+    for (int i = 0; i < 5; i++) {
+        CHECK(get(gm, &m, 1000) && m.type == RM_PING);
+        put(gm, &m);
+    }
+    int fd = dial(port);
+    put(fd, &host);
+    CHECK(get_status(fd, RS_ROOM_TAKEN, 2000));
+    close(fd);
+    /* a GM that stops answering loses it */
+    CHECK(closed(gm, 2000));
+    close(gm);
+    fd = dial(port);
+    put(fd, &host);
+    CHECK(get_status(fd, RS_OK, 2000));
+    close(fd);
+    relay_stop(r);
+}
+
 int main(void) {
     test_round_trip();
     test_wire_bytes();
     test_rejects();
     test_parse_addr();
+    test_link();
+    test_refusals();
+    test_limits();
+    test_rate();
+    test_ping();
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
 }
