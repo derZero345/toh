@@ -3,10 +3,12 @@
 # path if your pool is not called Main).
 # Host networking: the relay sees the players' real IPv4 and IPv6 addresses (rate limit, logs);
 # a published port would hide IPv6 players behind Docker's proxy.
+# Port 1520: the provider shares its IPv4 address and leaves this line only ports 1516-1535;
+# IPv4 and IPv6 must use the same port because the game connects to one host:port.
 services:
   toh-relay:
     image: debian:stable-slim
-    command: ["/relay/toh-relay", "--port", "41234"]
+    command: ["/relay/toh-relay", "--port", "1520"]
     network_mode: host
     user: "568:568"
     read_only: true

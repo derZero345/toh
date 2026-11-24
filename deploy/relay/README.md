@@ -19,19 +19,23 @@ Only the server needs one open port.
        ssh <user>@<nas> 'chmod 755 /mnt/Main/toh-relay/toh-relay'
 
 2. TrueNAS: Apps -> Discover Apps -> Install via YAML, name `toh-relay`, paste `compose.yaml`.
-   The app log shows `listening on port 41234`.
+   The app log shows `listening on port 1520`.
 
 3. Router (FRITZ!Box): Internet -> Permit Access -> Port Sharing -> Add Device for Sharing -> the NAS ->
-   New Sharing -> Port Sharing, protocol TCP, port 41234 to 41234, with both IPv4 and IPv6 enabled.
+   New Sharing -> Port Sharing, protocol TCP, port 1520 to 1520, with both IPv4 and IPv6 enabled.
    Note the MyFRITZ! address the box shows for the NAS (`<nas>.<id>.myfritz.net`): it follows a changing
    IP address.
 
-4. Build the game with that address: `make clean && make RELAY=<myfritz-address>:41234`.
-   Or set it per run: `TOH_RELAY=<myfritz-address>:41234 ./toh`.
+4. Build the game with that address: `make clean && make RELAY=<myfritz-address>:1520`.
+   Or set it per run: `TOH_RELAY=<myfritz-address>:1520 ./toh`.
+
+Port 1520: some providers share one IPv4 address between customers and give each line only a port range
+(here 1516-1535). Use a port in that range for both IPv4 and IPv6 sharing and for `--port` in `compose.yaml`;
+the game connects to one host:port, so both must be the same.
 
 ## Check from outside
 
-    python3 -c 'import socket,sys; s=socket.create_connection((sys.argv[1],41234),5); s.sendall(b"TOHR\x02\x01"+bytes(16)); print(s.recv(16))' <myfritz-address>
+    python3 -c 'import socket,sys; s=socket.create_connection((sys.argv[1],1520),5); s.sendall(b"TOHR\x02\x01"+bytes(16)); print(s.recv(16))' <myfritz-address>
 
 prints `b'TOHR\x04\x02'` (the relay answers "no such room"). Each probe counts as a join: from the 21st
 within a minute it prints `b'TOHR\x04\x03'` (full) instead.
