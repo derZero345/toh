@@ -12,9 +12,11 @@ Only the server needs one open port.
 
 1. Copy the binary to the NAS (replace `<user>@<nas>`):
 
-       ssh <user>@<nas> 'mkdir -p /mnt/Main/apps/toh-relay'
-       scp build/toh-relay <user>@<nas>:/mnt/Main/apps/toh-relay/toh-relay
-       ssh <user>@<nas> 'chmod 755 /mnt/Main/apps/toh-relay/toh-relay'
+       # once: a dataset Main/toh-relay owned by you, mode 755 (TrueNAS UI: Datasets -> Add Dataset;
+       # or: midclt call pool.dataset.create '{"name": "Main/toh-relay"}' and
+       #     midclt call --job filesystem.setperm '{"path": "/mnt/Main/toh-relay", "uid": <uid>, "gid": <gid>, "mode": "755"}')
+       scp build/toh-relay <user>@<nas>:/mnt/Main/toh-relay/toh-relay
+       ssh <user>@<nas> 'chmod 755 /mnt/Main/toh-relay/toh-relay'
 
 2. TrueNAS: Apps -> Discover Apps -> Install via YAML, name `toh-relay`, paste `compose.yaml`.
    The app log shows `listening on port 41234`.
@@ -40,7 +42,7 @@ not work and players with IPv4-only internet cannot reach the relay.
 ## Update
 
     make relay
-    scp build/toh-relay <user>@<nas>:/mnt/Main/apps/toh-relay/toh-relay.new
-    ssh <user>@<nas> 'mv /mnt/Main/apps/toh-relay/toh-relay.new /mnt/Main/apps/toh-relay/toh-relay'
+    scp build/toh-relay <user>@<nas>:/mnt/Main/toh-relay/toh-relay.new
+    ssh <user>@<nas> 'mv /mnt/Main/toh-relay/toh-relay.new /mnt/Main/toh-relay/toh-relay'
 
 then restart the app (Apps -> toh-relay -> Restart). Copying to a new name first avoids "text file busy".

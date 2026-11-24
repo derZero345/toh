@@ -150,9 +150,9 @@ The room ID needs BLAKE2b, so it lives in the game (`netmsg.c`, next to the join
 
 ## 4. Deployment on TrueNAS
 
-- `make relay`, then `scp build/toh-relay` to `/mnt/Main/apps/toh-relay/` on the NAS.
+- `make relay`, then `scp build/toh-relay` to `/mnt/Main/toh-relay/` on the NAS.
 - Custom app (Apps → Discover → Install via YAML) from `deploy/relay/compose.yaml`: image `debian:stable-slim`,
-  bind mount `/mnt/Main/apps/toh-relay:/relay:ro`, command `/relay/toh-relay --port 41234`, host networking (a
+  bind mount `/mnt/Main/toh-relay:/relay:ro`, command `/relay/toh-relay --port 41234`, host networking (a
   published port would hide the players' IPv6 addresses behind Docker's proxy and break the rate limit),
   `restart: unless-stopped`, runs as the unprivileged `apps` user (568).
 - Updating: copy the new binary, restart the app.
