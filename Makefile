@@ -72,18 +72,17 @@ build/save_test: tests/save_test.c src/savefmt.c src/savefmt.h src/wire.h | buil
 
 NETMSG_SRC  := src/netmsg.c src/savefmt.c
 NETMSG_HDR  := src/netmsg.h src/savefmt.h src/wire.h
+RELAY_SRC   := relay/relay.c src/relaymsg.c
+RELAY_HDR   := relay/relay.h src/relaymsg.h
 
 build/netmsg_test: tests/netmsg_test.c $(NETMSG_SRC) $(NETMSG_HDR) | build
 	$(CC) $(TEST_CFLAGS) $(CFLAGS) -o $@ tests/netmsg_test.c $(NETMSG_SRC) $(TEST_LIBS)
 
-build/net_test: tests/net_test.c src/net.c src/net.h $(NETMSG_SRC) $(NETMSG_HDR) | build
-	$(CC) $(TEST_CFLAGS) $(CFLAGS) -pthread -o $@ tests/net_test.c src/net.c $(NETMSG_SRC) $(TEST_LIBS)
+build/net_test: tests/net_test.c src/net.c src/net.h $(NETMSG_SRC) $(NETMSG_HDR) $(RELAY_SRC) $(RELAY_HDR) | build
+	$(CC) $(TEST_CFLAGS) $(CFLAGS) -Irelay -pthread -o $@ tests/net_test.c src/net.c $(NETMSG_SRC) $(RELAY_SRC) $(TEST_LIBS)
 
 build/core_test: tests/core_test.c tests/core_stubs.c $(CORE_SRC) $(wildcard src/*.h) | build
 	$(CC) $(TOH_CFLAGS) $(CFLAGS) -Isrc -o $@ tests/core_test.c tests/core_stubs.c $(CORE_SRC) $(CORE_LIBS)
-
-RELAY_SRC := relay/relay.c src/relaymsg.c
-RELAY_HDR := relay/relay.h src/relaymsg.h
 
 build/relay_test: tests/relay_test.c $(RELAY_SRC) $(RELAY_HDR) | build
 	$(CC) $(TEST_CFLAGS) $(CFLAGS) -Irelay -pthread -o $@ tests/relay_test.c $(RELAY_SRC)

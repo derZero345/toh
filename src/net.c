@@ -1,9 +1,11 @@
 /* Network thread: sockets, handshake, encryption, queues. See net.h. */
 #include "net.h"
+#include "relaymsg.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <poll.h>
@@ -24,6 +26,8 @@
 #define STOP_FLUSH_MS  1000
 #define RATE_SLOTS     64
 
+_Static_assert(NET_ROOM_SIZE == RELAY_ROOM_SIZE, "room IDs must have the same size");
+
 static const char GREETING_MAGIC[4] = { 'T', 'O', 'H', '1' };
 
 typedef struct {
@@ -31,7 +35,8 @@ typedef struct {
     size_t len, cap, pos; /* pos: bytes already consumed (in) or written (out) */
 } Bytes;
 
-enum { CS_GREET, CS_HEADER, CS_OPEN };
+enum { CS_GREET, CS_HEADER, CS_OPEN, CS_RELAY }; /* CS_RELAY: waiting for the relay's STATUS */
+enum { CTL_DOWN, CTL_HELLO, CTL_UP };             /* host: the control connection to the relay */
 
 typedef struct {
     int id, fd, state;
@@ -84,6 +89,19 @@ struct Net {
     Conn *conns[NET_MAX_CONNS];
     int nconns, next_id;
     RateSlot rate[RATE_SLOTS];
+
+    /* relay (network thread only, except relay / relay_addr / room set before the thread starts) */
+    bool relay;
+    char relay_addr[NET_RELAY_ADDR_MAX];
+    uint8_t room[RELAY_ROOM_SIZE];
+    struct sockaddr_storage relay_sa; /* host: the address the control connection reached */
+    socklen_t relay_sl;
+    int cfd, cstate;                  /* host: control connection (-1 = none), CTL_* */
+    uint8_t cin[RELAY_MSG_MAX];
+    size_t cin_len;
+    Bytes cout;
+    uint64_t cdeadline, cretry, clast_rx;
+    bool relay_reported, relay_up;    /* the last NET_EV_RELAY */
 };
 
 static uint64_t now_ms(void) {
@@ -127,6 +145,23 @@ static bool bytes_append(Bytes *b, const void *src, size_t len) {
 }
 
 static size_t bytes_pending(const Bytes *b) { return b->len - b->pos; }
+
+static bool queue_relay(Bytes *b, const RelayMsg *m) {
+    uint8_t buf[RELAY_MSG_MAX];
+    size_t n = relaymsg_encode(m, buf);
+    return n && bytes_append(b, buf, n);
+}
+
+static NetEnd status_end(uint8_t status) {
+    switch (status) {
+    case RS_NO_ROOM:     return NET_END_NO_ROOM;
+    case RS_FULL:        return NET_END_RELAY_FULL;
+    case RS_TIMEOUT:     return NET_END_TIMEOUT;
+    case RS_BAD_VERSION: return NET_END_VERSION;
+    case RS_ROOM_TAKEN:  return NET_END_ROOM_TAKEN;
+    default:             return NET_END_BAD_DATA;
+    }
+}
 
 /* ---- events (network thread -> main thread) --------------------------------------------------- */
 
@@ -271,6 +306,28 @@ static bool process_input(Net *n, Conn *c) {
     for (;;) {
         const uint8_t *p = c->in.p + c->in.pos;
         size_t avail = bytes_pending(&c->in);
+        if (c->state == CS_RELAY) { /* the relay answers JOIN / ATTACH before the peer speaks */
+            RelayMsg m;
+            int used = relaymsg_decode(p, avail, &m);
+            if (used == 0) return true;
+            if (used < 0 || m.type != RM_STATUS) {
+                conn_end(n, c, NET_END_BAD_DATA);
+                return false;
+            }
+            if (m.status != RS_OK) {
+                conn_end(n, c, status_end(m.status));
+                return false;
+            }
+            c->in.pos += (size_t)used;
+            c->state = CS_GREET;
+            if (n->host) {
+                c->deadline = now_ms() + NET_HELLO_TIMEOUT_MS;
+            } else {
+                c->deadline = 0;
+                queue_greeting(c);
+            }
+            continue;
+        }
         if (c->state == CS_GREET) {
             if (avail < GREETING_LEN) return true;
             if (memcmp(p, GREETING_MAGIC, 4) != 0) {
@@ -439,28 +496,12 @@ static bool stop_requested(Net *n) {
     return s;
 }
 
-/* Tries one address; returns the connected socket or -1. */
-static int try_connect(Net *n, const NetAddr *a, uint16_t port) {
-    struct sockaddr_storage ss;
-    memset(&ss, 0, sizeof(ss));
-    socklen_t sl;
-    if (a->family == 4) {
-        struct sockaddr_in *s4 = (struct sockaddr_in *)&ss;
-        s4->sin_family = AF_INET;
-        s4->sin_port = htons(port);
-        memcpy(&s4->sin_addr, a->addr, 4);
-        sl = sizeof(*s4);
-    } else {
-        struct sockaddr_in6 *s6 = (struct sockaddr_in6 *)&ss;
-        s6->sin6_family = AF_INET6;
-        s6->sin6_port = htons(port);
-        memcpy(&s6->sin6_addr, a->addr, 16);
-        sl = sizeof(*s6);
-    }
-    int fd = socket(ss.ss_family, SOCK_STREAM, 0);
+/* Tries one address; returns the connected (non-blocking) socket or -1. */
+static int try_connect_sa(Net *n, const struct sockaddr_storage *ss, socklen_t sl) {
+    int fd = socket(ss->ss_family, SOCK_STREAM, 0);
     if (fd < 0) return -1;
     set_nonblocking(fd);
-    if (connect(fd, (struct sockaddr *)&ss, sl) == 0) return fd;
+    if (connect(fd, (const struct sockaddr *)ss, sl) == 0) return fd;
     if (errno != EINPROGRESS) {
         close(fd);
         return -1;
@@ -487,7 +528,69 @@ static int try_connect(Net *n, const NetAddr *a, uint16_t port) {
     return -1;
 }
 
+static int try_connect(Net *n, const NetAddr *a, uint16_t port) {
+    struct sockaddr_storage ss;
+    memset(&ss, 0, sizeof(ss));
+    socklen_t sl;
+    if (a->family == 4) {
+        struct sockaddr_in *s4 = (struct sockaddr_in *)&ss;
+        s4->sin_family = AF_INET;
+        s4->sin_port = htons(port);
+        memcpy(&s4->sin_addr, a->addr, 4);
+        sl = sizeof(*s4);
+    } else {
+        struct sockaddr_in6 *s6 = (struct sockaddr_in6 *)&ss;
+        s6->sin6_family = AF_INET6;
+        s6->sin6_port = htons(port);
+        memcpy(&s6->sin6_addr, a->addr, 16);
+        sl = sizeof(*s6);
+    }
+    return try_connect_sa(n, &ss, sl);
+}
+
+/* Connects to the first relay address that answers (IPv6 first). Returns the socket or -1;
+ * sa / sl (may be NULL) get the address. */
+static int relay_connect(Net *n, struct sockaddr_storage *sa, socklen_t *sl) {
+    char host[NET_RELAY_ADDR_MAX], port[8];
+    uint16_t p;
+    if (!relay_parse_addr(n->relay_addr, host, sizeof(host), &p)) return -1;
+    snprintf(port, sizeof(port), "%u", p);
+    struct addrinfo hints = { .ai_socktype = SOCK_STREAM }, *res;
+    if (getaddrinfo(host, port, &hints, &res) != 0) return -1;
+    int fd = -1;
+    for (int pass = 0; pass < 2 && fd < 0; pass++) {
+        for (struct addrinfo *a = res; a && fd < 0 && !stop_requested(n); a = a->ai_next) {
+            if (a->ai_family != (pass == 0 ? AF_INET6 : AF_INET)) continue;
+            struct sockaddr_storage ss;
+            memset(&ss, 0, sizeof(ss));
+            memcpy(&ss, a->ai_addr, a->ai_addrlen);
+            fd = try_connect_sa(n, &ss, a->ai_addrlen);
+            if (fd >= 0 && sa) {
+                *sa = ss;
+                *sl = a->ai_addrlen;
+            }
+        }
+    }
+    freeaddrinfo(res);
+    return fd;
+}
+
 static bool client_connect(Net *n) {
+    if (n->relay) {
+        int fd = relay_connect(n, NULL, NULL);
+        if (fd < 0) return false;
+        Conn *c = conn_new(n, fd, n->relay_addr);
+        if (!c) {
+            close(fd);
+            return false;
+        }
+        c->state = CS_RELAY;
+        c->deadline = now_ms() + NET_RELAY_JOIN_MS;
+        RelayMsg m = { .type = RM_JOIN, .version = RELAY_VERSION };
+        memcpy(m.room, n->room, RELAY_ROOM_SIZE);
+        queue_relay(&c->out, &m);
+        return true;
+    }
     for (int pass = 0; pass < 2; pass++) { /* IPv6 first */
         for (int i = 0; i < n->code.naddrs; i++) {
             const NetAddr *a = &n->code.addrs[i];
@@ -507,6 +610,136 @@ static bool client_connect(Net *n) {
         }
     }
     return false;
+}
+
+/* ---- host: the control connection to the relay ------------------------------------------------- */
+
+static void relay_report(Net *n, bool up, NetEnd end) {
+    if (n->relay_reported && n->relay_up == up) return;
+    n->relay_reported = true;
+    n->relay_up = up;
+    NetEvent ev = { .type = NET_EV_RELAY, .up = up, .end = end };
+    snprintf(ev.addr, sizeof(ev.addr), "%.*s", (int)sizeof(ev.addr) - 1, n->relay_addr); /* may be cut */
+    push_event(n, &ev);
+}
+
+static void ctl_down(Net *n, NetEnd end) {
+    if (n->cfd >= 0) close(n->cfd);
+    n->cfd = -1;
+    n->cstate = CTL_DOWN;
+    n->cin_len = 0;
+    n->cout.len = n->cout.pos = 0;
+    n->cretry = now_ms() + NET_RELAY_RETRY_MS;
+    relay_report(n, false, end);
+}
+
+static void ctl_connect(Net *n) {
+    int fd = relay_connect(n, &n->relay_sa, &n->relay_sl);
+    if (fd < 0) {
+        ctl_down(n, NET_END_UNREACHABLE);
+        return;
+    }
+    int one = 1;
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+    n->cfd = fd;
+    n->cstate = CTL_HELLO;
+    n->cdeadline = now_ms() + NET_CONNECT_TIMEOUT_MS;
+    n->clast_rx = now_ms();
+    RelayMsg m = { .type = RM_HOST, .version = RELAY_VERSION };
+    memcpy(m.room, n->room, RELAY_ROOM_SIZE);
+    queue_relay(&n->cout, &m);
+}
+
+/* A player waits at the relay: open a connection for them. A failure only loses that player. */
+static void ctl_attach(Net *n, const RelayMsg *w) {
+    if (n->nconns >= NET_MAX_CONNS) return; /* the relay times the player out */
+    int fd = try_connect_sa(n, &n->relay_sa, n->relay_sl);
+    if (fd < 0) return;
+    Conn *c = conn_new(n, fd, w->addr);
+    if (!c) {
+        close(fd);
+        return;
+    }
+    c->state = CS_RELAY;
+    c->deadline = now_ms() + NET_CONNECT_TIMEOUT_MS;
+    RelayMsg m = { .type = RM_ATTACH, .version = RELAY_VERSION, .ticket = w->ticket };
+    memcpy(m.room, n->room, RELAY_ROOM_SIZE);
+    queue_relay(&c->out, &m);
+}
+
+static void ctl_read(Net *n) {
+    for (;;) {
+        ssize_t r = recv(n->cfd, n->cin + n->cin_len, sizeof(n->cin) - n->cin_len, 0);
+        if (r < 0 && errno == EINTR) continue;
+        if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return;
+        if (r <= 0) {
+            ctl_down(n, NET_END_LOST);
+            return;
+        }
+        n->cin_len += (size_t)r;
+        n->clast_rx = now_ms();
+        for (;;) {
+            RelayMsg m;
+            int used = relaymsg_decode(n->cin, n->cin_len, &m);
+            if (used == 0 && n->cin_len < sizeof(n->cin)) break;
+            if (used <= 0) {
+                ctl_down(n, NET_END_BAD_DATA);
+                return;
+            }
+            memmove(n->cin, n->cin + used, n->cin_len - (size_t)used);
+            n->cin_len -= (size_t)used;
+            if (n->cstate == CTL_HELLO) {
+                if (m.type != RM_STATUS) {
+                    ctl_down(n, NET_END_BAD_DATA);
+                    return;
+                }
+                if (m.status != RS_OK) {
+                    ctl_down(n, status_end(m.status));
+                    return;
+                }
+                n->cstate = CTL_UP;
+                n->cdeadline = 0;
+                relay_report(n, true, NET_END_NORMAL);
+            } else if (m.type == RM_WAITING) {
+                ctl_attach(n, &m);
+            } else if (m.type == RM_PING) {
+                RelayMsg pong = { .type = RM_PING };
+                queue_relay(&n->cout, &pong);
+            } else {
+                ctl_down(n, NET_END_BAD_DATA);
+                return;
+            }
+        }
+    }
+}
+
+static void ctl_write(Net *n) {
+    while (bytes_pending(&n->cout) > 0) {
+        ssize_t w = send(n->cfd, n->cout.p + n->cout.pos, bytes_pending(&n->cout), MSG_NOSIGNAL);
+        if (w > 0) {
+            n->cout.pos += (size_t)w;
+            continue;
+        }
+        if (w < 0 && errno == EINTR) continue;
+        if (w < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return;
+        ctl_down(n, NET_END_LOST);
+        return;
+    }
+    n->cout.pos = n->cout.len = 0;
+}
+
+static void ctl_timers(Net *n, uint64_t now) {
+    if (n->cstate == CTL_DOWN && now >= n->cretry) ctl_connect(n);
+    else if (n->cstate == CTL_HELLO && now >= n->cdeadline) ctl_down(n, NET_END_UNREACHABLE);
+    else if (n->cstate == CTL_UP && now - n->clast_rx >= NET_RELAY_DEAD_MS) ctl_down(n, NET_END_LOST);
+}
+
+/* Milliseconds until ctl_timers has something to do. */
+static int ctl_timeout(const Net *n, uint64_t now) {
+    uint64_t at = n->cstate == CTL_DOWN    ? n->cretry
+                : n->cstate == CTL_HELLO   ? n->cdeadline
+                                           : n->clast_rx + NET_RELAY_DEAD_MS;
+    return at > now ? (int)(at - now) : 0;
 }
 
 /* ---- the thread ------------------------------------------------------------------------------------ */
@@ -552,6 +785,10 @@ static void *thread_main(void *arg) {
         uint64_t now = now_ms();
         if (stop && !stopping) {
             stopping = true;
+            if (n->cfd >= 0) { /* the room ends with the control connection */
+                close(n->cfd);
+                n->cfd = -1;
+            }
             for (int i = 0; i < n->nconns; i++) {
                 Conn *c = n->conns[i];
                 if (!c->closing || c->deadline > now + STOP_FLUSH_MS) c->deadline = now + STOP_FLUSH_MS;
@@ -566,6 +803,7 @@ static void *thread_main(void *arg) {
             else if (c->deadline && now >= c->deadline)
                 conn_end(n, c, c->closing ? NET_END_NORMAL : NET_END_TIMEOUT);
         }
+        if (n->relay && n->host && !stopping) ctl_timers(n, now);
         if (stopping && n->nconns == 0) break;
         if (!n->host && n->nconns == 0) { /* the client's only connection ended */
             if (stopping) break;
@@ -578,8 +816,8 @@ static void *thread_main(void *arg) {
             continue;
         }
 
-        struct pollfd pf[2 + NET_MAX_CONNS];
-        Conn *pc[2 + NET_MAX_CONNS];
+        struct pollfd pf[3 + NET_MAX_CONNS];
+        Conn *pc[3 + NET_MAX_CONNS];
         int np = 0;
         pf[np] = (struct pollfd){ .fd = n->wake_rd, .events = POLLIN };
         pc[np++] = NULL;
@@ -589,7 +827,17 @@ static void *thread_main(void *arg) {
             pf[np] = (struct pollfd){ .fd = n->lfd, .events = POLLIN };
             pc[np++] = NULL;
         }
+        int cslot = -1;
+        if (n->cfd >= 0) {
+            cslot = np;
+            pf[np] = (struct pollfd){ .fd = n->cfd, .events = POLLIN | (bytes_pending(&n->cout) ? POLLOUT : 0) };
+            pc[np++] = NULL;
+        }
         int timeout = 1000;
+        if (n->relay && n->host && !stopping) {
+            int t = ctl_timeout(n, now);
+            if (t < timeout) timeout = t;
+        }
         for (int i = 0; i < n->nconns; i++) {
             Conn *c = n->conns[i];
             pf[np] = (struct pollfd){ .fd = c->fd, .events = POLLIN | (bytes_pending(&c->out) ? POLLOUT : 0) };
@@ -606,6 +854,10 @@ static void *thread_main(void *arg) {
             while (read(n->wake_rd, buf, sizeof(buf)) > 0) {}
         }
         if (lslot >= 0 && pf[lslot].revents) accept_all(n);
+        if (cslot >= 0 && pf[cslot].revents) {
+            if (pf[cslot].revents & (POLLIN | POLLHUP | POLLERR)) ctl_read(n);
+            if (n->cfd >= 0 && (pf[cslot].revents & POLLOUT)) ctl_write(n);
+        }
         for (int i = 0; i < np; i++) {
             Conn *c = pc[i];
             if (!c || !pf[i].revents || !conn_alive(n, c)) continue;
@@ -640,12 +892,15 @@ static Net *net_alloc(bool host, NetWakeFn wake, void *ctx) {
     n->wake = wake;
     n->wake_ctx = ctx;
     n->lfd = -1;
+    n->cfd = -1;
     pthread_mutex_init(&n->mu, NULL);
     return n;
 }
 
 static void net_dealloc(Net *n) {
     if (n->lfd >= 0) close(n->lfd);
+    if (n->cfd >= 0) close(n->cfd);
+    free(n->cout.p);
     close(n->wake_rd);
     close(n->wake_wr);
     for (Pending *p = n->q_head; p;) {
@@ -729,6 +984,29 @@ Net *net_join(const JoinCode *code, NetWakeFn wake, void *ctx) {
         return NULL;
     }
     return n;
+}
+
+static Net *relay_net(bool host, const char *relay, const uint8_t secret[NET_SECRET_SIZE], NetWakeFn wake, void *ctx) {
+    if (sodium_init() < 0 || !relay || strlen(relay) >= NET_RELAY_ADDR_MAX) return NULL;
+    Net *n = net_alloc(host, wake, ctx);
+    if (!n) return NULL;
+    n->relay = true;
+    snprintf(n->relay_addr, sizeof(n->relay_addr), "%s", relay);
+    memcpy(n->secret, secret, NET_SECRET_SIZE);
+    joincode_room_id(secret, n->room);
+    if (pthread_create(&n->thread, NULL, thread_main, n) != 0) {
+        net_dealloc(n);
+        return NULL;
+    }
+    return n;
+}
+
+Net *net_host_relay(const char *relay, const uint8_t secret[NET_SECRET_SIZE], NetWakeFn wake, void *ctx) {
+    return relay_net(true, relay, secret, wake, ctx);
+}
+
+Net *net_join_relay(const char *relay, const uint8_t secret[NET_SECRET_SIZE], NetWakeFn wake, void *ctx) {
+    return relay_net(false, relay, secret, wake, ctx);
 }
 
 uint16_t net_port(const Net *n) { return n ? n->port : 0; }

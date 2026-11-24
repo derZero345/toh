@@ -576,6 +576,8 @@ static void host_event(NetEvent *ev) {
         }
         player_clear(p);
         break;
+    case NET_EV_RELAY: /* only net_host_relay reports it */
+        break;
     }
 }
 
@@ -838,6 +840,8 @@ static void client_event(NetEvent *ev) {
             console_log("Could not reach the host. Is the GM still hosting and the port open?");
         else console_log("The host rejected the join code. Ask the GM for a new one.");
         end_client();
+        break;
+    case NET_EV_RELAY: /* never on a client */
         break;
     }
 }

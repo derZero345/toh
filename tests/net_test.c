@@ -1,5 +1,7 @@
 /* Tests for src/net.c: a host and clients on localhost in one process. Run with `make test`. */
 #include "net.h"
+#include "relay.h"
+#include "relaymsg.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -206,6 +208,175 @@ static void test_free_while_connecting(void) {
     CHECK(now_ms() - t0 < 1500);
 }
 
+/* ---- through the relay ---------------------------------------------------------------------- */
+
+static Relay *relay_up(uint16_t port, int attach_ms) {
+    RelayLimits l;
+    relay_default_limits(&l);
+    l.port = port;
+    l.attach_ms = attach_ms;
+    char err[128];
+    Relay *r = relay_start(&l, NULL, err, sizeof(err));
+    if (!r) fprintf(stderr, "relay_start: %s\n", err);
+    CHECK(r != NULL);
+    return r;
+}
+
+static void test_relay_exchange(void) {
+    Relay *r = relay_up(0, 10000);
+    if (!r) return;
+    char at[32];
+    snprintf(at, sizeof(at), "127.0.0.1:%u", relay_port(r));
+    uint8_t secret[NET_SECRET_SIZE];
+    randombytes_buf(secret, sizeof(secret));
+
+    Net *host = net_host_relay(at, secret, NULL, NULL);
+    NetEvent ev;
+    CHECK(wait_event(host, &ev, 3000) && ev.type == NET_EV_RELAY && ev.up);
+    net_event_free(&ev);
+
+    Net *a = net_join_relay(at, secret, NULL, NULL), *b = net_join_relay(at, secret, NULL, NULL);
+    CHECK(wait_event(a, &ev, 3000) && ev.type == NET_EV_CONNECTED && ev.conn == 1);
+    net_event_free(&ev);
+    CHECK(wait_event(b, &ev, 3000) && ev.type == NET_EV_CONNECTED && ev.conn == 1);
+    net_event_free(&ev);
+    int conns[2] = { 0, 0 };
+    for (int i = 0; i < 2; i++) {
+        CHECK(wait_event(host, &ev, 3000) && ev.type == NET_EV_CONNECTED && strcmp(ev.addr, "127.0.0.1") == 0);
+        conns[i] = ev.conn;
+        net_event_free(&ev);
+    }
+    CHECK(conns[0] > 0 && conns[0] != conns[1]);
+
+    NetMsg hello = { .type = NM_HELLO, .protocol = NET_PROTOCOL_VERSION, .name = "Bob" };
+    CHECK(net_send(a, 1, &hello));
+    CHECK(wait_event(host, &ev, 3000) && ev.type == NET_EV_MESSAGE && ev.msg.type == NM_HELLO &&
+          strcmp(ev.msg.name, "Bob") == 0);
+    int bob = ev.conn;
+    net_event_free(&ev);
+    NetMsg log = { .type = NM_LOG, .text = "hi Bob" };
+    CHECK(net_send(host, bob, &log));
+    CHECK(wait_event(a, &ev, 3000) && ev.type == NET_EV_MESSAGE && strcmp(ev.msg.text, "hi Bob") == 0);
+    net_event_free(&ev);
+    CHECK(!wait_event(b, &ev, 200)); /* only Bob got it */
+
+    net_free(a);
+    net_free(b);
+    for (int i = 0; i < 2; i++) {
+        CHECK(wait_event(host, &ev, 3000) && ev.type == NET_EV_CLOSED);
+        net_event_free(&ev);
+    }
+    net_free(host);
+    relay_stop(r);
+}
+
+static void test_relay_refusals(void) {
+    Relay *r = relay_up(0, 10000);
+    if (!r) return;
+    char at[32];
+    snprintf(at, sizeof(at), "127.0.0.1:%u", relay_port(r));
+    uint8_t secret[NET_SECRET_SIZE] = { 7 }, other[NET_SECRET_SIZE] = { 8 };
+    NetEvent ev;
+
+    Net *host = net_host_relay(at, secret, NULL, NULL);
+    CHECK(wait_event(host, &ev, 3000) && ev.type == NET_EV_RELAY && ev.up);
+    net_event_free(&ev);
+
+    Net *c = net_join_relay(at, other, NULL, NULL); /* a code nobody hosts */
+    CHECK(wait_event(c, &ev, 3000) && ev.type == NET_EV_CLOSED && ev.end == NET_END_NO_ROOM);
+    net_event_free(&ev);
+    net_free(c);
+
+    Net *twin = net_host_relay(at, secret, NULL, NULL); /* the same secret twice */
+    CHECK(wait_event(twin, &ev, 3000) && ev.type == NET_EV_RELAY && !ev.up && ev.end == NET_END_ROOM_TAKEN);
+    net_event_free(&ev);
+    net_free(twin);
+    net_free(host);
+    relay_stop(r);
+
+    /* nobody listens there any more */
+    host = net_host_relay(at, secret, NULL, NULL);
+    CHECK(wait_event(host, &ev, 6000) && ev.type == NET_EV_RELAY && !ev.up && ev.end == NET_END_UNREACHABLE);
+    net_event_free(&ev);
+    net_free(host);
+    c = net_join_relay(at, secret, NULL, NULL);
+    CHECK(wait_event(c, &ev, 6000) && ev.type == NET_EV_CLOSED && ev.end == NET_END_UNREACHABLE);
+    net_event_free(&ev);
+    net_free(c);
+}
+
+static void test_relay_gm_silent(void) {
+    /* a GM that holds the room but never attaches: the player times out */
+    Relay *r = relay_up(0, 300);
+    if (!r) return;
+    char at[32];
+    snprintf(at, sizeof(at), "127.0.0.1:%u", relay_port(r));
+    uint8_t secret[NET_SECRET_SIZE] = { 9 };
+
+    int gm = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in sa = { .sin_family = AF_INET, .sin_port = htons(relay_port(r)) };
+    sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    CHECK(connect(gm, (struct sockaddr *)&sa, sizeof(sa)) == 0);
+    RelayMsg h = { .type = RM_HOST, .version = RELAY_VERSION };
+    joincode_room_id(secret, h.room);
+    uint8_t buf[RELAY_MSG_MAX];
+    size_t n = relaymsg_encode(&h, buf);
+    CHECK(send(gm, buf, n, 0) == (ssize_t)n);
+    sleep_ms(100);
+
+    Net *c = net_join_relay(at, secret, NULL, NULL);
+    NetEvent ev;
+    CHECK(wait_event(c, &ev, 3000) && ev.type == NET_EV_CLOSED && ev.end == NET_END_TIMEOUT);
+    net_event_free(&ev);
+    net_free(c);
+    close(gm);
+    relay_stop(r);
+}
+
+static void test_relay_restart(void) {
+    Relay *r = relay_up(0, 10000);
+    if (!r) return;
+    uint16_t port = relay_port(r);
+    char at[32];
+    snprintf(at, sizeof(at), "127.0.0.1:%u", port);
+    uint8_t secret[NET_SECRET_SIZE] = { 10 };
+    NetEvent ev;
+
+    Net *host = net_host_relay(at, secret, NULL, NULL);
+    CHECK(wait_event(host, &ev, 3000) && ev.type == NET_EV_RELAY && ev.up);
+    net_event_free(&ev);
+    Net *a = net_join_relay(at, secret, NULL, NULL);
+    CHECK(wait_event(a, &ev, 3000) && ev.type == NET_EV_CONNECTED);
+    net_event_free(&ev);
+    CHECK(wait_event(host, &ev, 3000) && ev.type == NET_EV_CONNECTED);
+    net_event_free(&ev);
+
+    /* the relay goes away: the GM hears it once, and the linked player is gone with it */
+    relay_stop(r);
+    bool down = false, closed = false;
+    while ((!down || !closed) && wait_event(host, &ev, 3000)) {
+        if (ev.type == NET_EV_RELAY && !ev.up && ev.end == NET_END_LOST) down = true;
+        if (ev.type == NET_EV_CLOSED) closed = true;
+        net_event_free(&ev);
+    }
+    CHECK(down && closed);
+    CHECK(wait_event(a, &ev, 3000) && ev.type == NET_EV_CLOSED);
+    net_event_free(&ev);
+    net_free(a);
+
+    /* it comes back on the same port: the GM reconnects with the same room, new players can join */
+    r = relay_up(port, 10000);
+    if (!r) { net_free(host); return; }
+    CHECK(wait_event(host, &ev, NET_RELAY_RETRY_MS + 3000) && ev.type == NET_EV_RELAY && ev.up);
+    net_event_free(&ev);
+    Net *b = net_join_relay(at, secret, NULL, NULL);
+    CHECK(wait_event(b, &ev, 3000) && ev.type == NET_EV_CONNECTED);
+    net_event_free(&ev);
+    net_free(b);
+    net_free(host);
+    relay_stop(r);
+}
+
 int main(void) {
     if (sodium_init() < 0) return 1;
     test_exchange();
@@ -213,6 +384,10 @@ int main(void) {
     test_garbage_and_timeout();
     test_unreachable();
     test_free_while_connecting();
+    test_relay_exchange();
+    test_relay_refusals();
+    test_relay_gm_silent();
+    test_relay_restart();
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
 }
