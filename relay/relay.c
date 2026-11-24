@@ -570,7 +570,7 @@ static void *thread_main(void *arg) {
 
 void relay_default_limits(RelayLimits *l) {
     *l = (RelayLimits){ .port = RELAY_DEFAULT_PORT, .max_rooms = 64, .max_players = 32, .max_sockets = 1024,
-                        .joins_per_min = 5, .first_msg_ms = 5000, .attach_ms = 10000, .ping_ms = 20000 };
+                        .joins_per_min = 20, .first_msg_ms = 5000, .attach_ms = 10000, .ping_ms = 20000 };
 }
 
 static int listen_socket(uint16_t port, char *err, size_t errcap) {

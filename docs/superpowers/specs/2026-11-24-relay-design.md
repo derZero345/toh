@@ -97,7 +97,7 @@ magic `"TOHR"` and a `u8` type. Version 1.
 - "Source address" for the limits below: the IPv4 address, or the /64 prefix of an IPv6 address (one IPv6 host
   easily has a whole /64). Logs and `WAITING` carry the full address.
 - At most 2 rooms per source address (a further `HOST` gets `STATUS full`).
-- At most 5 `JOIN` per source address per minute (moved from the GM: behind the relay every player has the
+- At most 20 `JOIN` per source address per minute (moved from the GM: behind the relay every player has the
   relay's address); over the limit the answer is `STATUS full`. `net.c` skips its own per-address check for relay
   connections.
 - A `JOIN` waits at most 10 s for its `ATTACH` (`STATUS timeout`).
