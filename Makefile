@@ -88,6 +88,13 @@ RELAY_HDR := relay/relay.h src/relaymsg.h
 build/relay_test: tests/relay_test.c $(RELAY_SRC) $(RELAY_HDR) | build
 	$(CC) $(TEST_CFLAGS) $(CFLAGS) -Irelay -pthread -o $@ tests/relay_test.c $(RELAY_SRC)
 
+# The relay for the home server: one static binary without dependencies.
+build/toh-relay: relay/main.c $(RELAY_SRC) $(RELAY_HDR) | build
+	$(CC) -std=c11 -Wall -Wextra -D_POSIX_C_SOURCE=200809L -Isrc -Irelay $(CFLAGS) -static -pthread \
+		-o $@ relay/main.c $(RELAY_SRC)
+
+relay: build/toh-relay
+
 test: build/save_test build/core_test build/netmsg_test build/net_test build/relay_test
 	./build/save_test
 	./build/core_test
@@ -118,4 +125,4 @@ e2e: $(BIN)
 	./tests/e2e_save.sh
 	./tests/e2e_net.sh
 
-.PHONY: all clean run test fuzz e2e
+.PHONY: all clean run test fuzz e2e relay
