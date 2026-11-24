@@ -53,8 +53,24 @@ static void test_round_trip(void) {
     CHECK(relaymsg_encode(&w, buf) == RELAY_MSG_MAX);
 }
 
+static void test_wire_bytes(void) {
+    uint8_t buf[RELAY_MSG_MAX];
+    RelayMsg a = { .type = RM_ATTACH, .version = RELAY_VERSION, .ticket = 0x01020304u };
+    memset(a.room, 0xAA, RELAY_ROOM_SIZE);
+    uint8_t want_a[26] = { 'T', 'O', 'H', 'R', RM_ATTACH, RELAY_VERSION };
+    memset(want_a + 6, 0xAA, RELAY_ROOM_SIZE);
+    want_a[22] = 4; want_a[23] = 3; want_a[24] = 2; want_a[25] = 1;
+    CHECK(relaymsg_encode(&a, buf) == 26 && memcmp(buf, want_a, 26) == 0);
+
+    RelayMsg w = { .type = RM_WAITING, .ticket = 0x01020304u, .addr = "1.2.3.4" };
+    const uint8_t want_w[] = { 'T', 'O', 'H', 'R', RM_WAITING, 4, 3, 2, 1, 7, '1', '.', '2', '.', '3', '.', '4' };
+    CHECK(relaymsg_encode(&w, buf) == sizeof(want_w) && memcmp(buf, want_w, sizeof(want_w)) == 0);
+}
+
 static void test_rejects(void) {
     RelayMsg d;
+    const uint8_t max_status[] = { 'T', 'O', 'H', 'R', RM_STATUS, RS_BAD_REQUEST };
+    CHECK(relaymsg_decode(max_status, sizeof(max_status), &d) == 6 && d.status == RS_BAD_REQUEST);
     const uint8_t bad_magic[] = { 'T', 'O', 'H', 'X', RM_PING };
     CHECK(relaymsg_decode(bad_magic, sizeof(bad_magic), &d) == -1);
     CHECK(relaymsg_decode(bad_magic, 3, &d) == 0); /* "TOH" could still become "TOHR" */
@@ -107,6 +123,7 @@ static void test_parse_addr(void) {
 
 int main(void) {
     test_round_trip();
+    test_wire_bytes();
     test_rejects();
     test_parse_addr();
     printf("%d checks, %d failed\n", checks, failures);
