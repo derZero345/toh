@@ -2,16 +2,36 @@
 # End-to-end check of a multiplayer session: a host (GM) and a client (Bob) on localhost.
 # Opens two windows (needs Wayland or X11) and uses ImageMagick to look at screenshots.
 # The two programs synchronize with @touch / @waitfile.
-# Usage: tests/e2e_net.sh   (or: make e2e)
+# Usage: tests/e2e_net.sh   (or: make e2e, which runs it directly and through the relay)
+#        TOH_E2E_RELAY=1 tests/e2e_net.sh   goes through build/toh-relay on a local port
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 out=${KEEP:-$(mktemp -d)}
-[ -n "${KEEP:-}" ] || trap 'rm -rf "$out"' EXIT
+relay_pid=
+cleanup() {
+    [ -z "$relay_pid" ] || kill "$relay_pid" 2>/dev/null || true
+    [ -n "${KEEP:-}" ] || rm -rf "$out"
+}
+trap cleanup EXIT
 icon=resources/images/toolIcons/area.png
 port=${TOH_TEST_PORT:-41299}
 fail() { echo "FAIL: $*" >&2; exit 1; }
 export TOH_NO_PORTMAP=1
+if [ "${TOH_E2E_RELAY:-0}" = 1 ]; then
+    mode=relay
+    rport=$((port + 1))
+    ./build/toh-relay --port "$rport" > "$out/relay.log" 2>&1 &
+    relay_pid=$!
+    for _ in $(seq 50); do grep -q listening "$out/relay.log" 2>/dev/null && break; sleep 0.1; done
+    grep -q listening "$out/relay.log" || fail "the relay did not start (see $out/relay.log)"
+    export TOH_RELAY="127.0.0.1:$rport"
+    host_cmd=":host"
+else
+    mode=direct
+    export TOH_RELAY=
+    host_cmd=":host --direct"
+fi
 
 # Is the tile at pixel X Y occupied in a screenshot? Empty tiles are light grey (about 0.9),
 # the test icon is mostly black (about 0.65).
@@ -39,7 +59,7 @@ P="500 140"; Q="140 140"     # empty tiles: the GM selects P, Bob selects Q (pre
 TOH_JOINCODE_FILE="$out/code" timeout 90 ./toh --size 600x400 --port "$port" --auto-file "$icon" \
     --exec "@click $A" --exec ":c speed 6" --exec "@click $A" --exec ":c owner Bob" --exec "@click $A" \
     --exec "@click $B" --exec ":c speed 6" --exec "@click $B" \
-    --exec ":host" \
+    --exec "$host_cmd" \
     --exec "@waitnet 1" \
     --exec "@waitfile $out/client-joined" --exec "@click $P" --exec "@touch $out/host-selected" \
     --exec "@waitfile $out/client-selected" --exec "@wait 30" --exec "@shot $out/host-presence.png" \
@@ -105,4 +125,8 @@ occupied "$out/host-claim.png" $C2 || fail "Bob could not move the character he 
 ! occupied "$out/host-claim.png" $C || fail "the claimed character is still at its old tile"
 [ -f "$out/client-quit-refused.png" ] || fail ":q quit the client although the session ended"
 
-echo "e2e net: OK"
+if [ "$mode" = relay ]; then
+    grep -q linked "$out/relay.log" || fail "the client did not come through the relay (see $out/relay.log)"
+fi
+
+echo "e2e net ($mode): OK"

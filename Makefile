@@ -126,8 +126,9 @@ fuzz: build/fuzz_savefmt build/fuzz_netmsg build/save_test build/netmsg_test
 
 # end-to-end checks of :save / :load and of a session (host + client on localhost);
 # they need a display and ImageMagick
-e2e: $(BIN)
+e2e: $(BIN) build/toh-relay
 	./tests/e2e_save.sh
 	./tests/e2e_net.sh
+	TOH_E2E_RELAY=1 ./tests/e2e_net.sh
 
 .PHONY: all clean run test fuzz e2e relay
