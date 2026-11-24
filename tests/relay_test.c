@@ -131,6 +131,7 @@ static void test_parse_addr(void) {
 
 static int dial(uint16_t port) {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) return -1;
     struct sockaddr_in sa = { .sin_family = AF_INET, .sin_port = htons(port) };
     sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     if (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) != 0) {
@@ -248,15 +249,21 @@ static void test_link(void) {
     CHECK(send(pl, "hello", 5, 0) == 5 && recv_exact(at, buf, 5, 2000) && memcmp(buf, "hello", 5) == 0);
     CHECK(send(at, "world", 5, 0) == 5 && recv_exact(pl, buf, 5, 2000) && memcmp(buf, "world", 5) == 0);
 
-    /* more than the relay buffers (1 MiB) arrives complete */
+    /* more than the relay buffers (256 KiB) arrives complete */
     size_t big = 3u << 20;
     uint8_t *data = malloc(big), *got = malloc(big);
-    for (size_t i = 0; i < big; i++) data[i] = (uint8_t)(i * 13 + 5);
-    SendJob job = { at, data, big };
-    pthread_t t;
-    pthread_create(&t, NULL, send_all, &job);
-    CHECK(recv_exact(pl, got, big, 5000) && memcmp(got, data, big) == 0);
-    pthread_join(t, NULL);
+    CHECK(data != NULL && got != NULL);
+    if (data && got) {
+        for (size_t i = 0; i < big; i++) data[i] = (uint8_t)(i * 13 + 5);
+        SendJob job = { at, data, big };
+        pthread_t t;
+        bool started = pthread_create(&t, NULL, send_all, &job) == 0;
+        CHECK(started);
+        if (started) {
+            CHECK(recv_exact(pl, got, big, 5000) && memcmp(got, data, big) == 0);
+            pthread_join(t, NULL);
+        }
+    }
     free(data);
     free(got);
 
@@ -330,7 +337,7 @@ static void test_limits(void) {
     relay_default_limits(&l);
     l.max_rooms = 1;
     l.max_players = 1;
-    l.attach_ms = 200;
+    l.attach_ms = 1000;
     Relay *r = start(&l);
     if (!r) return;
     uint16_t port = relay_port(r);
@@ -397,7 +404,7 @@ static void test_rate(void) {
 static void test_ping(void) {
     RelayLimits l;
     relay_default_limits(&l);
-    l.ping_ms = 100;
+    l.ping_ms = 200;
     Relay *r = start(&l);
     if (!r) return;
     uint16_t port = relay_port(r);
@@ -425,6 +432,86 @@ static void test_ping(void) {
     relay_stop(r);
 }
 
+/* A linked player holds its room slot until it closes, and outlives its GM's control connection. */
+static void test_linked_slot(void) {
+    RelayLimits l;
+    relay_default_limits(&l);
+    l.max_players = 1;
+    Relay *r = start(&l);
+    if (!r) return;
+    uint16_t port = relay_port(r);
+
+    int gm = dial(port);
+    RelayMsg host = room_msg(RM_HOST, 1), join = room_msg(RM_JOIN, 1), attach = room_msg(RM_ATTACH, 1), w;
+    put(gm, &host);
+    CHECK(get_status(gm, RS_OK, 2000));
+
+    int pl = dial(port);
+    put(pl, &join);
+    CHECK(get(gm, &w, 2000) && w.type == RM_WAITING);
+    int at = dial(port);
+    attach.ticket = w.ticket;
+    put(at, &attach);
+    CHECK(get_status(at, RS_OK, 2000) && get_status(pl, RS_OK, 2000));
+    close(pl);
+    CHECK(closed(at, 2000));
+    close(at);
+
+    /* the slot is free again */
+    pl = dial(port);
+    put(pl, &join);
+    CHECK(get(gm, &w, 2000) && w.type == RM_WAITING);
+    at = dial(port);
+    attach.ticket = w.ticket;
+    put(at, &attach);
+    CHECK(get_status(at, RS_OK, 2000) && get_status(pl, RS_OK, 2000));
+
+    /* the GM's control connection goes; the link stays */
+    close(gm);
+    char buf[8] = { 0 };
+    CHECK(send(pl, "hello", 5, 0) == 5 && recv_exact(at, buf, 5, 2000) && memcmp(buf, "hello", 5) == 0);
+    CHECK(send(at, "world", 5, 0) == 5 && recv_exact(pl, buf, 5, 2000) && memcmp(buf, "world", 5) == 0);
+    close(pl);
+    close(at);
+    relay_stop(r);
+}
+
+/* At most 2 rooms per source address. */
+static void test_rooms_per_addr(void) {
+    RelayLimits l;
+    relay_default_limits(&l);
+    Relay *r = start(&l);
+    if (!r) return;
+    uint16_t port = relay_port(r);
+
+    int gm[3];
+    for (int i = 0; i < 3; i++) {
+        gm[i] = dial(port);
+        RelayMsg host = room_msg(RM_HOST, (uint8_t)(i + 1));
+        put(gm[i], &host);
+        CHECK(get_status(gm[i], i < 2 ? RS_OK : RS_FULL, 2000));
+    }
+    CHECK(closed(gm[2], 2000));
+    for (int i = 0; i < 3; i++) close(gm[i]);
+    relay_stop(r);
+}
+
+/* A client that stops sending after its request still gets the answer. */
+static void test_half_close(void) {
+    RelayLimits l;
+    relay_default_limits(&l);
+    Relay *r = start(&l);
+    if (!r) return;
+
+    int fd = dial(relay_port(r));
+    RelayMsg join = room_msg(RM_JOIN, 3);
+    put(fd, &join);
+    CHECK(shutdown(fd, SHUT_WR) == 0);
+    CHECK(get_status(fd, RS_NO_ROOM, 2000) && closed(fd, 2000));
+    close(fd);
+    relay_stop(r);
+}
+
 int main(void) {
     test_round_trip();
     test_wire_bytes();
@@ -435,6 +522,9 @@ int main(void) {
     test_limits();
     test_rate();
     test_ping();
+    test_linked_slot();
+    test_rooms_per_addr();
+    test_half_close();
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
 }

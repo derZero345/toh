@@ -13,13 +13,16 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
 
-#define LINK_BUF_MAX   (1u << 20) /* bytes buffered towards one side of a link */
-#define CLOSE_FLUSH_MS 2000       /* a closing socket gets this long to send what it has */
+#define LINK_BUF_MAX   (256u << 10) /* bytes buffered towards one side of a link */
+#define CLOSE_FLUSH_MS 2000         /* a closing socket gets this long to send what it has */
 #define RATE_SLOTS     256
+#define ROOMS_PER_ADDR 2            /* rooms one source address may control */
+#define ACCEPT_PAUSE_MS 100         /* out of file descriptors: stop accepting this long */
 
 enum { SK_NEW, SK_CONTROL, SK_WAITING, SK_LINKED, SK_CLOSING };
 
@@ -28,6 +31,7 @@ typedef struct Sock {
     int room;          /* SK_CONTROL, SK_WAITING, linked player: room index; -1 = none */
     bool player;       /* SK_LINKED: the player's side (counts towards its room) */
     bool dead;         /* closed; freed at the start of the next loop iteration */
+    bool rd_eof;       /* SK_CLOSING: the client sent everything; only flushing is left */
     uint32_t ticket;   /* SK_WAITING */
     uint64_t deadline; /* SK_NEW: first message; SK_WAITING: attach; SK_CLOSING: flush */
     uint64_t last_rx, next_ping; /* SK_CONTROL */
@@ -36,7 +40,8 @@ typedef struct Sock {
     size_t in_len;
     uint8_t *out;
     size_t out_len, out_pos, out_cap;
-    char addr[RELAY_ADDR_MAX];
+    char addr[RELAY_ADDR_MAX]; /* for logs and WAITING */
+    char key[RELAY_ADDR_MAX];  /* for limits: the IPv4 address, or the IPv6 /64 prefix */
 } Sock;
 
 typedef struct {
@@ -64,6 +69,7 @@ struct Relay {
     int nrooms;
     Rate rate[RATE_SLOTS];
     uint32_t next_ticket;
+    uint64_t accept_pause_until;
 };
 
 static uint64_t now_ms(void) {
@@ -113,13 +119,13 @@ static bool out_append(Sock *s, const void *p, size_t len) {
     return true;
 }
 
-static void out_msg(Sock *s, const RelayMsg *m) {
+static bool out_msg(Sock *s, const RelayMsg *m) {
     uint8_t buf[RELAY_MSG_MAX];
     size_t n = relaymsg_encode(m, buf);
-    if (n) out_append(s, buf, n);
+    return n && out_append(s, buf, n);
 }
 
-static Sock *sock_new(Relay *r, int fd, const char *addr) {
+static Sock *sock_new(Relay *r, int fd, const char *addr, const char *key) {
     if (r->nsocks == r->cap) {
         int cap = r->cap ? r->cap * 2 : 64;
         Sock **ns = realloc(r->socks, (size_t)cap * sizeof(*ns));
@@ -134,6 +140,7 @@ static Sock *sock_new(Relay *r, int fd, const char *addr) {
     s->room = -1;
     s->deadline = now_ms() + (uint64_t)r->lim.first_msg_ms;
     snprintf(s->addr, sizeof(s->addr), "%s", addr);
+    snprintf(s->key, sizeof(s->key), "%s", key);
     int one = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
     set_nonblocking(fd);
@@ -199,7 +206,7 @@ static int room_find(Relay *r, const uint8_t id[RELAY_ROOM_SIZE]) {
     return -1;
 }
 
-/* At most joins_per_min JOINs per address and minute. */
+/* At most joins_per_min JOINs per address (key) and minute. */
 static bool rate_ok(Relay *r, const char *addr) {
     uint64_t now = now_ms();
     Rate *free_slot = NULL, *oldest = &r->rate[0];
@@ -229,6 +236,14 @@ static void on_host(Relay *r, Sock *s, const RelayMsg *m) {
         fail(r, s, RS_ROOM_TAKEN);
         return;
     }
+    int mine = 0;
+    for (int i = 0; i < r->lim.max_rooms; i++)
+        if (r->rooms[i].used && strcmp(r->rooms[i].control->key, s->key) == 0) mine++;
+    if (mine >= ROOMS_PER_ADDR) {
+        rlog(r, "%s: too many rooms", s->addr);
+        fail(r, s, RS_FULL);
+        return;
+    }
     int idx = -1;
     for (int i = 0; i < r->lim.max_rooms && idx < 0; i++)
         if (!r->rooms[i].used) idx = i;
@@ -252,7 +267,7 @@ static void on_host(Relay *r, Sock *s, const RelayMsg *m) {
 }
 
 static void on_join(Relay *r, Sock *s, const RelayMsg *m) {
-    if (!rate_ok(r, s->addr)) {
+    if (!rate_ok(r, s->key)) {
         rlog(r, "%s: too many joins", s->addr);
         fail(r, s, RS_FULL);
         return;
@@ -291,8 +306,11 @@ static void on_attach(Relay *r, Sock *s, const RelayMsg *m) {
         return;
     }
     RelayMsg ok = { .type = RM_STATUS, .status = RS_OK };
-    out_msg(w, &ok);
-    out_msg(s, &ok);
+    if (!out_msg(w, &ok) || !out_msg(s, &ok)) { /* out of memory */
+        sock_close(r, w);
+        sock_close(r, s);
+        return;
+    }
     w->kind = SK_LINKED;
     w->player = true;
     w->deadline = 0;
@@ -334,6 +352,10 @@ static void do_read(Relay *r, Sock *s) {
         ssize_t n = recv(s->fd, dst, cap, 0);
         if (n < 0 && errno == EINTR) continue;
         if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return;
+        if (n == 0 && s->kind == SK_CLOSING) { /* half-closed: still send the answer */
+            s->rd_eof = true;
+            return;
+        }
         if (n <= 0) {
             sock_close(r, s);
             return;
@@ -359,8 +381,9 @@ static void do_read(Relay *r, Sock *s) {
             on_message(r, s, &m);
         }
         if (s->kind == SK_LINKED && s->in_len > 0) { /* bytes that came right behind ATTACH */
-            if (s->peer) out_append(s->peer, s->in, s->in_len);
+            bool ok = !s->peer || out_append(s->peer, s->in, s->in_len);
             s->in_len = 0;
+            if (!ok) sock_close(r, s);
         }
     }
 }
@@ -393,19 +416,43 @@ static void addr_text(const struct sockaddr_storage *sa, char *out, size_t cap) 
     snprintf(out, cap, "%s", ip);
 }
 
+/* The key per-address limits use: the IPv4 address (also when IPv4-mapped), or the IPv6 /64 prefix,
+ * since one IPv6 host easily has a whole /64. */
+static void addr_key(const struct sockaddr_storage *sa, char *out, size_t cap) {
+    const struct in6_addr *a = &((const struct sockaddr_in6 *)sa)->sin6_addr;
+    if (sa->ss_family != AF_INET6 || IN6_IS_ADDR_V4MAPPED(a)) {
+        addr_text(sa, out, cap);
+        return;
+    }
+    struct in6_addr prefix = *a;
+    memset(prefix.s6_addr + 8, 0, 8);
+    char ip[INET6_ADDRSTRLEN] = "?";
+    inet_ntop(AF_INET6, &prefix, ip, sizeof(ip));
+    snprintf(out, cap, "%s/64", ip);
+}
+
 static void accept_all(Relay *r) {
     for (;;) {
         struct sockaddr_storage sa;
         socklen_t sl = sizeof(sa);
         int fd = accept(r->lfd, (struct sockaddr *)&sa, &sl);
-        if (fd < 0) return;
+        if (fd < 0) {
+            /* out of descriptors or memory: the backlog keeps lfd readable, so pause instead of spinning */
+            if (errno == EMFILE || errno == ENFILE || errno == ENOBUFS || errno == ENOMEM) {
+                uint64_t now = now_ms();
+                if (now >= r->accept_pause_until + 1000) rlog(r, "accept: %s", strerror(errno)); /* once per run */
+                r->accept_pause_until = now + ACCEPT_PAUSE_MS;
+            }
+            return;
+        }
         if (r->nsocks >= r->lim.max_sockets) {
             close(fd);
             continue;
         }
-        char addr[RELAY_ADDR_MAX];
+        char addr[RELAY_ADDR_MAX], key[RELAY_ADDR_MAX];
         addr_text(&sa, addr, sizeof(addr));
-        if (!sock_new(r, fd, addr)) close(fd);
+        addr_key(&sa, key, sizeof(key));
+        if (!sock_new(r, fd, addr, key)) close(fd);
     }
 }
 
@@ -438,6 +485,7 @@ static void timers(Relay *r, uint64_t now) {
 /* Milliseconds until timers has something to do. */
 static int next_timeout(Relay *r, uint64_t now) {
     uint64_t best = now + 1000;
+    if (r->accept_pause_until > now && r->accept_pause_until < best) best = r->accept_pause_until;
     for (int i = 0; i < r->nsocks; i++) {
         Sock *s = r->socks[i];
         uint64_t t = 0;
@@ -484,17 +532,20 @@ static void *thread_main(void *arg) {
         int np = 0;
         pf[np] = (struct pollfd){ .fd = r->wake_rd, .events = POLLIN };
         pc[np++] = NULL;
-        pf[np] = (struct pollfd){ .fd = r->lfd, .events = POLLIN };
+        pf[np] = (struct pollfd){ .fd = now < r->accept_pause_until ? -1 : r->lfd, .events = POLLIN };
         pc[np++] = NULL;
         for (int i = 0; i < r->nsocks; i++) {
             Sock *s = r->socks[i];
-            short ev = POLLIN;
+            short ev = s->rd_eof ? 0 : POLLIN;
             if (s->kind == SK_LINKED && s->peer && out_pending(s->peer) >= LINK_BUF_MAX) ev = 0;
             if (out_pending(s)) ev |= POLLOUT;
             pf[np] = (struct pollfd){ .fd = s->fd, .events = ev };
             pc[np++] = s;
         }
-        if (poll(pf, (nfds_t)np, next_timeout(r, now)) < 0 && errno != EINTR) break;
+        if (poll(pf, (nfds_t)np, next_timeout(r, now)) < 0 && errno != EINTR) {
+            rlog(r, "poll: %s; the relay stops", strerror(errno));
+            break;
+        }
         if (pf[0].revents) break; /* relay_stop */
         if (pf[1].revents) accept_all(r);
         for (int i = 2; i < np; i++) {
@@ -547,17 +598,40 @@ static int listen_socket(uint16_t port, char *err, size_t errcap) {
     return -1;
 }
 
+/* Raises the descriptor limit to fit max_sockets, or lowers max_sockets to fit the limit. */
+static void fit_fd_limit(Relay *r) {
+    struct rlimit rl;
+    if (getrlimit(RLIMIT_NOFILE, &rl) != 0) return;
+    rlim_t want = (rlim_t)r->lim.max_sockets + 16;
+    if (rl.rlim_cur != RLIM_INFINITY && rl.rlim_cur < want) {
+        rl.rlim_cur = want < rl.rlim_max ? want : rl.rlim_max;
+        setrlimit(RLIMIT_NOFILE, &rl);
+        if (getrlimit(RLIMIT_NOFILE, &rl) != 0) return;
+    }
+    if (rl.rlim_cur != RLIM_INFINITY && rl.rlim_cur < want) {
+        r->lim.max_sockets = rl.rlim_cur > 17 ? (int)(rl.rlim_cur - 16) : 1;
+        rlog(r, "only %llu file descriptors: at most %d sockets", (unsigned long long)rl.rlim_cur, r->lim.max_sockets);
+    }
+}
+
 Relay *relay_start(const RelayLimits *l, FILE *log, char *err, size_t errcap) {
     Relay *r = calloc(1, sizeof(*r));
     int fds[2] = { -1, -1 };
-    if (!r || !(r->rooms = calloc((size_t)l->max_rooms, sizeof(*r->rooms))) || pipe(fds) != 0) {
+    if (!r || !(r->rooms = calloc((size_t)l->max_rooms, sizeof(*r->rooms)))) {
         snprintf(err, errcap, "out of memory");
         if (r) free(r->rooms);
         free(r);
         return NULL;
     }
+    if (pipe(fds) != 0) {
+        snprintf(err, errcap, "%s", strerror(errno));
+        free(r->rooms);
+        free(r);
+        return NULL;
+    }
     r->lim = *l;
     r->log = log;
+    fit_fd_limit(r);
     r->wake_rd = fds[0];
     r->wake_wr = fds[1];
     r->lfd = listen_socket(l->port, err, errcap);

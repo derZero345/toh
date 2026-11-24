@@ -91,7 +91,12 @@ magic `"TOHR"` and a `u8` type. Version 1.
 
 ### 2.4 Relay limits
 
-- 64 rooms, 32 waiting or linked players per room (matches `NET_MAX_CONNS`), 1024 sockets in total.
+- 64 rooms, 32 waiting or linked players per room (matches `NET_MAX_CONNS`), 1024 sockets in total. The relay
+  raises its file descriptor limit to fit (up to the hard limit, else it lowers the socket limit); when `accept`
+  still runs out of descriptors it stops accepting for 100 ms instead of spinning.
+- "Source address" for the limits below: the IPv4 address, or the /64 prefix of an IPv6 address (one IPv6 host
+  easily has a whole /64). Logs and `WAITING` carry the full address.
+- At most 2 rooms per source address (a further `HOST` gets `STATUS full`).
 - At most 5 `JOIN` per source address per minute (moved from the GM: behind the relay every player has the
   relay's address); over the limit the answer is `STATUS full`. `net.c` skips its own per-address check for relay
   connections.
@@ -99,7 +104,8 @@ magic `"TOHR"` and a `u8` type. Version 1.
 - A room ends when its control connection closes or misses two pings (60 s). Waiting players get `no such room`;
   linked players stay linked (their sockets are independent).
 - Linked sockets: when one side closes or errors, the relay shuts the other side down after sending what it has
-  buffered (at most 1 MiB per direction; reading pauses while the buffer is full).
+  buffered (at most 256 KiB per direction; reading pauses while the buffer is full).
+- A client that half-closes (`shutdown` for writing) after a request still receives the answering `STATUS`.
 
 ### 2.5 GM side (`net.c`)
 
