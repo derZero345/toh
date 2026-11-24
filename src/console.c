@@ -854,7 +854,9 @@ void console_command(const char *raw) {
     else if (!strcmp(cmd, "host") || !strcmp(cmd, ":host")) {
         bool direct = a.argc > 1 && !strcmp(a.argv[1], "--direct");
         int at = direct ? 2 : 1;
-        session_cmd_host(a.argc > at ? a.argv[at] : "GM", direct);
+        if (a.argc > at + 1 || (a.argc > at && a.argv[at][0] == '-'))
+            console_log("Usage: :host [--direct] [name]");
+        else session_cmd_host(a.argc > at ? a.argv[at] : "GM", direct);
     }
     else if (!strcmp(cmd, "unhost") || !strcmp(cmd, ":unhost")) session_cmd_unhost();
     else if (!strcmp(cmd, "join") || !strcmp(cmd, ":join")) {

@@ -14,7 +14,7 @@ Dependencies:
 | FreeType 2 + fontconfig | text (looks up "Arial", falls back to the system sans font) |
 | `glslc` (shaderc) | compiles `shaders/*.vert/frag` to SPIR-V at build time |
 | libwebp, libzstd, libsodium | save files: image compression, state compression, integrity tag; multiplayer encryption |
-| miniupnpc, libnatpmp (optional) | `:host` opens the port on the router; without them the build prints a note and hosting works on LAN / VPN or with a manually forwarded port |
+| miniupnpc, libnatpmp (optional) | `:host --direct` opens the port on the router; without them the build prints a note and hosting works on LAN / VPN or with a manually forwarded port |
 
 ```sh
 make            # builds ./toh
