@@ -3,6 +3,7 @@
 #include "net.h"
 #include "portmap.h"
 #include "presence.h"
+#include "relaymsg.h"
 #include "savefmt.h"
 
 #include <sodium.h>
@@ -63,6 +64,7 @@ static struct {
     Portmap *pm;
     bool codeReady;
     JoinCode code; /* host: our code; client: the code we joined with */
+    char relay[NET_RELAY_ADDR_MAX]; /* "" = no relay */
     /* client */
     uint32_t seq;
     bool rejoined;
@@ -85,7 +87,23 @@ static void wake(void *ctx) {
     SDL_PushEvent(&ev); /* thread-safe */
 }
 
-void session_init(void) { gh->netEvent = SDL_RegisterEvents(1); }
+void session_init(void) {
+    gh->netEvent = SDL_RegisterEvents(1);
+    const char *relay = getenv("TOH_RELAY");
+#ifdef TOH_RELAY_DEFAULT
+    if (!relay) relay = TOH_RELAY_DEFAULT;
+#endif
+    snprintf(S.relay, sizeof(S.relay), "%s", relay ? relay : "");
+}
+
+/* False (and says so) when the relay address cannot be used. */
+static bool relay_addr_ok(void) {
+    char host[NET_RELAY_ADDR_MAX];
+    uint16_t port;
+    if (relay_parse_addr(S.relay, host, sizeof(host), &port)) return true;
+    console_log("The relay address \"%s\" is not valid; set TOH_RELAY=host:port.", S.relay);
+    return false;
+}
 void session_set_port(uint16_t port) { S.port = port; }
 bool session_is_host(void) { return S.role == ROLE_HOST; }
 bool session_is_client(void) { return S.role == ROLE_JOINING || S.role == ROLE_CLIENT; }
@@ -546,6 +564,31 @@ static void host_message(Player *p, const NetMsg *m) {
     }
 }
 
+static void end_host(void);
+static bool publish_code(char code[JOINCODE_MAX_LEN]);
+
+/* NET_EV_RELAY: the relay accepted our room, or lost it. */
+static void host_relay(const NetEvent *ev) {
+    if (ev->up && !S.codeReady) {
+        S.codeReady = true;
+        char code[JOINCODE_MAX_LEN];
+        if (!publish_code(code)) return;
+        console_log("Hosting via relay %s. Join code copied to clipboard.", S.relay);
+        console_log("Join code: %s", code);
+    } else if (ev->up) {
+        console_log("Relay connection restored.");
+    } else if (!S.codeReady) { /* the first attempt failed: we are not hosting */
+        if (ev->end == NET_END_RELAY_FULL) console_log("The relay is full (too many rooms). Try again later.");
+        else if (ev->end == NET_END_ROOM_TAKEN) console_log("The relay refused the room. Try :host again.");
+        else if (ev->end == NET_END_VERSION)
+            console_log("The relay speaks a different version. Update the game or the relay.");
+        else console_log("Could not reach the relay %s. Use :host --direct to host without it.", S.relay);
+        end_host();
+    } else {
+        console_log("Lost the relay; players cannot join until it is back. Retrying...");
+    }
+}
+
 static void host_event(NetEvent *ev) {
     Player *p = player_by_conn(ev->conn);
     switch (ev->type) {
@@ -576,7 +619,8 @@ static void host_event(NetEvent *ev) {
         }
         player_clear(p);
         break;
-    case NET_EV_RELAY: /* only net_host_relay reports it */
+    case NET_EV_RELAY:
+        host_relay(ev);
         break;
     }
 }
@@ -634,6 +678,10 @@ void session_prompt_free(void) { ask_next_claim(); }
 
 /* ---- client -------------------------------------------------------------------------------------- */
 
+static Net *start_join(void) {
+    return S.code.relay ? net_join_relay(S.relay, S.code.secret, wake, NULL) : net_join(&S.code, wake, NULL);
+}
+
 static void end_client(void) {
     bool was_joined = S.role == ROLE_CLIENT;
     net_free(S.net);
@@ -653,7 +701,7 @@ static void lost_sync(const char *what) {
         players_clear();
         cache_clear();
         S.role = ROLE_JOINING;
-        S.net = net_join(&S.code, wake, NULL);
+        S.net = start_join();
         if (!S.net) end_client();
         return;
     }
@@ -836,12 +884,19 @@ static void client_event(NetEvent *ev) {
         break;
     case NET_EV_CLOSED:
         if (S.role == ROLE_CLIENT) console_log("Connection to the host lost.");
+        else if (ev->end == NET_END_UNREACHABLE && S.code.relay) console_log("Could not reach the relay %s.", S.relay);
         else if (ev->end == NET_END_UNREACHABLE)
             console_log("Could not reach the host. Is the GM still hosting and the port open?");
+        else if (ev->end == NET_END_NO_ROOM)
+            console_log("No game with this join code is hosted right now. Ask the GM for a new one.");
+        else if (ev->end == NET_END_RELAY_FULL) console_log("The relay is full. Try again later.");
+        else if (ev->end == NET_END_TIMEOUT) console_log("The host did not answer.");
+        else if (ev->end == NET_END_VERSION)
+            console_log("The relay speaks a different version. Update the game or the relay.");
         else console_log("The host rejected the join code. Ask the GM for a new one.");
         end_client();
         break;
-    case NET_EV_RELAY: /* never on a client */
+    case NET_EV_RELAY: /* only hosts get these */
         break;
     }
 }
@@ -858,13 +913,11 @@ void session_send_op(const Op *op) {
 
 /* ---- hosting ---------------------------------------------------------------------------------------- */
 
-static void finish_hosting(const PortmapStatus *st) {
-    S.codeReady = true;
-    S.code.naddrs = (uint8_t)portmap_collect_addrs(st, S.code.addrs, NET_MAX_ADDRS);
-    char code[JOINCODE_MAX_LEN];
+/* Copies our join code to the clipboard (and the test hook file). False when there is none. */
+static bool publish_code(char code[JOINCODE_MAX_LEN]) {
     if (!joincode_encode(&S.code, code)) {
         console_log("Could not make a join code");
-        return;
+        return false;
     }
     SDL_SetClipboardText(code);
     const char *file = getenv("TOH_JOINCODE_FILE"); /* test hook */
@@ -875,6 +928,14 @@ static void finish_hosting(const PortmapStatus *st) {
             fclose(f);
         }
     }
+    return true;
+}
+
+static void finish_hosting(const PortmapStatus *st) {
+    S.codeReady = true;
+    S.code.naddrs = (uint8_t)portmap_collect_addrs(st, S.code.addrs, NET_MAX_ADDRS);
+    char code[JOINCODE_MAX_LEN];
+    if (!publish_code(code)) return;
     if (!st) {
         console_log("Hosting on port %u (router port mapping off). Join code copied to clipboard.", S.code.port);
     } else if (st->method) {
@@ -898,7 +959,7 @@ static bool name_ok(const char *name) {
     return false;
 }
 
-void session_cmd_host(const char *name) {
+void session_cmd_host(const char *name, bool direct) {
     if (S.role != ROLE_OFFLINE) {
         console_log(S.role == ROLE_HOST ? "You are already hosting" : "Leave the table first (:leave)");
         return;
@@ -910,14 +971,25 @@ void session_cmd_host(const char *name) {
     free(snap);
 
     memset(&S.code, 0, sizeof(S.code));
+    bool relay = !direct && S.relay[0];
+    if (relay && !relay_addr_ok()) return;
     randombytes_buf(S.code.secret, NET_SECRET_SIZE);
-    char err[128];
-    S.net = net_host(S.port, S.code.secret, wake, NULL, err, sizeof(err));
-    if (!S.net) {
-        console_log("Could not host: %s", err);
-        return;
+    if (relay) {
+        S.code.relay = true;
+        S.net = net_host_relay(S.relay, S.code.secret, wake, NULL);
+        if (!S.net) {
+            console_log("Could not start the network");
+            return;
+        }
+    } else {
+        char err[128];
+        S.net = net_host(S.port, S.code.secret, wake, NULL, err, sizeof(err));
+        if (!S.net) {
+            console_log("Could not host: %s", err);
+            return;
+        }
+        S.code.port = net_port(S.net);
     }
-    S.code.port = net_port(S.net);
     S.role = ROLE_HOST;
     snprintf(S.myName, sizeof(S.myName), "%s", name);
     players_clear();
@@ -926,6 +998,10 @@ void session_cmd_host(const char *name) {
     snprintf(gm->name, sizeof(gm->name), "%s", name);
     S.codeReady = false;
 
+    if (relay) {
+        console_log("Connecting to the relay %s...", S.relay);
+        return;
+    }
     const char *off = getenv("TOH_NO_PORTMAP");
     if ((off && *off && strcmp(off, "0") != 0) || !portmap_available()) {
         finish_hosting(NULL);
@@ -988,12 +1064,17 @@ void session_cmd_join(const char *code, const char *name) {
         console_log("That is not a valid join code.");
         return;
     }
+    if (c.relay && !S.relay[0]) {
+        console_log("This join code goes through a relay, but none is set (TOH_RELAY=host:port).");
+        return;
+    }
+    if (c.relay && !relay_addr_ok()) return;
     if (!name_ok(name)) return;
     S.code = c;
     snprintf(S.myName, sizeof(S.myName), "%s", name);
     S.rejoined = false;
     S.seq = 0;
-    S.net = net_join(&S.code, wake, NULL);
+    S.net = start_join();
     if (!S.net) {
         console_log("Could not start the network");
         return;

@@ -525,8 +525,9 @@ static void cmd_help(Args *a) {
         console_log(":load [file] # Load a saved table (opens a dialog without a file)");
         console_log("  :load! [file] discards unsaved changes");
     } else if (!strcmp(arg, "host") || !strcmp(arg, ":host")) {
-        console_log(":host [name] # Host this table as GM (name defaults to GM)");
-        console_log("  opens the router port and copies the join code to the clipboard");
+        console_log(":host [--direct] [name] # Host this table as GM (name defaults to GM)");
+        console_log("  goes through the relay when one is set and copies the join code to the clipboard");
+        console_log("  --direct: players connect to this computer (opens the router port)");
     } else if (!strcmp(arg, "unhost") || !strcmp(arg, ":unhost")) {
         console_log(":unhost # End the session; players keep a copy of the table");
     } else if (!strcmp(arg, "join") || !strcmp(arg, ":join")) {
@@ -850,7 +851,11 @@ void console_command(const char *raw) {
         if (session_is_client()) console_log("%s", ops_result_text(OPR_GM_ONLY));
         else io_toggle_game_master();
     }
-    else if (!strcmp(cmd, "host") || !strcmp(cmd, ":host"))     session_cmd_host(a.argc > 1 ? a.argv[1] : "GM");
+    else if (!strcmp(cmd, "host") || !strcmp(cmd, ":host")) {
+        bool direct = a.argc > 1 && !strcmp(a.argv[1], "--direct");
+        int at = direct ? 2 : 1;
+        session_cmd_host(a.argc > at ? a.argv[at] : "GM", direct);
+    }
     else if (!strcmp(cmd, "unhost") || !strcmp(cmd, ":unhost")) session_cmd_unhost();
     else if (!strcmp(cmd, "join") || !strcmp(cmd, ":join")) {
         if (a.argc != 3) console_log("Usage: :join <code> <name>");

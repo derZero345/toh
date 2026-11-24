@@ -23,7 +23,7 @@ make            # builds ./toh
 
 Sanitizer build: `make clean && make CFLAGS="-O1 -g -fsanitize=address,undefined"`.
 
-Tests: `make test` (save format, game core and network message unit tests), `make fuzz` (libFuzzer on the save file
+Tests: `make test` (save format, game core and network message and relay unit tests), `make fuzz` (libFuzzer on the save file
 and network message decoders, needs clang; `FUZZ_TIME=600` fuzzes each longer) and `make e2e` (saves and loads in a real
 window, then runs a host and a client on localhost; needs a display and ImageMagick).
 Set `TOH_VK_VALIDATION=1` to enable the Khronos validation layer when it is installed.
@@ -59,12 +59,16 @@ Console commands: `:q` quit, `:b [file.png]` background, `:d` debug, `:c` charac
 
 ## Playing together
 
-The GM hosts the table on their own computer; players connect to it directly. There is no server in between.
+The GM hosts the table on their own computer. By default the game connects through a relay (`toh-relay` on a
+home server, see `deploy/relay/README.md`), so the GM needs no router setup; the relay only passes encrypted bytes
+along and cannot read the game.
 
-1. GM: `:host [name]` (name defaults to `GM`). The game listens on TCP port 41234 (`./toh --port N` for another),
-   tries to open that port on the router (UPnP, then NAT-PMP) and copies a join code (`toh1-…`) to the clipboard.
-   The log says whether the router opened the port. If it didn't, forward the port by hand or use a VPN such as
-   Tailscale; a router behind carrier-grade NAT (100.64.x.x) always needs a VPN.
+1. GM: `:host [name]` (name defaults to `GM`). The game connects to the relay and copies a join code (`toh1-…`)
+   to the clipboard. `:host --direct [name]` skips the relay: the game listens on TCP port 41234
+   (`./toh --port N` for another), tries to open that port on the router (UPnP, then NAT-PMP) and puts this
+   computer's addresses into the join code. The log says whether the router opened the port. If it didn't,
+   forward the port by hand or use a VPN such as Tailscale; a router behind carrier-grade NAT (100.64.x.x) always
+   needs a VPN.
 2. Players: `:join <code> <name>`. Their table is replaced by the GM's; camera, zoom and theme stay their own.
 3. The GM gives characters to players with `:c owner <name>`, or a player selects an unowned character and asks
    with `:claim` (the GM answers y/n in the console).
@@ -79,7 +83,8 @@ Everyone sees what the others are pointing at, in their color (the GM is gold, p
 Shift is held, and measurements and line / area / cone attacks. Your own selection and tools look as before.
 
 The connection is encrypted (libsodium) with a key from the join code; each `:host` makes a new code, so old codes
-stop working. `TOH_NO_PORTMAP=1` skips the router (LAN-only use, tests).
+stop working. The relay address is built in (`make RELAY=host:port`); `TOH_RELAY=host:port` overrides it and
+`TOH_RELAY=` turns it off. `TOH_NO_PORTMAP=1` skips the router with `--direct` (LAN-only use, tests).
 
 ## Saving
 

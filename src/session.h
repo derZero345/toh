@@ -33,7 +33,7 @@ void session_table_replaced(void); /* host: after :load, every player gets the n
 bool session_roll(const char *spec); /* :r in a session: rolled by the host. false = offline */
 
 /* Commands */
-void session_cmd_host(const char *name);
+void session_cmd_host(const char *name, bool direct); /* direct: no relay, players connect to us */
 void session_cmd_unhost(void);
 void session_cmd_join(const char *code, const char *name);
 void session_cmd_leave(void);
