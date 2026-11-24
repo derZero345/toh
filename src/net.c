@@ -548,7 +548,9 @@ static int try_connect(Net *n, const NetAddr *a, uint16_t port) {
     return try_connect_sa(n, &ss, sl);
 }
 
-/* Connects to the first relay address that answers (IPv6 first). Returns the socket or -1;
+/* Connects to the first relay address that answers, IPv4 first: a router's dynamic DNS name (MyFRITZ!)
+ * often carries the router's own IPv6 address, which a stranger's connect would wait on until the timeout.
+ * Returns the socket or -1;
  * sa / sl (may be NULL) get the address. */
 static int relay_connect(Net *n, struct sockaddr_storage *sa, socklen_t *sl) {
     char host[NET_RELAY_ADDR_MAX], port[8];
@@ -560,7 +562,7 @@ static int relay_connect(Net *n, struct sockaddr_storage *sa, socklen_t *sl) {
     int fd = -1;
     for (int pass = 0; pass < 2 && fd < 0; pass++) {
         for (struct addrinfo *a = res; a && fd < 0 && !stop_requested(n); a = a->ai_next) {
-            if (a->ai_family != (pass == 0 ? AF_INET6 : AF_INET)) continue;
+            if (a->ai_family != (pass == 0 ? AF_INET : AF_INET6)) continue;
             struct sockaddr_storage ss;
             memset(&ss, 0, sizeof(ss));
             memcpy(&ss, a->ai_addr, a->ai_addrlen);

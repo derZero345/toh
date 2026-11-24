@@ -109,8 +109,9 @@ magic `"TOHR"` and a `u8` type. Version 1.
 
 ### 2.5 GM side (`net.c`)
 
-- New `net_host_relay(relay, secret, wake, ctx)`: returns at once; the network thread connects (IPv6 first,
-  `getaddrinfo`), sends `HOST` and waits for `STATUS` (4 s). The outcome arrives as a `NET_EV_RELAY` event
+- New `net_host_relay(relay, secret, wake, ctx)`: returns at once; the network thread connects (`getaddrinfo`,
+  IPv4 first, because a router's dynamic DNS name such as MyFRITZ! often carries the router's own IPv6 address,
+  which would make every connect wait for the timeout), sends `HOST` and waits for `STATUS` (4 s). The outcome arrives as a `NET_EV_RELAY` event
   (`up`, or `end` = why not: `NET_END_UNREACHABLE`, `NET_END_ROOM_TAKEN`, `NET_END_RELAY_FULL`, `NET_END_VERSION`,
   `NET_END_LOST`). The session stops hosting when the first attempt fails. Connecting to the relay blocks the
   network thread (at most 4 s per address), which only matters while the relay is down and nobody can play anyway.

@@ -26,7 +26,8 @@ Only the server needs one open port.
    Note the MyFRITZ! address the box shows for the NAS (`<nas>.<id>.myfritz.net`): it follows a changing
    IP address.
 
-4. Build the game with that address: `make clean && make RELAY=<myfritz-address>:1520`.
+4. Use the box's MyFRITZ! address (Internet -> MyFRITZ! Account); the game tries its IPv4 address first,
+   so it does not matter that its IPv6 address is the router's. Build the game with that address: `make clean && make RELAY=<myfritz-address>:1520`.
    Or set it per run: `TOH_RELAY=<myfritz-address>:1520 ./toh`.
 
 Port 1520: some providers share one IPv4 address between customers and give each line only a port range

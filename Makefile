@@ -18,7 +18,7 @@ TOH_CFLAGS := -std=c11 -Wall -Wextra -Wno-unused-parameter -D_POSIX_C_SOURCE=200
 TOH_LIBS   := $(shell pkg-config --libs $(PKGS)) -lm -pthread
 # Relay the game hosts through ("host[:port]"); empty = :host lets players connect directly.
 # TOH_RELAY=host:port overrides it at run time. Run `make clean` after changing it.
-RELAY ?=
+RELAY ?= ho7oazp8e4tw4jra.myfritz.net:1520
 ifneq ($(RELAY),)
 TOH_CFLAGS += -DTOH_RELAY_DEFAULT='"$(RELAY)"'
 endif
