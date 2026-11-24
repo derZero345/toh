@@ -1,7 +1,8 @@
-/* libFuzzer target for the network message decoder and the join code parser.
- * The first input byte picks the parser: even = netmsg_decode, odd = joincode_decode.
+/* libFuzzer target for the network message decoder, the join code parser and the relay messages.
+ * The first input byte picks the parser (% 3): 0 = netmsg_decode, 1 = joincode_decode, 2 = relaymsg_decode.
  * Seeds come from `build/netmsg_test <dir>`. */
 #include "netmsg.h"
+#include "relaymsg.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -39,9 +40,23 @@ static void fuzz_joincode(const uint8_t *data, size_t size) {
     free(s);
 }
 
+static void fuzz_relaymsg(const uint8_t *data, size_t size) {
+    RelayMsg m;
+    int used = relaymsg_decode(data, size, &m);
+    if (used > 0) {
+        /* what the decoder accepts encodes back to the same bytes */
+        uint8_t out[RELAY_MSG_MAX];
+        size_t n = relaymsg_encode(&m, out);
+        if (n != (size_t)used || memcmp(out, data, n) != 0) abort();
+    }
+}
+
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     if (size == 0) return 0;
-    if (data[0] & 1) fuzz_joincode(data + 1, size - 1);
-    else fuzz_message(data + 1, size - 1);
+    switch (data[0] % 3) {
+    case 0: fuzz_message(data + 1, size - 1); break;
+    case 1: fuzz_joincode(data + 1, size - 1); break;
+    default: fuzz_relaymsg(data + 1, size - 1); break;
+    }
     return 0;
 }

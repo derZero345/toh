@@ -82,19 +82,23 @@ build/net_test: tests/net_test.c src/net.c src/net.h $(NETMSG_SRC) $(NETMSG_HDR)
 build/core_test: tests/core_test.c tests/core_stubs.c $(CORE_SRC) $(wildcard src/*.h) | build
 	$(CC) $(TOH_CFLAGS) $(CFLAGS) -Isrc -o $@ tests/core_test.c tests/core_stubs.c $(CORE_SRC) $(CORE_LIBS)
 
-test: build/save_test build/core_test build/netmsg_test build/net_test
+build/relay_test: tests/relay_test.c src/relaymsg.c src/relaymsg.h | build
+	$(CC) $(TEST_CFLAGS) $(CFLAGS) -pthread -o $@ tests/relay_test.c src/relaymsg.c
+
+test: build/save_test build/core_test build/netmsg_test build/net_test build/relay_test
 	./build/save_test
 	./build/core_test
 	./build/netmsg_test
 	./build/net_test
+	./build/relay_test
 
 build/fuzz_savefmt: tests/fuzz_savefmt.c src/savefmt.c src/savefmt.h | build
 	$(FUZZ_CC) $(TEST_CFLAGS) -DSAVEFMT_FUZZING -g -O1 -fsanitize=fuzzer,address,undefined \
 		-o $@ tests/fuzz_savefmt.c src/savefmt.c $(TEST_LIBS)
 
-build/fuzz_netmsg: tests/fuzz_netmsg.c $(NETMSG_SRC) $(NETMSG_HDR) | build
+build/fuzz_netmsg: tests/fuzz_netmsg.c $(NETMSG_SRC) $(NETMSG_HDR) src/relaymsg.c src/relaymsg.h | build
 	$(FUZZ_CC) $(TEST_CFLAGS) -DSAVEFMT_FUZZING -g -O1 -fsanitize=fuzzer,address,undefined \
-		-o $@ tests/fuzz_netmsg.c $(NETMSG_SRC) $(TEST_LIBS)
+		-o $@ tests/fuzz_netmsg.c $(NETMSG_SRC) src/relaymsg.c $(TEST_LIBS)
 
 # FUZZ_TIME seconds of fuzzing per target, seeded with samples written by the unit tests
 FUZZ_TIME ?= 60
