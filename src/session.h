@@ -39,6 +39,8 @@ void session_cmd_join(const char *code, const char *name);
 void session_cmd_leave(void);
 void session_cmd_players(void);
 void session_cmd_kick(const char *name);
+void session_cmd_ban(const char *name);   /* NULL: list the bans */
+void session_cmd_unban(const char *name);
 void session_cmd_claim(void);
 
 /* The console's yes/no prompt became free: asks the next queued claim. */

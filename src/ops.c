@@ -41,6 +41,8 @@ const char *ops_result_text(OpResult r) {
     case OPR_STALE:         return "The turn order changed in the meantime";
     case OPR_INVALID:       return "Invalid action";
     case OPR_ALREADY_OWNED: return "That character already has an owner";
+    case OPR_CLAIM_PENDING: return "Wait for the GM to answer your earlier claim";
+    case OPR_TOO_FAST:      return "Too many rolls; wait a moment";
     }
     return "Unknown error";
 }

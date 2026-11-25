@@ -23,7 +23,8 @@ static const char *const ARGS_CHARACTER[] = { "delete", "size", "maxhealth", "ar
 static const char *const ARGS_DELETE[]    = { "delete", NULL };
 static const char *const ARGS_HELP[]      = { "quit", "background", "debug", "character", "wall", "entity", "help",
                                               "roll", "grid", "gamemaster", "init", "clear", "theme", "teleport", "save", "load",
-                                              "host", "unhost", "join", "leave", "players", "kick", "claim", NULL };
+                                              "host", "unhost", "join", "leave", "players", "kick", "ban", "unban",
+                                              "claim", NULL };
 static const char *const ARGS_INIT[]      = { "add", "remove", "clear", "show", "next", NULL };
 static const char *const ARGS_THEME[]     = { "purple", "red", "green", "yellow", "light", "dark", "black", NULL };
 
@@ -38,7 +39,7 @@ static const CommandDef COMMANDS[] = {
     { "save", NULL },        { "load", NULL },
     { "host", NULL },        { "unhost", NULL },            { "join", NULL },
     { "leave", NULL },       { "players", NULL },           { "kick", NULL },
-    { "claim", NULL },
+    { "ban", NULL },         { "unban", NULL },             { "claim", NULL },
 };
 #define NCOMMANDS ((int)(sizeof(COMMANDS) / sizeof(COMMANDS[0])))
 
@@ -538,6 +539,10 @@ static void cmd_help(Args *a) {
         console_log(":players # List the people at the table");
     } else if (!strcmp(arg, "kick") || !strcmp(arg, ":kick")) {
         console_log(":kick <name> # GM: remove a player from the table");
+    } else if (!strcmp(arg, "ban") || !strcmp(arg, ":ban")) {
+        console_log(":ban [name] # GM: remove a player and keep their name and address out; no name: list the bans");
+    } else if (!strcmp(arg, "unban") || !strcmp(arg, ":unban")) {
+        console_log(":unban <name> # GM: let a banned player join again");
     } else if (!strcmp(arg, "claim") || !strcmp(arg, ":claim")) {
         console_log(":claim # Ask the GM for the selected character (it must have no owner)");
     } else {
@@ -561,6 +566,7 @@ static void cmd_help(Args *a) {
         console_log(":host / :join     # Play together: host as GM, or join with a code");
         console_log(":unhost / :leave  # End or leave the session");
         console_log(":players / :kick  # List or remove players");
+        console_log(":ban / :unban     # Keep a player out of the session, or let them back in");
         console_log(":claim            # Ask the GM for the selected character");
     }
 }
@@ -868,6 +874,14 @@ void console_command(const char *raw) {
     else if (!strcmp(cmd, "kick") || !strcmp(cmd, ":kick")) {
         if (a.argc != 2) console_log("Usage: :kick <name>");
         else session_cmd_kick(a.argv[1]);
+    }
+    else if (!strcmp(cmd, "ban") || !strcmp(cmd, ":ban")) {
+        if (a.argc > 2) console_log("Usage: :ban [name]");
+        else session_cmd_ban(a.argc == 2 ? a.argv[1] : NULL);
+    }
+    else if (!strcmp(cmd, "unban") || !strcmp(cmd, ":unban")) {
+        if (a.argc != 2) console_log("Usage: :unban <name>");
+        else session_cmd_unban(a.argv[1]);
     }
     else if (!strcmp(cmd, "claim") || !strcmp(cmd, ":claim"))   session_cmd_claim();
     else if (!strcmp(cmd, "init") || !strcmp(cmd, ":i"))        cmd_init(&a);

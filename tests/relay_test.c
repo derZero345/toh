@@ -496,6 +496,31 @@ static void test_rooms_per_addr(void) {
     relay_stop(r);
 }
 
+/* One address cannot hold more than conns_per_addr connections; a closed one frees its place. */
+static void test_conns_per_addr(void) {
+    RelayLimits l;
+    relay_default_limits(&l);
+    l.conns_per_addr = 3;
+    Relay *r = start(&l);
+    if (!r) return;
+    uint16_t port = relay_port(r);
+
+    int fd[4];
+    for (int i = 0; i < 4; i++) fd[i] = dial(port);
+    CHECK(closed(fd[3], 2000)); /* the fourth is closed without an answer */
+    close(fd[3]);
+    for (int i = 0; i < 3; i++) CHECK(!closed(fd[i], 100));
+
+    close(fd[0]);
+    poll(NULL, 0, 200); /* the relay notices the close */
+    fd[0] = dial(port);
+    RelayMsg join = room_msg(RM_JOIN, 9);
+    put(fd[0], &join);
+    CHECK(get_status(fd[0], RS_NO_ROOM, 2000)); /* accepted: it got an answer */
+    for (int i = 0; i < 3; i++) close(fd[i]);
+    relay_stop(r);
+}
+
 /* A client that stops sending after its request still gets the answer. */
 static void test_half_close(void) {
     RelayLimits l;
@@ -524,6 +549,7 @@ int main(void) {
     test_ping();
     test_linked_slot();
     test_rooms_per_addr();
+    test_conns_per_addr();
     test_half_close();
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;

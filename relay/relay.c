@@ -432,6 +432,14 @@ static void addr_key(const struct sockaddr_storage *sa, char *out, size_t cap) {
     snprintf(out, cap, "%s/64", ip);
 }
 
+/* Open connections from one address (key), so one machine cannot take every socket. */
+static int conns_from(Relay *r, const char *key) {
+    int n = 0;
+    for (int i = 0; i < r->nsocks; i++)
+        if (!r->socks[i]->dead && strcmp(r->socks[i]->key, key) == 0) n++;
+    return n;
+}
+
 static void accept_all(Relay *r) {
     for (;;) {
         struct sockaddr_storage sa;
@@ -453,7 +461,7 @@ static void accept_all(Relay *r) {
         char addr[RELAY_ADDR_MAX], key[RELAY_ADDR_MAX];
         addr_text(&sa, addr, sizeof(addr));
         addr_key(&sa, key, sizeof(key));
-        if (!sock_new(r, fd, addr, key)) close(fd);
+        if (conns_from(r, key) >= r->lim.conns_per_addr || !sock_new(r, fd, addr, key)) close(fd);
     }
 }
 
@@ -570,7 +578,7 @@ static void *thread_main(void *arg) {
 
 void relay_default_limits(RelayLimits *l) {
     *l = (RelayLimits){ .port = RELAY_DEFAULT_PORT, .max_rooms = 64, .max_players = 32, .max_sockets = 1024,
-                        .joins_per_min = 20, .first_msg_ms = 5000, .attach_ms = 10000, .ping_ms = 20000 };
+                        .conns_per_addr = 96, .joins_per_min = 20, .first_msg_ms = 5000, .attach_ms = 10000, .ping_ms = 20000 };
 }
 
 static int listen_socket(uint16_t port, char *err, size_t errcap) {

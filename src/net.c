@@ -345,8 +345,10 @@ static bool process_input(Net *n, Conn *c) {
         }
         if (avail < 4) return true;
         size_t len = (size_t)p[0] | (size_t)p[1] << 8 | (size_t)p[2] << 16 | (size_t)p[3] << 24;
-        if (len > MAX_CIPHERTEXT || (c->state == CS_HEADER && len != HEADER_LEN) ||
-            (c->state == CS_OPEN && len < ABYTES)) {
+        /* the stream header proves nothing (anyone can send 24 bytes): until a frame decrypted, a peer
+         * on the host only gets to send a small one, not make us buffer NET_MAX_FRAME */
+        size_t max = n->host && !c->got_message ? NET_FIRST_FRAME_MAX : MAX_CIPHERTEXT;
+        if (len > max || (c->state == CS_HEADER && len != HEADER_LEN) || (c->state == CS_OPEN && len < ABYTES)) {
             conn_end(n, c, NET_END_BAD_DATA);
             return false;
         }
@@ -443,7 +445,25 @@ static void addr_text(const struct sockaddr_storage *sa, char *out, size_t cap) 
     snprintf(out, cap, "%s", ip);
 }
 
-/* At most NET_HANDSHAKES_PER_MIN new connections per address and minute. */
+/* The key rate_ok counts by: the IPv4 address (also when IPv4-mapped), or the IPv6 /64 prefix,
+ * since one IPv6 host easily has a whole /64. */
+static void addr_key(const struct sockaddr_storage *sa, char *out, size_t cap) {
+    const struct in6_addr *a = &((const struct sockaddr_in6 *)sa)->sin6_addr;
+    char ip[INET6_ADDRSTRLEN] = "?";
+    if (sa->ss_family == AF_INET6 && IN6_IS_ADDR_V4MAPPED(a)) {
+        inet_ntop(AF_INET, a->s6_addr + 12, ip, sizeof(ip));
+        snprintf(out, cap, "%s", ip);
+    } else if (sa->ss_family == AF_INET6) {
+        struct in6_addr prefix = *a;
+        memset(prefix.s6_addr + 8, 0, 8);
+        inet_ntop(AF_INET6, &prefix, ip, sizeof(ip));
+        snprintf(out, cap, "%s/64", ip);
+    } else {
+        addr_text(sa, out, cap);
+    }
+}
+
+/* At most NET_HANDSHAKES_PER_MIN new connections per address (addr_key) and minute. */
 static bool rate_ok(Net *n, const char *addr) {
     uint64_t now = now_ms();
     RateSlot *free_slot = NULL, *oldest = &n->rate[0];
@@ -472,9 +492,10 @@ static void accept_all(Net *n) {
         socklen_t sl = sizeof(sa);
         int fd = accept(n->lfd, (struct sockaddr *)&sa, &sl);
         if (fd < 0) return;
-        char addr[64];
+        char addr[64], key[64];
         addr_text(&sa, addr, sizeof(addr));
-        if (n->nconns >= NET_MAX_CONNS || !rate_ok(n, addr)) {
+        addr_key(&sa, key, sizeof(key));
+        if (n->nconns >= NET_MAX_CONNS || !rate_ok(n, key)) {
             close(fd);
             continue;
         }

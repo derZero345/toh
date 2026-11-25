@@ -25,7 +25,8 @@
 #define NET_HELLO_TIMEOUT_MS   5000    /* host: time until the first message */
 #define NET_CONNECT_TIMEOUT_MS 4000    /* client: per address */
 #define NET_MAX_QUEUE          (64u << 20) /* bytes waiting to be sent to one connection */
-#define NET_HANDSHAKES_PER_MIN 5       /* host: per source address */
+#define NET_HANDSHAKES_PER_MIN 5       /* host: per source address (IPv4, or IPv6 /64) */
+#define NET_FIRST_FRAME_MAX    256     /* host: a connection's first frame (HELLO), before it proved the secret */
 #define NET_RELAY_ADDR_MAX     256     /* "host:port" of the relay, incl. the terminating NUL */
 #define NET_RELAY_JOIN_MS      12000   /* client: wait for the GM to attach (the relay gives up after 10 s) */
 #define NET_RELAY_RETRY_MS     5000    /* host: reconnect to a lost relay */

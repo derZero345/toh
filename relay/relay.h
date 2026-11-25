@@ -20,6 +20,7 @@ typedef struct {
     int max_rooms;     /* 64 */
     int max_players;   /* waiting or linked players per room: 32 */
     int max_sockets;   /* 1024 */
+    int conns_per_addr; /* open connections per source address (IPv4, or IPv6 /64): 96 */
     int joins_per_min; /* JOINs per source address and minute: 20 */
     int first_msg_ms;  /* a new connection's first message: 5000 */
     int attach_ms;     /* a JOIN waits this long for the GM: 10000 */

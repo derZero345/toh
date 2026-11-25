@@ -6,6 +6,8 @@
 #include "relaymsg.h"
 #include "savefmt.h"
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <sodium.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -15,6 +17,10 @@
 
 #define MAX_PLAYERS (NET_MAX_CONNS + 1) /* the GM and every connection */
 #define ROLL_LIST_MAX 20                /* longer rolls only show the total in the log */
+#define CLAIMS_PER_PLAYER 3             /* host: a player's claims waiting for the GM */
+#define ROLL_WINDOW_MS 10000            /* host: a player rolls at most ROLLS_PER_WINDOW times in this */
+#define ROLLS_PER_WINDOW 10
+#define BAN_KEY_MAX 64
 
 typedef struct {
     uint8_t h[NET_HASH_SIZE];
@@ -26,6 +32,9 @@ typedef struct {
     uint8_t id;
     uint8_t role; /* NET_ROLE_* */
     int conn;     /* host: the player's connection */
+    char addr[BAN_KEY_MAX]; /* host: ban_key of the player's address ("" = unknown) */
+    uint64_t rollWindow;    /* host: start of the current ROLL_WINDOW_MS */
+    int rolls;              /* host: rolls in it */
     char name[PLAYER_NAME_MAX];
     uint32_t color;
     HashList known; /* host: images this player has */
@@ -38,6 +47,12 @@ typedef struct {
     uint8_t player;
     uint32_t entity;
 } Claim;
+
+/* host: someone the GM banned. A join is turned away when its name or its address matches. */
+typedef struct {
+    char name[PLAYER_NAME_MAX];
+    char addr[BAN_KEY_MAX]; /* ban_key; "" = the name only (they were not at the table) */
+} Ban;
 
 typedef struct {
     Hash hash;
@@ -61,6 +76,7 @@ static struct {
     /* host */
     DA(Claim) claims;
     bool claimAsked;
+    DA(Ban) bans; /* for as long as we host */
     Portmap *pm;
     bool codeReady;
     JoinCode code; /* host: our code; client: the code we joined with */
@@ -127,6 +143,36 @@ static const char *color_name(uint32_t c) {
 
 static void entity_label(const Entity *e, char *out, size_t cap) {
     snprintf(out, cap, "character #%u [%d|%d]", e->id, e->tile.row, e->tile.col);
+}
+
+/* What an address ban matches: the IPv4 address (also when IPv4-mapped), or the IPv6 /64, since one
+ * IPv6 host easily has a whole /64. "" when addr is not an IP address. */
+static void ban_key(const char *addr, char *out, size_t cap) {
+    struct in_addr a4;
+    struct in6_addr a6;
+    char ip[INET6_ADDRSTRLEN];
+    out[0] = '\0';
+    if (inet_pton(AF_INET, addr, &a4) == 1) {
+        snprintf(out, cap, "%s", addr);
+    } else if (inet_pton(AF_INET6, addr, &a6) == 1) {
+        if (IN6_IS_ADDR_V4MAPPED(&a6)) {
+            inet_ntop(AF_INET, a6.s6_addr + 12, ip, sizeof(ip));
+            snprintf(out, cap, "%s", ip);
+        } else {
+            memset(a6.s6_addr + 8, 0, 8);
+            inet_ntop(AF_INET6, &a6, ip, sizeof(ip));
+            snprintf(out, cap, "%s/64", ip);
+        }
+    }
+}
+
+/* The ban that turns away a join as name from addr (a ban_key), or NULL. */
+static const Ban *ban_match(const char *name, const char *addr) {
+    for (int i = 0; i < S.bans.count; i++) {
+        const Ban *b = &S.bans.items[i];
+        if (strcasecmp(b->name, name) == 0 || (addr[0] && strcmp(b->addr, addr) == 0)) return b;
+    }
+    return NULL;
 }
 
 static Player *player_by_id(uint8_t id) {
@@ -494,18 +540,29 @@ static void host_op(Player *p, const NetOp *o, uint32_t seq) {
     NetMsg rej = { .type = NM_OP_REJECTED, .seq = seq };
     if (o->type == NOP_ROLL) {
         int num, sides, mod;
-        if (!dice_parse(o->dice, &num, &sides, &mod)) {
-            rej.reason = OPR_INVALID;
-            net_send(S.net, p->conn, &rej);
-        } else {
-            host_roll(p, o->dice);
+        uint64_t now = SDL_GetTicks();
+        if (now - p->rollWindow >= ROLL_WINDOW_MS) {
+            p->rollWindow = now;
+            p->rolls = 0;
         }
+        if (!dice_parse(o->dice, &num, &sides, &mod)) rej.reason = OPR_INVALID;
+        else if (++p->rolls > ROLLS_PER_WINDOW) rej.reason = OPR_TOO_FAST;
+        if (rej.reason) net_send(S.net, p->conn, &rej);
+        else host_roll(p, o->dice);
         return;
     }
     if (o->type == NOP_CLAIM) {
         Entity *e = entity_by_id(o->id);
+        int pending = 0;
+        bool again = false;
+        for (int i = 0; i < S.claims.count; i++) {
+            if (S.claims.items[i].player != p->id) continue;
+            pending++;
+            if (S.claims.items[i].entity == o->id) again = true;
+        }
         if (!e || e->type != ENTITY_CHARACTER) rej.reason = OPR_NO_ENTITY;
         else if (e->owner[0]) rej.reason = OPR_ALREADY_OWNED;
+        else if (again || pending >= CLAIMS_PER_PLAYER) rej.reason = OPR_CLAIM_PENDING;
         if (rej.reason) {
             net_send(S.net, p->conn, &rej);
             return;
@@ -537,12 +594,17 @@ static void host_op(Player *p, const NetOp *o, uint32_t seq) {
 }
 
 static void host_message(Player *p, const NetMsg *m) {
+    const Ban *b;
     if (p->leaving) return;
     if (!p->welcomed) {
         if (m->type != NM_HELLO) {
             drop(p, "it did not introduce itself");
         } else if (m->protocol != NET_PROTOCOL_VERSION) {
             reject(p, NET_REJECT_VERSION);
+        } else if ((b = ban_match(m->name, p->addr))) {
+            console_log("Turned away %s: banned as %s%s. :unban %s lets them in again.", m->name, b->name,
+                        strcasecmp(b->name, m->name) ? " (same address)" : "", b->name);
+            reject(p, NET_REJECT_KICKED);
         } else {
             bool taken = false;
             for (int i = 0; i < MAX_PLAYERS; i++)
@@ -599,6 +661,7 @@ static void host_event(NetEvent *ev) {
             p->used = true;
             p->conn = ev->conn;
             p->id = 0; /* assigned in welcome */
+            ban_key(ev->addr, p->addr, sizeof(p->addr));
             return;
         }
         net_close(S.net, ev->conn); /* cannot happen: net.c caps connections */
@@ -827,7 +890,7 @@ static void client_message(const NetMsg *m) {
         if (S.role == ROLE_CLIENT) client_applied(m);
         break;
     case NM_OP_REJECTED:
-        console_log("%s", ops_result_text(m->reason <= OPR_ALREADY_OWNED ? (OpResult)m->reason : OPR_INVALID));
+        console_log("%s", ops_result_text(m->reason <= OPR_LAST ? (OpResult)m->reason : OPR_INVALID));
         break;
     case NM_IMAGE:
         client_image(m);
@@ -853,7 +916,7 @@ static void client_message(const NetMsg *m) {
         } else if (m->reason == NET_REJECT_FULL) {
             msg = "The table is full.";
         } else if (m->reason == NET_REJECT_KICKED) {
-            msg = "You were removed from the table by the GM.";
+            msg = "The GM banned you from this table.";
         } else if (m->reason == NET_REJECT_SNAPSHOT) {
             msg = "The host could not send its table.";
         }
@@ -1021,6 +1084,7 @@ static void end_host(void) {
     S.pm = NULL;
     da_free(&S.claims);
     S.claimAsked = false;
+    da_free(&S.bans);
     players_clear();
     cache_clear();
     sodium_memzero(&S.code, sizeof(S.code));
@@ -1107,22 +1171,82 @@ void session_cmd_players(void) {
     }
 }
 
+/* The player at the table called name (any case), or NULL. */
+static Player *player_by_name(const char *name) {
+    for (int i = 1; i < MAX_PLAYERS; i++) {
+        Player *p = &S.players[i];
+        if (p->welcomed && !p->leaving && strcasecmp(p->name, name) == 0) return p;
+    }
+    return NULL;
+}
+
+static void remove_player(Player *p) {
+    NetMsg bye = { .type = NM_CLOSE, .reason = NET_CLOSE_KICKED };
+    net_send(S.net, p->conn, &bye);
+    net_close(S.net, p->conn);
+    p->leaving = true;
+}
+
 void session_cmd_kick(const char *name) {
     if (S.role != ROLE_HOST) {
         console_log("%s", ops_result_text(OPR_GM_ONLY));
         return;
     }
-    for (int i = 1; i < MAX_PLAYERS; i++) {
-        Player *p = &S.players[i];
-        if (!p->welcomed || p->leaving || strcasecmp(p->name, name) != 0) continue;
-        NetMsg bye = { .type = NM_CLOSE, .reason = NET_CLOSE_KICKED };
-        net_send(S.net, p->conn, &bye);
-        net_close(S.net, p->conn);
-        p->leaving = true;
-        console_log("Removed %s from the table.", p->name);
+    Player *p = player_by_name(name);
+    if (!p) {
+        console_log("Nobody called \"%s\" is at the table", name);
         return;
     }
-    console_log("Nobody called \"%s\" is at the table", name);
+    remove_player(p);
+    console_log("Removed %s from the table. :ban %s keeps them out.", p->name, p->name);
+}
+
+void session_cmd_ban(const char *name) {
+    if (S.role != ROLE_HOST) {
+        console_log("%s", ops_result_text(OPR_GM_ONLY));
+        return;
+    }
+    if (!name) {
+        if (S.bans.count == 0) console_log("Nobody is banned.");
+        for (int i = 0; i < S.bans.count; i++)
+            console_log("%s%s%s", S.bans.items[i].name, S.bans.items[i].addr[0] ? " - address " : " - name only",
+                        S.bans.items[i].addr);
+        return;
+    }
+    if (!name_ok(name)) return;
+    for (int i = 0; i < S.bans.count; i++) {
+        if (strcasecmp(S.bans.items[i].name, name) == 0) {
+            console_log("%s is banned already.", S.bans.items[i].name);
+            return;
+        }
+    }
+    Player *p = player_by_name(name);
+    Ban b = { 0 };
+    snprintf(b.name, sizeof(b.name), "%s", p ? p->name : name);
+    if (p) snprintf(b.addr, sizeof(b.addr), "%s", p->addr);
+    da_push(&S.bans, b);
+    if (p) {
+        remove_player(p);
+        if (b.addr[0]) console_log("Banned %s and the address %s.", b.name, b.addr);
+        else console_log("Banned the name %s.", b.name);
+        console_log(":unban %s lifts it.", b.name);
+    } else {
+        console_log("Nobody called %s is at the table; banned the name only.", b.name);
+    }
+}
+
+void session_cmd_unban(const char *name) {
+    if (S.role != ROLE_HOST) {
+        console_log("%s", ops_result_text(OPR_GM_ONLY));
+        return;
+    }
+    for (int i = 0; i < S.bans.count; i++) {
+        if (strcasecmp(S.bans.items[i].name, name) != 0) continue;
+        console_log("%s may join again.", S.bans.items[i].name);
+        da_remove_at(&S.bans, i);
+        return;
+    }
+    console_log("Nobody called \"%s\" is banned. :ban lists the bans.", name);
 }
 
 void session_cmd_claim(void) {

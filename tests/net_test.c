@@ -179,6 +179,39 @@ static void test_garbage_and_timeout(void) {
     net_free(host);
 }
 
+/* A peer without the secret can send a stream header (it is not authenticated), but a big first
+ * frame after it is refused at once instead of being buffered until the HELLO timeout. */
+static void test_big_first_frame(void) {
+    uint8_t secret[NET_SECRET_SIZE] = { 6 };
+    char err[128];
+    Net *host = net_host(0, secret, NULL, NULL, err, sizeof(err));
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in sa = { .sin_family = AF_INET, .sin_port = htons(net_port(host)) };
+    sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    CHECK(connect(fd, (struct sockaddr *)&sa, sizeof(sa)) == 0);
+
+    uint8_t out[28 + 4 + crypto_secretstream_xchacha20poly1305_HEADERBYTES + 4] = { 'T', 'O', 'H', '1' };
+    size_t pos = 28;
+    out[pos] = crypto_secretstream_xchacha20poly1305_HEADERBYTES; /* header frame: any bytes */
+    pos += 4 + crypto_secretstream_xchacha20poly1305_HEADERBYTES;
+    uint32_t big = 1u << 20; /* a 1 MiB frame follows */
+    memcpy(out + pos, (uint8_t[4]){ (uint8_t)big, (uint8_t)(big >> 8), (uint8_t)(big >> 16), (uint8_t)(big >> 24) }, 4);
+    CHECK(write(fd, out, sizeof(out)) == (ssize_t)sizeof(out));
+
+    uint64_t t0 = now_ms();
+    char buf[256];
+    while (read(fd, buf, sizeof(buf)) > 0) {} /* the host's greeting and header, then the close */
+    CHECK(now_ms() - t0 < 1000);
+    close(fd);
+
+    NetEvent ev;
+    CHECK(wait_event(host, &ev, 2000) && ev.type == NET_EV_CONNECTED);
+    net_event_free(&ev);
+    CHECK(wait_event(host, &ev, 2000) && ev.type == NET_EV_CLOSED && ev.end == NET_END_BAD_DATA);
+    net_event_free(&ev);
+    net_free(host);
+}
+
 static void test_unreachable(void) {
     /* find a port with nothing listening */
     uint8_t secret[NET_SECRET_SIZE] = { 4 };
@@ -382,6 +415,7 @@ int main(void) {
     test_exchange();
     test_wrong_secret();
     test_garbage_and_timeout();
+    test_big_first_frame();
     test_unreachable();
     test_free_while_connecting();
     test_relay_exchange();

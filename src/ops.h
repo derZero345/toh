@@ -71,7 +71,10 @@ typedef enum {
     OPR_STALE,
     OPR_INVALID,
     OPR_ALREADY_OWNED,
+    OPR_CLAIM_PENDING, /* session: the player's earlier claims are still waiting for the GM */
+    OPR_TOO_FAST,      /* session: too many rolls in a short time */
 } OpResult;
+#define OPR_LAST OPR_TOO_FAST
 
 /*
  * Notes for ops_check / ops_apply:

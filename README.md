@@ -55,7 +55,7 @@ Console commands: `:q` quit, `:b [file.png]` background, `:d` debug, `:c` charac
 `:w [delete]` wall, `:e delete`, `:r 2d6+3` roll, `:g` grid orientation, `:gm` gamemaster,
 `:i [add|remove|clear|show|next]` initiative, `:cl` clear, `:t [name]` theme, `:h [command]` help,
 `:save [file]` / `:load[!] [file]` save files (see below), `:q!` quit without saving,
-`:host`, `:join`, `:leave`, `:unhost`, `:players`, `:kick`, `:claim` multiplayer (see below).
+`:host`, `:join`, `:leave`, `:unhost`, `:players`, `:kick`, `:ban`, `:unban`, `:claim` multiplayer (see below).
 
 ## Playing together
 
@@ -77,6 +77,10 @@ Players can move their own characters (Shift + click inside the green range; whi
 turn), end their turn with `:i next`, roll dice (`:r`, rolled by the host and shown to everyone) and save a copy of
 the table. Everything else is the GM's. `:players` lists who is at the table, `:kick <name>` removes someone,
 `:leave` / `:unhost` end it; players keep the last table as an unsaved offline table.
+A kicked player can rejoin with the same code; `:ban <name>` removes them and turns away both that name and their
+address (IPv4 address or IPv6 /64) until `:unban <name>` or the end of the session (`:ban` lists the bans). Players
+behind the same router share its address, so at school a ban can also keep out classmates: `:unban` them if so.
+A player can have at most 3 claims waiting for the GM and roll at most 10 times in 10 seconds.
 
 Everyone sees what the others are pointing at, in their color (the GM is gold, players get blue, red, green,
 ...; `:players` lists the colors): selected tiles and characters with a name label, the movement preview while
