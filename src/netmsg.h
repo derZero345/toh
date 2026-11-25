@@ -21,7 +21,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define NET_PROTOCOL_VERSION 5
+#define NET_PROTOCOL_VERSION 6
 #define NET_DEFAULT_PORT     41234
 #define NET_MAX_FRAME        (64u << 20)            /* one encrypted frame */
 #define NETMSG_MAX_BLOB      (NET_MAX_FRAME - 1024) /* SNAPSHOT / IMAGE payload */
@@ -105,6 +105,7 @@ typedef struct {
     uint8_t image[NET_HASH_SIZE];
     int32_t row, col;
     int32_t size, max_health, health, attack, speed, initiative;
+    int32_t max_stamina, stamina;
     char name[SAVEFMT_CHAR_NAME_MAX]; /* characters: "" = no name */
 } NetSpec;
 

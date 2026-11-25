@@ -61,6 +61,7 @@ static NetOp sample_op(int type) {
                                .health = 12, .attack = 5, .speed = 6, .initiative = -1 };
         fill_hash(specs2[0].image, 1);
         strcpy(specs2[0].name, "Mao");
+        specs2[0].max_stamina = 9; specs2[0].stamina = 3;
         specs2[1] = (NetSpec){ .type = SAVE_ENT_WALL, .row = -1000000, .col = 9 };
         fill_hash(specs2[1].image, 2);
         o.specs = specs2; o.nspecs = 2;
@@ -72,7 +73,7 @@ static NetOp sample_op(int type) {
         break;
     case NOP_SET_STATS:
         o.ids = ids3; o.nids = 1;
-        o.stat_mask = 1 | 4 | 8; o.size = -2; o.speed = 21; o.initiative = 4;
+        o.stat_mask = 1 | 4 | 8 | 16; o.max_stamina = 7; o.size = -2; o.speed = 21; o.initiative = 4;
         break;
     case NOP_SET_ICON:
         o.ids = ids3; o.nids = 2;
@@ -99,6 +100,10 @@ static NetOp sample_op(int type) {
     case NOP_SET_HEALTH:
         o.ids = ids3; o.nids = 2;
         o.health_mode = 1; o.value = -7;
+        break;
+    case NOP_SET_STAMINA:
+        o.ids = ids3; o.nids = 1;
+        o.health_mode = 2; o.value = 4;
         break;
     case NOP_SET_NAME:
         o.ids = ids3; o.nids = 1;
@@ -138,7 +143,7 @@ static NetMsg sample_msg(int t, int op_type) {
     case NM_CREATE:
         m.seq = 7;
         m.spec = (NetSpec){ .type = SAVE_ENT_CHARACTER, .row = 3, .col = -4, .size = -2, .max_health = 20,
-                            .health = 20, .speed = 6, .initiative = 1 };
+                            .health = 20, .speed = 6, .initiative = 1, .max_stamina = 8, .stamina = 8 };
         strcpy(m.spec.name, "Nina");
         m.data = blob; m.data_len = sizeof(blob);
         break;
@@ -222,10 +227,15 @@ static void test_fields_survive(void) {
           d.op.specs[0].health == 12 && memcmp(d.op.specs[0].image, specs2[0].image, NET_HASH_SIZE) == 0);
     CHECK(d.op.specs[1].type == SAVE_ENT_WALL && d.op.specs[1].row == -1000000 && d.op.specs[1].speed == 0);
     CHECK(strcmp(d.op.specs[0].name, "Mao") == 0 && d.op.specs[1].name[0] == '\0');
+    CHECK(d.op.specs[0].max_stamina == 9 && d.op.specs[0].stamina == 3);
     netmsg_free(&d);
 
     m = sample_msg(NM_OP, NOP_SET_HEALTH);
     CHECK(round_trip(&m, &d) && d.op.nids == 2 && d.op.health_mode == 1 && d.op.value == -7);
+    netmsg_free(&d);
+
+    m = sample_msg(NM_OP, NOP_SET_STAMINA);
+    CHECK(round_trip(&m, &d) && d.op.nids == 1 && d.op.health_mode == 2 && d.op.value == 4);
     netmsg_free(&d);
 
     m = sample_msg(NM_OP, NOP_SET_NAME);
@@ -233,7 +243,7 @@ static void test_fields_survive(void) {
     netmsg_free(&d);
 
     m = sample_msg(NM_OP, NOP_SET_STATS);
-    CHECK(round_trip(&m, &d) && d.seq == 99 && d.op.stat_mask == 13 && d.op.size == -2 && d.op.speed == 21 &&
+    CHECK(round_trip(&m, &d) && d.seq == 99 && d.op.stat_mask == 29 && d.op.max_stamina == 7 && d.op.size == -2 && d.op.speed == 21 &&
           d.op.initiative == 4 && d.op.max_health == 0);
     netmsg_free(&d);
 
@@ -376,6 +386,8 @@ static void test_encoder_refuses_invalid(void) {
     m = sample_msg(NM_OP, NOP_SPAWN); specs2[1].type = 2; check_invalid(m, "unknown entity type");
     m = sample_msg(NM_OP, NOP_SET_HEALTH); m.op.health_mode = 2; check_invalid(m, "health mode 2");
     m = sample_msg(NM_OP, NOP_SET_HEALTH); m.op.value = SAVEFMT_MAX_HP + 1; check_invalid(m, "health value too big");
+    m = sample_msg(NM_OP, NOP_SET_STAMINA); m.op.health_mode = 3; check_invalid(m, "stamina mode 3");
+    m = sample_msg(NM_OP, NOP_SET_STAMINA); m.op.value = -1; check_invalid(m, "negative stamina spend");
     m = sample_msg(NM_OP, NOP_SET_NAME); m.op.char_name[0] = '\0'; check_invalid(m, "empty character name");
     m = sample_msg(NM_OP, NOP_SPAWN); strcpy(specs2[1].name, "wall"); check_invalid(m, "wall with a name"); specs2[1].name[0] = '\0';
     m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = 0; check_invalid(m, "empty stat mask");
@@ -434,13 +446,15 @@ static void test_create(void) {
     CHECK(round_trip(&m, &d) && d.seq == 7 && d.spec.type == SAVE_ENT_CHARACTER && d.spec.row == 3 &&
           d.spec.col == -4 && d.spec.size == -2 && d.spec.max_health == 20 && d.spec.health == 20 &&
           d.spec.speed == 6 && d.spec.initiative == 1 && d.data_len == sizeof(blob) &&
-          strcmp(d.spec.name, "Nina") == 0);
+          strcmp(d.spec.name, "Nina") == 0 && d.spec.max_stamina == 8 && d.spec.stamina == 8);
     netmsg_free(&d);
     uint8_t *buf;
     size_t len;
     NetMsg bad = m; bad.spec.type = SAVE_ENT_WALL;        CHECK(!netmsg_encode(&bad, &buf, &len));
     bad = m; bad.spec.size = SAVEFMT_MAX_SIZE + 1;          CHECK(!netmsg_encode(&bad, &buf, &len));
     bad = m; bad.spec.speed = SAVEFMT_MAX_SPEED + 1;       CHECK(!netmsg_encode(&bad, &buf, &len));
+    bad = m; bad.spec.stamina = 5;                         CHECK(!netmsg_encode(&bad, &buf, &len));
+    bad = m; bad.spec.max_stamina = bad.spec.stamina = SAVEFMT_MAX_HP + 1; CHECK(!netmsg_encode(&bad, &buf, &len));
     bad = m; strcpy(bad.spec.name, "a\x01");               CHECK(!netmsg_encode(&bad, &buf, &len));
     bad = m; bad.data_len = 0;                             CHECK(!netmsg_encode(&bad, &buf, &len));
     bad = m; bad.data_len = NET_CREATE_MAX_BLOB + 1;       CHECK(!netmsg_encode(&bad, &buf, &len));

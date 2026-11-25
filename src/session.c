@@ -296,6 +296,7 @@ static bool net_from_op(const Op *op, NetOp *o) {
     o->max_health = op->maxHealth;
     o->speed = op->speed;
     o->initiative = op->initiative;
+    o->max_stamina = op->maxStamina;
     snprintf(o->name, sizeof(o->name), "%s", op->name);
     o->health_mode = (uint8_t)op->healthMode;
     o->value = op->value;
@@ -317,6 +318,8 @@ static bool net_from_op(const Op *op, NetOp *o) {
         n->attack = s->attack;
         n->speed = s->speed;
         n->initiative = s->initiative;
+        n->max_stamina = s->maxStamina;
+        n->stamina = s->stamina;
         snprintf(n->name, sizeof(n->name), "%s", s->name);
         if (!s->image || !texture_hash(s->image, SAVE_IMG_LOSSLESS, n->image)) return false;
     }
@@ -337,6 +340,7 @@ static bool op_from_net(const NetOp *o, Op *op) {
     op->maxHealth = o->max_health;
     op->speed = o->speed;
     op->initiative = o->initiative;
+    op->maxStamina = o->max_stamina;
     snprintf(op->name, sizeof(op->name), "%s", o->name);
     op->healthMode = o->health_mode;
     op->value = o->value;
@@ -347,7 +351,8 @@ static bool op_from_net(const NetOp *o, Op *op) {
         EntitySpec s = { .type = n->type == SAVE_ENT_WALL ? ENTITY_WALL : ENTITY_CHARACTER,
                          .image = cache_find(n->image), .tile = { n->row, n->col }, .size = n->size,
                          .maxHealth = n->max_health, .health = n->health, .attack = n->attack,
-                         .speed = n->speed, .initiative = n->initiative };
+                         .speed = n->speed, .initiative = n->initiative,
+                         .maxStamina = n->max_stamina, .stamina = n->stamina };
         if (!s.image) return false;
         snprintf(s.name, sizeof(s.name), "%s", n->name);
         da_push(&op->specs, s);
@@ -600,7 +605,8 @@ static void host_create(Player *p, const NetMsg *m) {
     Request r = { .kind = REQ_CREATE, .player = p->id };
     r.spec = (EntitySpec){ .type = ENTITY_CHARACTER, .image = t, .tile = tile, .size = m->spec.size,
                            .maxHealth = m->spec.max_health, .health = m->spec.max_health,
-                           .speed = m->spec.speed, .initiative = m->spec.initiative };
+                           .speed = m->spec.speed, .initiative = m->spec.initiative,
+                           .maxStamina = m->spec.max_stamina, .stamina = m->spec.max_stamina };
     snprintf(r.spec.name, sizeof(r.spec.name), "%s", m->spec.name);
     da_push(&S.requests, r);
     console_log("%s asks for a new character.", p->name);
@@ -841,9 +847,11 @@ static void ask_next_request(void) {
             /* short: the input line shows about 70 characters */
             char named[CHAR_NAME_MAX + 2] = "";
             if (c->spec.name[0]) snprintf(named, sizeof(named), " %s", c->spec.name);
-            snprintf(q, sizeof(q), "%s: new character%s [%d|%d] size %d HP %d speed %d init %d. Allow? (y/n)",
+            char st[24] = "";
+            if (c->spec.maxStamina > 0) snprintf(st, sizeof(st), " ST %d", c->spec.maxStamina);
+            snprintf(q, sizeof(q), "%s: new character%s [%d|%d] size %d HP %d speed %d init %d%s. Allow? (y/n)",
                      p->name, named, c->spec.tile.row, c->spec.tile.col, c->spec.size, c->spec.maxHealth,
-                     c->spec.speed, c->spec.initiative);
+                     c->spec.speed, c->spec.initiative, st);
         }
         gfx_set_console_visibility(true);
         S.claimAsked = console_confirm(q, request_answer, NULL);
@@ -863,7 +871,7 @@ void session_draw_request_preview(void) {
 }
 
 void session_request_character(const Image *pic, Hex tile, int size, int maxHealth, int speed,
-                               int initiative, const char *name) {
+                               int initiative, int maxStamina, const char *name) {
     if (S.role != ROLE_CLIENT) {
         console_log("Wait until you have joined the table");
         return;
@@ -876,7 +884,8 @@ void session_request_character(const Image *pic, Hex tile, int size, int maxHeal
     NetMsg m = { .type = NM_CREATE, .seq = ++S.seq, .data = b.webp, .data_len = b.len };
     m.spec = (NetSpec){ .type = SAVE_ENT_CHARACTER, .row = tile.row, .col = tile.col, .size = size,
                         .max_health = maxHealth, .health = maxHealth,
-                        .speed = speed > MAX_SPEED ? MAX_SPEED : speed, .initiative = initiative };
+                        .speed = speed > MAX_SPEED ? MAX_SPEED : speed, .initiative = initiative,
+                        .max_stamina = maxStamina, .stamina = maxStamina };
     snprintf(m.spec.name, sizeof(m.spec.name), "%s", name ? name : "");
     if (b.len > NET_CREATE_MAX_BLOB) console_log("The picture is too large");
     else if (!net_send(S.net, 1, &m)) console_log("Could not send that to the host");

@@ -32,7 +32,9 @@ static bool dice_ok(const char *s) {
 static bool spec_ok(const NetSpec *s) {
     if (s->type > SAVE_ENT_WALL || !coord_ok(s->row) || !coord_ok(s->col)) return false;
     if (s->name[0] && (s->type != SAVE_ENT_CHARACTER || !savefmt_char_name_valid(s->name))) return false;
-    return s->type != SAVE_ENT_CHARACTER || s->speed <= SAVEFMT_MAX_SPEED;
+    if (s->type != SAVE_ENT_CHARACTER) return true;
+    return s->speed <= SAVEFMT_MAX_SPEED && s->max_stamina >= -SAVEFMT_MAX_HP && s->max_stamina <= SAVEFMT_MAX_HP &&
+           s->stamina >= -SAVEFMT_MAX_HP && s->stamina <= SAVEFMT_MAX_HP;
 }
 
 static bool op_ok(const NetOp *o) {
@@ -66,6 +68,9 @@ static bool op_ok(const NetOp *o) {
         return o->name[0] == '\0' || savefmt_owner_valid(o->name);
     case NOP_SET_HEALTH:
         return o->health_mode <= 1 && o->value >= -SAVEFMT_MAX_HP && o->value <= SAVEFMT_MAX_HP;
+    case NOP_SET_STAMINA:
+        return o->health_mode <= 2 && o->value >= -SAVEFMT_MAX_HP && o->value <= SAVEFMT_MAX_HP &&
+               (o->health_mode != 2 || o->value >= 0);
     case NOP_SET_NAME:
         return savefmt_char_name_valid(o->char_name);
     case NOP_ROLL:
@@ -136,7 +141,7 @@ static bool msg_ok(const NetMsg *m) {
     case NM_PRESENCE:      return presence_ok(&m->presence);
     case NM_CREATE:
         return m->spec.type == SAVE_ENT_CHARACTER && spec_ok(&m->spec) && m->spec.size >= SAVEFMT_MIN_SIZE && m->spec.size <= SAVEFMT_MAX_SIZE &&
-               m->spec.health == m->spec.max_health && m->data && m->data_len >= 1 &&
+               m->spec.health == m->spec.max_health && m->spec.stamina == m->spec.max_stamina && m->data && m->data_len >= 1 &&
                m->data_len <= NET_CREATE_MAX_BLOB;
     case NM_SESSION:
         if (!ids_ok(m->entity_ids, m->nentity_ids)) return false;
@@ -225,6 +230,8 @@ static void put_op(Buf *b, const NetOp *o) {
                 put_sv(b, s->speed);
                 put_sv(b, s->initiative);
                 put_str(b, s->name);
+                put_sv(b, s->max_stamina);
+                put_sv(b, s->stamina);
             }
         }
         put_ids(b, o->ids, o->nids);
@@ -270,6 +277,11 @@ static void put_op(Buf *b, const NetOp *o) {
         put_str(b, o->name);
         break;
     case NOP_SET_HEALTH:
+        put_ids(b, o->ids, o->nids);
+        put_u8(b, o->health_mode);
+        put_sv(b, o->value);
+        break;
+    case NOP_SET_STAMINA:
         put_ids(b, o->ids, o->nids);
         put_u8(b, o->health_mode);
         put_sv(b, o->value);
@@ -351,6 +363,7 @@ bool netmsg_encode(const NetMsg *m, uint8_t **out, size_t *out_len) {
         put_sv(&b, m->spec.speed);
         put_sv(&b, m->spec.initiative);
         put_str(&b, m->spec.name);
+        put_sv(&b, m->spec.max_stamina);
         put_bytes(&b, m->data, m->data_len);
         break;
     }
@@ -486,6 +499,8 @@ static void get_op(Rd *r, NetOp *o) {
                 s->speed = get_sv(r);
                 s->initiative = get_sv(r);
                 get_str(r, s->name, sizeof(s->name));
+                s->max_stamina = get_sv(r);
+                s->stamina = get_sv(r);
             }
         }
         o->ids = get_ids(r, &o->nids);
@@ -548,6 +563,11 @@ static void get_op(Rd *r, NetOp *o) {
         o->health_mode = get_u8(r);
         o->value = get_sv(r);
         break;
+    case NOP_SET_STAMINA:
+        o->ids = get_ids(r, &o->nids);
+        o->health_mode = get_u8(r);
+        o->value = get_sv(r);
+        break;
     case NOP_SET_NAME:
         o->ids = get_ids(r, &o->nids);
         get_str(r, o->char_name, sizeof(o->char_name));
@@ -563,7 +583,6 @@ static void get_op(Rd *r, NetOp *o) {
     case NOP_GRID_ORIENTATION:
     case NOP_INIT_CLEAR:
     case NOP_INIT_SHOW:
-    case NOP_SET_STAMINA: /* no body until Task 3 */
         break;
     default:
         r->bad = true;
@@ -644,6 +663,8 @@ bool netmsg_decode(const uint8_t *buf, size_t len, NetMsg *out) {
         out->spec.speed = get_sv(&r);
         out->spec.initiative = get_sv(&r);
         get_str(&r, out->spec.name, sizeof(out->spec.name));
+        out->spec.max_stamina = get_sv(&r);
+        out->spec.stamina = out->spec.max_stamina;
         out->spec.health = out->spec.max_health;
         get_blob(&r, out);
         break;

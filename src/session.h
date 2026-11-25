@@ -51,7 +51,7 @@ void session_cmd_claim(void);
 void session_prompt_free(void);
 /* Client: asks the GM for a new character of ours with this picture (at most NET_CREATE_MAX_DIM per side). */
 void session_request_character(const Image *pic, Hex tile, int size, int maxHealth, int speed, int initiative,
-                               const char *name);
+                               int maxStamina, const char *name);
 /* Host: while a new character is being asked about, draws its picture faintly on its tile (only for the GM). */
 void session_draw_request_preview(void);
 

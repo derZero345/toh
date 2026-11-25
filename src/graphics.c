@@ -291,7 +291,7 @@ void gfx_handle_file_result(const char *path) {
             image_free(&cut);
             if (a->tiles.count == 1)
                 session_request_character(&small, a->tiles.items[0], a->size, a->maxHealth, a->speed,
-                                          a->initiative, a->name);
+                                          a->initiative, 0, a->name); /* Task 4 passes the stamina */
             image_free(&small);
             break;
         }
