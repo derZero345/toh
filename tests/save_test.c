@@ -614,6 +614,50 @@ static void test_owner_versions(void) {
     free(f);
 }
 
+/* version 5 stores character names after the owner */
+static void test_char_names(void) {
+    CHECK(savefmt_char_name_valid("Mao Clausewitz") && savefmt_char_name_valid("\xc3\x96laf"));
+    CHECK(!savefmt_char_name_valid("") && !savefmt_char_name_valid("tab\there") &&
+          !savefmt_char_name_valid("\xc2\x85") && !savefmt_char_name_valid("\xff"));
+    CHECK(savefmt_char_name_valid("12345678901234567890123456789012"));   /* 32 bytes */
+    CHECK(!savefmt_char_name_valid("123456789012345678901234567890123")); /* 33 */
+
+    Sample s;
+    sample_init(&s);
+    snprintf(s.entities[0].name, SAVEFMT_CHAR_NAME_MAX, "Mao Clausewitz");
+    size_t len;
+    uint8_t *file = encode_sample(&s, &len);
+    SaveData d;
+    CHECK_ERR(savefmt_decode(file, len, &d), SAVE_OK);
+    CHECK(d.nentities == 3 && strcmp(d.entities[0].name, "Mao Clausewitz") == 0 && d.entities[1].name[0] == '\0');
+    savefmt_free(&d);
+    free(file);
+
+    /* bad names don't encode */
+    snprintf(s.entities[0].name, SAVEFMT_CHAR_NAME_MAX, "bad\x01");
+    uint8_t *out;
+    CHECK_ERR(savefmt_encode(&s.d, NULL, &out, &len), SAVE_ERR_INVALID);
+    /* walls have no name */
+    s.entities[0].name[0] = '\0';
+    snprintf(s.entities[2].name, SAVEFMT_CHAR_NAME_MAX, "wall");
+    CHECK_ERR(savefmt_encode(&s.d, NULL, &out, &len), SAVE_ERR_INVALID);
+    sample_free(&s);
+
+    /* a version 4 body loads without names */
+    W st = { .n = 0 }, im = { .n = 0 };
+    wimage(&im, 8, 8);
+    wworld(&st, 0);
+    wuv(&st, 1);
+    wcharacter(&st, 3, "Bob");
+    wuv(&st, 0); wuv(&st, 0);
+    wuv(&st, 0);
+    uint8_t *f = wrap_v(&st, &im, &len, 1, 4);
+    CHECK_ERR(savefmt_decode(f, len, &d), SAVE_OK);
+    CHECK(d.nentities == 1 && d.entities[0].name[0] == '\0' && strcmp(d.entities[0].owner, "Bob") == 0);
+    savefmt_free(&d);
+    free(f);
+}
+
 /* sizes of version 1-3 saves map to Tales of Honor's classes by footprint */
 static void test_size_conversion(void) {
     const int32_t from[] = { -5, -2, -1, 0, 1, 2, 3, 9 }, to[] = { -2, -1, 0, 1, 3, 4, 4, 4 };
@@ -670,6 +714,7 @@ int main(int argc, char **argv) {
     test_fingerprint();
     test_owner_names();
     test_owner_versions();
+    test_char_names();
     test_size_conversion();
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;

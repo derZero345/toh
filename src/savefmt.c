@@ -22,6 +22,18 @@ static const uint8_t TAG_KEY[32] = {
 #define ZSTD_LEVEL 19
 #define WEBP_LOSSY_QUALITY 90
 
+bool savefmt_char_name_valid(const char *name) {
+    if (!name) return false;
+    size_t n = strnlen(name, SAVEFMT_CHAR_NAME_MAX);
+    if (n == 0 || n >= SAVEFMT_CHAR_NAME_MAX || !utf8_valid(name, n)) return false;
+    for (size_t i = 0; i < n; i++) {
+        uint8_t c = (uint8_t)name[i];
+        if (c < 0x20 || c == 0x7F) return false;
+        if (c == 0xC2 && (uint8_t)name[i + 1] <= 0x9F) return false; /* U+0080..U+009F (utf8_valid: a continuation follows) */
+    }
+    return true;
+}
+
 bool savefmt_owner_valid(const char *name) {
     if (!name) return false;
     size_t n = strnlen(name, SAVEFMT_OWNER_MAX);
@@ -81,6 +93,7 @@ static bool validate(const SaveData *d, bool encoding) {
         if (e->type > SAVE_ENT_WALL || e->image >= d->nimages || !coord_ok(e->row) || !coord_ok(e->col)) return false;
         if (e->type == SAVE_ENT_CHARACTER && e->speed > SAVEFMT_MAX_SPEED) return false;
         if (e->owner[0] != '\0' && (e->type != SAVE_ENT_CHARACTER || !savefmt_owner_valid(e->owner))) return false;
+        if (e->name[0] != '\0' && (e->type != SAVE_ENT_CHARACTER || !savefmt_char_name_valid(e->name))) return false;
     }
 
     if (d->ninit > 0) {
@@ -134,6 +147,7 @@ static void write_state(Buf *b, const SaveData *d, bool fingerprint) {
             put_sv(b, e->speed);
             put_sv(b, e->initiative);
             put_str(b, e->owner);
+            put_str(b, e->name);
         }
     }
 
@@ -195,6 +209,7 @@ static SaveError read_state(const uint8_t *p, size_t n, uint16_t version, SaveDa
             e->speed = get_sv(&r);
             e->initiative = get_sv(&r);
             if (version >= 2) get_str(&r, e->owner, sizeof(e->owner));
+            if (version >= 5) get_str(&r, e->name, sizeof(e->name));
         } else if (e->type != SAVE_ENT_WALL) {
             return SAVE_ERR_CORRUPT;
         }

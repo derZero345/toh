@@ -2,10 +2,11 @@
 #define TOH_SAVEFMT_H
 
 /*
- * .tuhh file format, version 4: encoding, decoding and validation.
+ * .tuhh file format, version 5: encoding, decoding and validation.
  * Version 2 adds an owner name after each character's stats; version 1 files still load (no owners).
  * Version 3 drops the armor class (versions 1 and 2 store one after attack; it is skipped).
  * Version 4 uses the size classes of Tales of Honor; older sizes are converted (savefmt_size_from_v3).
+ * Version 5 adds a name after each character's owner (versions 1-4 load without names).
  *
  * Plain C11 on top of libzstd, libwebp and libsodium. It knows nothing about SDL,
  * Vulkan or the App struct, so tools or a server can reuse it to validate files.
@@ -20,7 +21,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SAVEFMT_VERSION     4
+#define SAVEFMT_VERSION     5
 #define SAVEFMT_TAG_SIZE    32
 #define SAVEFMT_HEADER_SIZE 12 /* magic, version, flags, state_len */
 
@@ -35,6 +36,8 @@
 #define SAVEFMT_MAX_STR         255u
 #define SAVEFMT_NAME_MAX        32 /* waypoint names are shorter than this (= WAYPOINT_NAME_MAX) */
 #define SAVEFMT_OWNER_MAX       25 /* owner names are shorter than this (= PLAYER_NAME_MAX) */
+#define SAVEFMT_CHAR_NAME_MAX   33 /* character names are shorter than this (= CHAR_NAME_MAX) */
+#define SAVEFMT_MAX_HP          1000000 /* limit for HP values in ops (current HP is clamped to max HP) */
 #define SAVEFMT_MAX_SPEED       1000 /* = MAX_SPEED */
 #define SAVEFMT_MIN_SIZE        (-2) /* = SIZE_MIN: Wee */
 #define SAVEFMT_MAX_SIZE        4    /* = SIZE_MAX_CLASS: Gigantic */
@@ -74,6 +77,7 @@ typedef struct {
     /* characters only (not stored for walls) */
     int32_t size, max_health, health, attack, speed, initiative;
     char owner[SAVEFMT_OWNER_MAX]; /* characters only: player name, "" = no owner (version 2) */
+    char name[SAVEFMT_CHAR_NAME_MAX]; /* characters only: "" = no name (version 5) */
 } SaveEntity;
 
 typedef struct {
@@ -145,6 +149,8 @@ void savefmt_compute_tag(const uint8_t *buf, size_t len, uint8_t out[SAVEFMT_TAG
 
 /* Player names, used as character owners: 1..24 bytes of UTF-8 without spaces, control or invisible formatting characters. */
 bool savefmt_owner_valid(const char *name);
+/* Character names: 1..32 bytes of UTF-8 without control characters (spaces are fine). */
+bool savefmt_char_name_valid(const char *name);
 
 const char *savefmt_strerror(SaveError e);
 
