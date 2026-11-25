@@ -1,6 +1,7 @@
 /* Tests for the game core without a window: entity ids, op rules (ops_check) and
  * op effects (ops_apply). Run with `make test`. Stubs: tests/core_stubs.c. */
 #include "app.h"
+#include "baranim.h"
 #include "image.h"
 #include "netmsg.h"
 #include "ops.h"
@@ -915,6 +916,67 @@ static void test_stamina(void) {
     op_free(&ms); op_free(&spend); op_free(&both); op_free(&rec); op_free(&set);
 }
 
+static bool near(float a, float b, float eps) { return fabsf(a - b) <= eps; }
+
+static void test_bar_anim(void) {
+    BarAnim a;
+    bar_anim_reset(&a, 0.8f);
+    CHECK(!bar_anim_step(&a, 0.8f, 0.1f) && a.shown == 0.8f && a.trail == 0.8f); /* at rest */
+
+    /* a loss: fast ease-out, the trail holds 0.3 s, then everything stops */
+    float t = 0;
+    while (t < 0.25f - 1e-4f) { bar_anim_step(&a, 0.4f, 1.0f / 60); t += 1.0f / 60; }
+    float done = (0.8f - a.shown) / 0.4f;
+    CHECK(done > 0.9f && done < 0.99f);
+    CHECK(a.trail == 0.8f);
+    while (t < 0.29f) { bar_anim_step(&a, 0.4f, 1.0f / 60); t += 1.0f / 60; }
+    CHECK(a.trail == 0.8f);
+    bar_anim_step(&a, 0.4f, 0.1f);
+    CHECK(a.trail < 0.8f && a.trail > a.shown);
+    bool moving = true;
+    for (int i = 0; i < 60 && moving; i++) moving = bar_anim_step(&a, 0.4f, 1.0f / 60); /* 1 s more */
+    CHECK(!moving && a.shown == 0.4f && a.trail == 0.4f);
+
+    /* a gain: no trail */
+    bool trail_ok = true;
+    for (int i = 0; i < 40; i++) {
+        bar_anim_step(&a, 0.9f, 1.0f / 60);
+        trail_ok = trail_ok && a.trail == a.shown;
+    }
+    CHECK(trail_ok && a.shown == 0.9f);
+
+    /* a new target mid-way continues from where the fill is */
+    bar_anim_reset(&a, 1.0f);
+    for (int i = 0; i < 6; i++) bar_anim_step(&a, 0.0f, 1.0f / 60);
+    float mid = a.shown;
+    bar_anim_step(&a, 1.0f, 1.0f / 60);
+    CHECK(mid > 0.05f && mid < 0.95f && a.shown > mid && a.shown - mid < 0.2f);
+
+    /* independent of the frame rate */
+    BarAnim fast, slow;
+    bar_anim_reset(&fast, 1.0f);
+    bar_anim_reset(&slow, 1.0f);
+    for (int i = 0; i < 60; i++) bar_anim_step(&fast, 0.0f, 1.0f / 60);
+    for (int i = 0; i < 6; i++) bar_anim_step(&slow, 0.0f, 1.0f / 6);
+    CHECK(near(fast.shown, slow.shown, 0.01f));
+
+    /* spans */
+    float sl, sh, ll, lh;
+    a = (BarAnim){ .shown = 0.4f, .trail = 0.7f };
+    bar_anim_spans(&a, &sl, &sh, &ll, &lh);
+    CHECK(sl == 0 && sh == 0.4f && ll == 0.4f && lh == 0.7f);
+    a = (BarAnim){ .shown = -0.75f, .trail = -0.25f };
+    bar_anim_spans(&a, &sl, &sh, &ll, &lh);
+    CHECK(sl == -0.25f && sh == 0 && ll == -0.75f && lh == -0.25f);
+    a = (BarAnim){ .shown = -0.2f, .trail = 0.3f };
+    bar_anim_spans(&a, &sl, &sh, &ll, &lh);
+    CHECK(sl == sh && ll == -0.2f && lh == 0.3f);
+
+    /* the fraction a bar shows */
+    CHECK(bar_fraction(10, 20) == 0.5f && bar_fraction(-30, 20) == -1.0f && bar_fraction(5, 0) == 0.0f);
+}
+
+
 int main(void) {
     test_split_args();
     test_entity_ids();
@@ -936,6 +998,7 @@ int main(void) {
     test_hp_rules();
     test_health_and_names();
     test_stamina();
+    test_bar_anim();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
