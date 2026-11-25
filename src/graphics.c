@@ -802,6 +802,84 @@ static void draw_console(void) {
     draw_border(r.x, r.y, r.w, r.h, t->secondary);
 }
 
+/* ---- HP panels (top right) -------------------------------------------------------------------------- */
+
+#define HP_MARGIN 8
+
+static int by_id(const void *a, const void *b) {
+    uint32_t x = (*(Entity *const *)a)->id, y = (*(Entity *const *)b)->id;
+    return x < y ? -1 : x > y;
+}
+
+/* A player sees their own characters, the GM (also offline) the selected ones; oldest first. */
+static void hp_panel_characters(EntityList *out) {
+    if (session_is_client()) {
+        const char *me = session_my_name();
+        for (int i = 0; i < gh->entities.count; i++) {
+            Entity *e = gh->entities.items[i];
+            if (e->type == ENTITY_CHARACTER && e->owner[0] && strcasecmp(e->owner, me) == 0) da_push(out, e);
+        }
+    } else {
+        for (int i = 0; i < gh->selectedEntities.count; i++) {
+            Entity *e = entity_by_id(gh->selectedEntities.items[i]);
+            if (e && e->type == ENTITY_CHARACTER) da_push(out, e);
+        }
+    }
+    if (out->count > 1) qsort(out->items, (size_t)out->count, sizeof(*out->items), by_id);
+}
+
+/* Right-aligned text at right_x on a dark background, so it reads on any map. */
+static void hp_label(const char *text, float right_x, float y, float h, float fs, float ascent, float descent) {
+    float w = dr_text_width(FONT_PLAIN, fs, text);
+    dr_fill_rect(right_x - w - 6, y, w + 6, h, (Color){ 20, 20, 20, 200 });
+    dr_text(FONT_PLAIN, fs, right_x - w - 3, y + (h + ascent - descent) / 2, COLOR_WHITE, text);
+}
+
+static void draw_hp_panels(void) {
+    EntityList list = { 0 };
+    hp_panel_characters(&list);
+    if (list.count == 0) {
+        da_free(&list);
+        return;
+    }
+    float fs = (float)gh->console.fontSize;
+    float frame_w = fs * 8, name_h = fs * 1.25f, bar_h = fs * 1.25f, panel_h = fs * 3;
+    float frame_x = (float)gh->winW - HP_MARGIN - frame_w, right = frame_x + frame_w;
+    float bottom = (float)(gh->winH - console_panel_rect().h);
+    float ascent, descent;
+    dr_font_metrics(FONT_PLAIN, fs, &ascent, &descent);
+
+    int fit = (int)((bottom - HP_MARGIN) / panel_h);
+    int shown = list.count <= fit ? list.count : (fit > 0 ? fit - 1 : 0); /* one row for "+N more" */
+    const Color bg = { 20, 20, 20, 200 }, red = { 200, 30, 30, 255 }, white = COLOR_WHITE;
+    float y = HP_MARGIN;
+    for (int i = 0; i < shown; i++, y += panel_h) {
+        const Entity *e = list.items[i];
+        char name[CHAR_NAME_MAX + 16], label[CHAR_NAME_MAX + 32], hp[32];
+        entity_display_name(e, name, sizeof(name));
+        bool dead = hp_stage(e->health, e->maxHealth) == HP_DEAD;
+        snprintf(label, sizeof(label), dead ? "%s (dead)" : "%s", name);
+        hp_label(label, right, y, name_h, fs, ascent, descent);
+
+        float by = y + name_h;
+        HpBar b = hp_bar_layout(e->health, e->maxHealth, frame_x, frame_w);
+        dr_fill_rect(frame_x, by, frame_w, bar_h, bg);
+        if (b.fill_w > 0) dr_fill_rect(b.fill_x, by, b.fill_w, bar_h, red);
+        if (b.lines) dr_line(b.injured_x, by, b.injured_x, by + bar_h, 2, white);
+        if (b.critical) dr_line(b.critical_x, by - 3, b.critical_x, by + bar_h + 3, 2, white);
+        dr_stroke_rect(frame_x, by, frame_w, bar_h, 1.5f, white);
+        snprintf(hp, sizeof(hp), "%d/%d", e->health, e->maxHealth);
+        float hw = dr_text_width(FONT_PLAIN, fs, hp);
+        dr_text(FONT_PLAIN, fs, frame_x + (frame_w - hw) / 2, by + (bar_h + ascent - descent) / 2, white, hp);
+    }
+    if (shown < list.count) {
+        char more[32];
+        snprintf(more, sizeof(more), "+%d more", list.count - shown);
+        hp_label(more, right, y, name_h, fs, ascent, descent);
+    }
+    da_free(&list);
+}
+
 void gfx_draw_frame(const char *screenshot_path) {
     const Theme *t = gfx_theme();
     dr_begin((float)gh->winW, (float)gh->winH, gh->pixelScale);
@@ -817,6 +895,7 @@ void gfx_draw_frame(const char *screenshot_path) {
     draw_grid();
     draw_fx();
     draw_toolbox();
+    draw_hp_panels();
     draw_console();
 
     dr_end_and_render(t->primary, screenshot_path);
