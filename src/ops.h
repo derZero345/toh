@@ -29,11 +29,13 @@ typedef enum {
     OP_SET_OWNER,        /* ids, name: player name, "" = no owner */
     OP_SET_HEALTH,       /* ids, healthMode, value: set or change current HP (owners too) */
     OP_SET_NAME,         /* ids, charName (owners too) */
+    OP_SET_STAMINA,      /* ids, healthMode (HEALTH_SET / HEALTH_CHANGE / STAMINA_SPEND), value (owners too) */
     OP_COUNT
 } OpType;
 
-enum { STAT_SIZE = 1, STAT_MAXHEALTH = 2, STAT_SPEED = 4, STAT_INITIATIVE = 8 };
+enum { STAT_SIZE = 1, STAT_MAXHEALTH = 2, STAT_SPEED = 4, STAT_INITIATIVE = 8, STAT_MAXSTAMINA = 16 };
 enum { HEALTH_SET = 0, HEALTH_CHANGE = 1 }; /* OP_SET_HEALTH: value is the new HP / is added to it */
+enum { STAMINA_SPEND = 2 };                 /* OP_SET_STAMINA: subtract value; refused below 0 */
 
 /* An entity that OP_SPAWN creates. */
 typedef struct {
@@ -41,6 +43,7 @@ typedef struct {
     Texture *image; /* borrowed; the new entity takes its own reference */
     Hex tile;
     int size, maxHealth, health, attack, speed, initiative; /* characters only */
+    int maxStamina, stamina;                                /* characters only */
     char name[CHAR_NAME_MAX]; /* characters: "" = no name */
 } EntitySpec;
 
@@ -53,7 +56,7 @@ typedef struct Op {
     DA(EntitySpec) specs; /* OP_SPAWN */
     Texture *image;       /* OP_SET_ICON, OP_SET_BACKGROUND; borrowed */
     int statMask;         /* OP_SET_STATS */
-    int size, maxHealth, speed, initiative;
+    int size, maxHealth, speed, initiative, maxStamina;
     char name[WAYPOINT_NAME_MAX]; /* OP_WAYPOINT_*: waypoint name, OP_SET_OWNER: player name */
     int healthMode, value;        /* OP_SET_HEALTH */
     char charName[CHAR_NAME_MAX]; /* OP_SET_NAME */
@@ -80,8 +83,9 @@ typedef enum {
     OPR_CLAIM_PENDING, /* session: the player's earlier claims are still waiting for the GM */
     OPR_TOO_FAST,      /* session: too many rolls in a short time */
     OPR_TILE_TAKEN,    /* session: a requested character doesn't fit on its tile(s) */
+    OPR_NO_STAMINA,    /* OP_SET_STAMINA: spending would go below 0 */
 } OpResult;
-#define OPR_LAST OPR_TILE_TAKEN
+#define OPR_LAST OPR_NO_STAMINA
 
 /*
  * Notes for ops_check / ops_apply:

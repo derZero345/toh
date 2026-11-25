@@ -379,7 +379,7 @@ static void test_encoder_refuses_invalid(void) {
     m = sample_msg(NM_OP, NOP_SET_NAME); m.op.char_name[0] = '\0'; check_invalid(m, "empty character name");
     m = sample_msg(NM_OP, NOP_SPAWN); strcpy(specs2[1].name, "wall"); check_invalid(m, "wall with a name"); specs2[1].name[0] = '\0';
     m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = 0; check_invalid(m, "empty stat mask");
-    m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = 16; check_invalid(m, "unknown stat bit");
+    m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = 32; check_invalid(m, "unknown stat bit");
     m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = NSTAT_SPEED; m.op.speed = SAVEFMT_MAX_SPEED + 1; check_invalid(m, "stat speed too big");
     m = sample_msg(NM_OP, NOP_SET_ICON); m.op.has_image = false; check_invalid(m, "icon without image");
     m = sample_msg(NM_OP, NOP_INIT_ADD); m.op.nvalues = 2; check_invalid(m, "values != ids");

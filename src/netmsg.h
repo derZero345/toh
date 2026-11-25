@@ -89,6 +89,7 @@ typedef enum {
     NOP_SET_OWNER,        /* ids, name ("" = no owner) */
     NOP_SET_HEALTH,       /* ids, mode (HEALTH_*), value */
     NOP_SET_NAME,         /* ids, char_name */
+    NOP_SET_STAMINA,      /* ids, mode (0 set, 1 change, 2 spend), value */
     NOP_ROLL,             /* dice: "NdM[+K|-K]" (characters 0-9 d D + -); values: none (client) or
                            * the host's result, every die then the total (at most NETMSG_MAX_ROLLS) */
     NOP_CLAIM,            /* id */
@@ -96,7 +97,7 @@ typedef enum {
 } NetOpType;
 
 /* NetOp.stat_mask bits, the same values as STAT_* in ops.h. Values follow in this order. */
-enum { NSTAT_SIZE = 1, NSTAT_MAXHEALTH = 2, NSTAT_SPEED = 4, NSTAT_INITIATIVE = 8, NSTAT_ALL = 15 };
+enum { NSTAT_SIZE = 1, NSTAT_MAXHEALTH = 2, NSTAT_SPEED = 4, NSTAT_INITIATIVE = 8, NSTAT_MAXSTAMINA = 16, NSTAT_ALL = 31 };
 
 /* An entity created by NOP_SPAWN. Walls carry only type, image and tile. */
 typedef struct {
@@ -120,7 +121,7 @@ typedef struct {
     bool has_image;
     uint8_t image[NET_HASH_SIZE];
     uint8_t stat_mask;
-    int32_t size, max_health, speed, initiative;
+    int32_t size, max_health, speed, initiative, max_stamina;
     char name[SAVEFMT_NAME_MAX]; /* waypoint or player name */
     char dice[NETMSG_MAX_DICE];
     uint8_t health_mode; /* SET_HEALTH: 0 = set, 1 = change */

@@ -236,8 +236,8 @@ static void put_op(Buf *b, const NetOp *o) {
     case NOP_SET_STATS: {
         put_ids(b, o->ids, o->nids);
         put_u8(b, o->stat_mask);
-        const int32_t v[4] = { o->size, o->max_health, o->speed, o->initiative };
-        for (int i = 0; i < 4; i++)
+        const int32_t v[5] = { o->size, o->max_health, o->speed, o->initiative, o->max_stamina };
+        for (int i = 0; i < 5; i++)
             if (o->stat_mask & (1 << i)) put_sv(b, v[i]);
         break;
     }
@@ -498,13 +498,14 @@ static void get_op(Rd *r, NetOp *o) {
     case NOP_SET_STATS: {
         o->ids = get_ids(r, &o->nids);
         o->stat_mask = get_u8(r);
-        int32_t v[4] = { 0 };
-        for (int i = 0; i < 4; i++)
+        int32_t v[5] = { 0 };
+        for (int i = 0; i < 5; i++)
             if (o->stat_mask & (1 << i)) v[i] = get_sv(r);
         o->size = v[0];
         o->max_health = v[1];
         o->speed = v[2];
         o->initiative = v[3];
+        o->max_stamina = v[4];
         break;
     }
     case NOP_SET_ICON:
@@ -562,6 +563,7 @@ static void get_op(Rd *r, NetOp *o) {
     case NOP_GRID_ORIENTATION:
     case NOP_INIT_CLEAR:
     case NOP_INIT_SHOW:
+    case NOP_SET_STAMINA: /* no body until Task 3 */
         break;
     default:
         r->bad = true;

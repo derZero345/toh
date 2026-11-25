@@ -100,6 +100,7 @@ typedef struct Entity {
     float drawSize; /* characters: diameter of the picture, as last drawn */
     int slot, slots; /* entity_layout: characters sharing a tile are drawn side by side in `slots` places */
     int size, maxHealth, health, attack, speed, initiative;
+    int maxStamina, stamina; /* Tales of Honor stamina; max 0 = no stamina stat */
     struct Marker *debugMarker;
 } Entity;
 

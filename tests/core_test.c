@@ -19,12 +19,14 @@ _Static_assert((int)NOP_MOVE == (int)OP_MOVE && (int)NOP_SPAWN == (int)OP_SPAWN 
                (int)NOP_INIT_ADD == (int)OP_INIT_ADD && (int)NOP_INIT_REMOVE == (int)OP_INIT_REMOVE &&
                (int)NOP_INIT_CLEAR == (int)OP_INIT_CLEAR && (int)NOP_INIT_SHOW == (int)OP_INIT_SHOW &&
                (int)NOP_INIT_NEXT == (int)OP_INIT_NEXT && (int)NOP_SET_OWNER == (int)OP_SET_OWNER && (int)NOP_SET_HEALTH == (int)OP_SET_HEALTH &&
-               (int)NOP_SET_NAME == (int)OP_SET_NAME && (int)NOP_ROLL == (int)OP_COUNT,
+               (int)NOP_SET_NAME == (int)OP_SET_NAME && (int)NOP_SET_STAMINA == (int)OP_SET_STAMINA &&
+               (int)NOP_ROLL == (int)OP_COUNT,
                "NetOpType must match OpType");
 _Static_assert((int)NSTAT_SIZE == (int)STAT_SIZE && (int)NSTAT_MAXHEALTH == (int)STAT_MAXHEALTH &&
                (int)NSTAT_SPEED == (int)STAT_SPEED && (int)NSTAT_INITIATIVE == (int)STAT_INITIATIVE, "stat bits must match");
+_Static_assert((int)NSTAT_MAXSTAMINA == (int)STAT_MAXSTAMINA, "stamina bit");
 _Static_assert(SIZE_MIN == SAVEFMT_MIN_SIZE && SIZE_MAX_CLASS == SAVEFMT_MAX_SIZE, "size limits must match");
-_Static_assert((int)OPR_INVALID <= (int)NETMSG_MAX_REASON, "OpResult must fit OP_REJECTED");
+_Static_assert((int)OPR_LAST <= (int)NETMSG_MAX_REASON, "OpResult must fit OP_REJECTED");
 _Static_assert(PLAYER_NAME_MAX == SAVEFMT_OWNER_MAX && WAYPOINT_NAME_MAX == SAVEFMT_NAME_MAX, "name sizes");
 _Static_assert(CHAR_NAME_MAX == SAVEFMT_CHAR_NAME_MAX, "character name sizes");
 
@@ -832,6 +834,65 @@ static void test_health_and_names(void) {
     op_free(&bad_sp);
 }
 
+static void test_stamina(void) {
+    reset_table();
+    Entity *hero = add_character((Hex){ 0, 0 }, 3, "Alice");
+    Entity *orc = add_character((Hex){ 0, 4 }, 3, "");
+    CHECK(hero->stamina == 0 && hero->maxStamina == 0); /* no stamina stat by default */
+    OpAuthor alice = player("Alice"), bob = player("Bob");
+
+    Op ms = { .type = OP_SET_STATS, .statMask = STAT_MAXSTAMINA, .maxStamina = 9 };
+    da_push(&ms.ids, hero->id);
+    da_push(&ms.ids, orc->id);
+    CHECK_R(ops_check(&ms, &alice), OPR_GM_ONLY);
+    ops_apply(&ms); /* 0/0 counts as full: both start full */
+    CHECK(hero->maxStamina == 9 && hero->stamina == 9 && orc->stamina == 9);
+
+    Op spend = { .type = OP_SET_STAMINA, .healthMode = STAMINA_SPEND, .value = 4 };
+    da_push(&spend.ids, hero->id);
+    CHECK_R(ops_check(&spend, &alice), OPR_OK);
+    CHECK_R(ops_check(&spend, &bob), OPR_NOT_YOURS);
+    ops_apply(&spend);
+    CHECK(hero->stamina == 5 && strstr(stub_last_log, ": stamina 9/9 -> 5/9") && !strstr(stub_last_log, "exhausted"));
+    ops_apply(&spend); /* 1 left */
+    CHECK_R(ops_check(&spend, &alice), OPR_NO_STAMINA); /* 1 - 4 < 0 */
+    CHECK_R(ops_check(&spend, &GM), OPR_NO_STAMINA);    /* nobody spends below 0 */
+    spend.value = 1;
+    ops_apply(&spend);
+    CHECK(hero->stamina == 0 && strstr(stub_last_log, "(exhausted)"));
+
+    Op both = { .type = OP_SET_STAMINA, .healthMode = STAMINA_SPEND, .value = 2 };
+    da_push(&both.ids, orc->id);
+    da_push(&both.ids, hero->id);
+    CHECK_R(ops_check(&both, &GM), OPR_NO_STAMINA); /* one of them can't: all refused */
+
+    Op rec = { .type = OP_SET_STAMINA, .healthMode = HEALTH_CHANGE, .value = 20 };
+    da_push(&rec.ids, hero->id);
+    ops_apply(&rec);
+    CHECK(hero->stamina == 9); /* up to max */
+    Op set = { .type = OP_SET_STAMINA, .healthMode = HEALTH_SET, .value = -30 };
+    da_push(&set.ids, hero->id);
+    CHECK_R(ops_check(&set, &GM), OPR_OK); /* the failsafe: the GM may set a negative value */
+    ops_apply(&set);
+    CHECK(hero->stamina == -9);
+    set.healthMode = 3;
+    CHECK_R(ops_check(&set, &GM), OPR_INVALID);
+    set.healthMode = HEALTH_SET;
+    set.value = SAVEFMT_MAX_HP + 1;
+    CHECK_R(ops_check(&set, &GM), OPR_INVALID);
+
+    /* lowering max stamina keeps full stamina full and clamps the rest */
+    ms.maxStamina = 5;
+    ops_apply(&ms);
+    CHECK(hero->stamina == -5 && orc->stamina == 5);
+
+    /* copies keep stamina */
+    EntitySpec s = op_spec_from_entity(orc);
+    CHECK(s.stamina == 5 && s.maxStamina == 5);
+
+    op_free(&ms); op_free(&spend); op_free(&both); op_free(&rec); op_free(&set);
+}
+
 int main(void) {
     test_split_args();
     test_entity_ids();
@@ -852,6 +913,7 @@ int main(void) {
     test_confirm_answer();
     test_hp_rules();
     test_health_and_names();
+    test_stamina();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
