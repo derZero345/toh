@@ -87,6 +87,8 @@ typedef enum {
     NOP_INIT_SHOW,
     NOP_INIT_NEXT,        /* id (0 = no current turn) */
     NOP_SET_OWNER,        /* ids, name ("" = no owner) */
+    NOP_SET_HEALTH,       /* ids, mode (HEALTH_*), value */
+    NOP_SET_NAME,         /* ids, char_name */
     NOP_ROLL,             /* dice: "NdM[+K|-K]" (characters 0-9 d D + -); values: none (client) or
                            * the host's result, every die then the total (at most NETMSG_MAX_ROLLS) */
     NOP_CLAIM,            /* id */

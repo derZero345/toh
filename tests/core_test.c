@@ -18,13 +18,15 @@ _Static_assert((int)NOP_MOVE == (int)OP_MOVE && (int)NOP_SPAWN == (int)OP_SPAWN 
                (int)NOP_WAYPOINT_SET == (int)OP_WAYPOINT_SET && (int)NOP_WAYPOINT_DELETE == (int)OP_WAYPOINT_DELETE &&
                (int)NOP_INIT_ADD == (int)OP_INIT_ADD && (int)NOP_INIT_REMOVE == (int)OP_INIT_REMOVE &&
                (int)NOP_INIT_CLEAR == (int)OP_INIT_CLEAR && (int)NOP_INIT_SHOW == (int)OP_INIT_SHOW &&
-               (int)NOP_INIT_NEXT == (int)OP_INIT_NEXT && (int)NOP_SET_OWNER == (int)OP_SET_OWNER && (int)NOP_ROLL == (int)OP_COUNT,
+               (int)NOP_INIT_NEXT == (int)OP_INIT_NEXT && (int)NOP_SET_OWNER == (int)OP_SET_OWNER && (int)NOP_SET_HEALTH == (int)OP_SET_HEALTH &&
+               (int)NOP_SET_NAME == (int)OP_SET_NAME && (int)NOP_ROLL == (int)OP_COUNT,
                "NetOpType must match OpType");
 _Static_assert((int)NSTAT_SIZE == (int)STAT_SIZE && (int)NSTAT_MAXHEALTH == (int)STAT_MAXHEALTH &&
                (int)NSTAT_SPEED == (int)STAT_SPEED && (int)NSTAT_INITIATIVE == (int)STAT_INITIATIVE, "stat bits must match");
 _Static_assert(SIZE_MIN == SAVEFMT_MIN_SIZE && SIZE_MAX_CLASS == SAVEFMT_MAX_SIZE, "size limits must match");
 _Static_assert((int)OPR_INVALID <= (int)NETMSG_MAX_REASON, "OpResult must fit OP_REJECTED");
 _Static_assert(PLAYER_NAME_MAX == SAVEFMT_OWNER_MAX && WAYPOINT_NAME_MAX == SAVEFMT_NAME_MAX, "name sizes");
+_Static_assert(CHAR_NAME_MAX == SAVEFMT_CHAR_NAME_MAX, "character name sizes");
 
 extern char stub_last_log[1024];
 extern Texture *stub_background;
@@ -747,6 +749,89 @@ static void test_split_args(void) {
     CHECK(split_args("   ", buf, sizeof(buf), argv, 8) == 0);
 }
 
+static void test_health_and_names(void) {
+    reset_table();
+    Entity *hero = add_character((Hex){ 0, 0 }, 3, "Alice"); /* 10/10 HP */
+    Entity *orc = add_character((Hex){ 0, 4 }, 3, "");
+    OpAuthor alice = player("Alice"), bob = player("Bob");
+
+    Op dmg = { .type = OP_SET_HEALTH, .healthMode = HEALTH_CHANGE, .value = -6 };
+    da_push(&dmg.ids, hero->id);
+    CHECK_R(ops_check(&dmg, &alice), OPR_OK); /* owners may change their HP */
+    CHECK_R(ops_check(&dmg, &bob), OPR_NOT_YOURS);
+    CHECK_R(ops_check(&dmg, &GM), OPR_OK);
+    ops_apply(&dmg);
+    CHECK(hero->health == 4);
+    CHECK(strstr(stub_last_log, "Character #") && strstr(stub_last_log, ": 10/10 -> 4/10 (Injured)"));
+    ops_apply(&dmg); /* changes add up */
+    ops_apply(&dmg);
+    CHECK(hero->health == -8 && hp_stage(hero->health, hero->maxHealth) == HP_CRITICAL);
+    stub_last_log[0] = '\0';
+    dmg.remote = true; /* someone else's change: no log line here */
+    ops_apply(&dmg);
+    CHECK(hero->health == -10 && stub_last_log[0] == '\0'); /* clamped to -max HP */
+
+    Op set = { .type = OP_SET_HEALTH, .healthMode = HEALTH_SET, .value = 99 };
+    da_push(&set.ids, hero->id);
+    ops_apply(&set);
+    CHECK(hero->health == 10);
+    set.healthMode = 2;
+    CHECK_R(ops_check(&set, &GM), OPR_INVALID);
+    set.healthMode = HEALTH_SET;
+    set.value = SAVEFMT_MAX_HP + 1;
+    CHECK_R(ops_check(&set, &GM), OPR_INVALID);
+
+    Op orc_hp = { .type = OP_SET_HEALTH, .healthMode = HEALTH_SET, .value = 1 };
+    da_push(&orc_hp.ids, orc->id);
+    CHECK_R(ops_check(&orc_hp, &alice), OPR_NOT_YOURS); /* unowned characters are the GM's */
+
+    Op nm = { .type = OP_SET_NAME };
+    snprintf(nm.charName, sizeof(nm.charName), "Mao Clausewitz");
+    da_push(&nm.ids, hero->id);
+    CHECK_R(ops_check(&nm, &alice), OPR_OK);
+    CHECK_R(ops_check(&nm, &bob), OPR_NOT_YOURS);
+    ops_apply(&nm);
+    CHECK(strcmp(hero->name, "Mao Clausewitz") == 0);
+    Op bad_nm = { .type = OP_SET_NAME };
+    da_push(&bad_nm.ids, hero->id);
+    CHECK_R(ops_check(&bad_nm, &GM), OPR_INVALID); /* "" is not a name */
+
+    /* the other stats stay GM-only; max HP keeps full HP full */
+    Op stats = { .type = OP_SET_STATS, .statMask = STAT_MAXHEALTH, .maxHealth = 20 };
+    da_push(&stats.ids, hero->id);
+    CHECK_R(ops_check(&stats, &alice), OPR_GM_ONLY);
+    ops_apply(&stats);
+    CHECK(hero->maxHealth == 20 && hero->health == 20);
+    dmg.remote = false;
+    ops_apply(&dmg); /* 14/20 */
+    stats.maxHealth = 10;
+    ops_apply(&stats);
+    CHECK(hero->maxHealth == 10 && hero->health == 10);
+
+    /* names travel with spawned copies (paste) */
+    Op sp = { .type = OP_SPAWN };
+    EntitySpec s = op_spec_from_entity(hero);
+    CHECK(strcmp(s.name, "Mao Clausewitz") == 0);
+    da_push(&sp.specs, s);
+    CHECK_R(ops_check(&sp, &GM), OPR_OK);
+    ops_apply(&sp);
+    Entity *copy = sp.ids.count == 1 ? entity_by_id(sp.ids.items[0]) : NULL;
+    CHECK(copy && strcmp(copy->name, "Mao Clausewitz") == 0);
+    Op bad_sp = { .type = OP_SPAWN };
+    snprintf(s.name, sizeof(s.name), "bad\x01");
+    da_push(&bad_sp.specs, s);
+    CHECK_R(ops_check(&bad_sp, &GM), OPR_INVALID);
+
+    op_free(&dmg);
+    op_free(&set);
+    op_free(&orc_hp);
+    op_free(&nm);
+    op_free(&bad_nm);
+    op_free(&stats);
+    op_free(&sp);
+    op_free(&bad_sp);
+}
+
 int main(void) {
     test_split_args();
     test_entity_ids();
@@ -766,6 +851,7 @@ int main(void) {
     test_tile_sharing();
     test_confirm_answer();
     test_hp_rules();
+    test_health_and_names();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;

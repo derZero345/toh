@@ -17,9 +17,11 @@ void op_free(Op *op) {
 }
 
 EntitySpec op_spec_from_entity(const Entity *e) {
-    return (EntitySpec){ .type = e->type, .image = e->image, .tile = e->tile, .size = e->size,
-                         .maxHealth = e->maxHealth, .health = e->health, .attack = e->attack,
-                         .speed = e->speed, .initiative = e->initiative };
+    EntitySpec s = { .type = e->type, .image = e->image, .tile = e->tile, .size = e->size,
+                     .maxHealth = e->maxHealth, .health = e->health, .attack = e->attack,
+                     .speed = e->speed, .initiative = e->initiative };
+    snprintf(s.name, sizeof(s.name), "%s", e->name);
+    return s;
 }
 
 /* Offline and on the host the local user is the game master. */
@@ -69,7 +71,8 @@ static bool count_ok(int n) { return n >= 0 && (unsigned)n <= SAVEFMT_MAX_ENTITI
 
 /* Rules for everyone, the GM included: the op has to make sense for the current table. */
 static OpResult check_structure(const Op *op) {
-    if (!memchr(op->name, '\0', sizeof(op->name))) return OPR_INVALID;
+    if (!memchr(op->name, '\0', sizeof(op->name)) || !memchr(op->charName, '\0', sizeof(op->charName)))
+        return OPR_INVALID;
     if (!count_ok(op->ids.count) || !count_ok(op->values.count) || !count_ok(op->specs.count)) return OPR_INVALID;
     switch (op->type) {
     case OP_MOVE: {
@@ -82,6 +85,8 @@ static OpResult check_structure(const Op *op) {
             const EntitySpec *s = &op->specs.items[i];
             if (!tile_ok(s->tile)) return OPR_INVALID;
             if (!s->image || (s->type != ENTITY_CHARACTER && s->type != ENTITY_WALL)) return OPR_INVALID;
+            if (!memchr(s->name, '\0', sizeof(s->name))) return OPR_INVALID;
+            if (s->name[0] && (s->type != ENTITY_CHARACTER || !savefmt_char_name_valid(s->name))) return OPR_INVALID;
         }
         return OPR_OK;
     case OP_SET_ICON:
@@ -94,6 +99,13 @@ static OpResult check_structure(const Op *op) {
         return ids_exist(op) ? OPR_OK : OPR_NO_ENTITY;
     case OP_SET_OWNER:
         if (op->name[0] != '\0' && !savefmt_owner_valid(op->name)) return OPR_INVALID;
+        return ids_exist(op) ? OPR_OK : OPR_NO_ENTITY;
+    case OP_SET_HEALTH:
+        if (op->healthMode != HEALTH_SET && op->healthMode != HEALTH_CHANGE) return OPR_INVALID;
+        if (op->value < -SAVEFMT_MAX_HP || op->value > SAVEFMT_MAX_HP) return OPR_INVALID;
+        return ids_exist(op) ? OPR_OK : OPR_NO_ENTITY;
+    case OP_SET_NAME:
+        if (!savefmt_char_name_valid(op->charName)) return OPR_INVALID;
         return ids_exist(op) ? OPR_OK : OPR_NO_ENTITY;
     case OP_DELETE:
     case OP_SET_STATS:
@@ -118,7 +130,8 @@ static OpResult check_structure(const Op *op) {
     return OPR_INVALID;
 }
 
-/* Players may move their own character (in range, on its turn) and pass their own turn. */
+/* Players may move their own character (in range, on its turn), pass their own turn and
+   change the HP and name of their own characters. */
 static OpResult check_player(const Op *op, const OpAuthor *a) {
     switch (op->type) {
     case OP_MOVE: {
@@ -134,6 +147,11 @@ static OpResult check_player(const Op *op, const OpAuthor *a) {
     }
     case OP_INIT_NEXT:
         return is_owner(gh->currentTurn, a) ? OPR_OK : OPR_NOT_YOUR_TURN;
+    case OP_SET_HEALTH:
+    case OP_SET_NAME: /* only on their own characters */
+        for (int i = 0; i < op->ids.count; i++)
+            if (!is_owner(entity_by_id(op->ids.items[i]), a)) return OPR_NOT_YOURS;
+        return OPR_OK;
     default:
         return OPR_GM_ONLY;
     }
@@ -141,7 +159,9 @@ static OpResult check_player(const Op *op, const OpAuthor *a) {
 
 OpResult ops_check(const Op *op, const OpAuthor *author) {
     if (!memchr(author->name, '\0', sizeof(author->name))) return OPR_INVALID;
-    if (!author->gm && op->type != OP_MOVE && op->type != OP_INIT_NEXT) return OPR_GM_ONLY;
+    bool player_op = op->type == OP_MOVE || op->type == OP_INIT_NEXT || op->type == OP_SET_HEALTH ||
+                     op->type == OP_SET_NAME;
+    if (!author->gm && !player_op) return OPR_GM_ONLY;
     OpResult r = check_structure(op);
     if (r != OPR_OK || author->gm) return r;
     return check_player(op, author);
@@ -166,6 +186,7 @@ static void apply_spawn(Op *op) {
             e = entity_new_character(s->image, s->tile, s->size, s->maxHealth, s->speed, s->initiative);
             e->health = s->health;
             e->attack = s->attack;
+            snprintf(e->name, sizeof(e->name), "%s", s->name);
         }
         if (keep) entity_register_as(e, given[i]);
         else entity_register(e);
@@ -216,9 +237,28 @@ static void apply_stats(const Op *op) {
         Entity *e = character_at(op, i);
         if (!e) continue;
         if (op->statMask & STAT_SIZE)       e->size = op->size;
-        if (op->statMask & STAT_MAXHEALTH)  e->maxHealth = op->maxHealth;
+        if (op->statMask & STAT_MAXHEALTH) {
+            e->health = hp_after_max_change(e->health, e->maxHealth, op->maxHealth);
+            e->maxHealth = op->maxHealth;
+        }
         if (op->statMask & STAT_SPEED)      e->speed = op->speed > MAX_SPEED ? MAX_SPEED : op->speed;
         if (op->statMask & STAT_INITIATIVE) e->initiative = op->initiative;
+    }
+}
+
+/* Logs the result for the person who made the change (spec: "Mao: 14/20 -> 10/20 (Injured)"). */
+static void apply_health(const Op *op) {
+    for (int i = 0; i < op->ids.count; i++) {
+        Entity *e = character_at(op, i);
+        if (!e) continue;
+        int before = e->health;
+        long long v = op->healthMode == HEALTH_SET ? op->value : (long long)e->health + op->value;
+        e->health = hp_clamp(v, e->maxHealth);
+        if (op->remote) continue;
+        char name[CHAR_NAME_MAX + 16];
+        entity_display_name(e, name, sizeof(name));
+        console_log("%s: %d/%d -> %d/%d (%s)", name, before, e->maxHealth, e->health, e->maxHealth,
+                    hp_stage_name(hp_stage(e->health, e->maxHealth)));
     }
 }
 
@@ -310,6 +350,15 @@ void ops_apply(Op *op) {
         for (int i = 0; i < op->ids.count; i++) {
             Entity *e = character_at(op, i);
             if (e) snprintf(e->owner, sizeof(e->owner), "%.*s", PLAYER_NAME_MAX - 1, op->name);
+        }
+        break;
+    case OP_SET_HEALTH:
+        apply_health(op);
+        break;
+    case OP_SET_NAME:
+        for (int i = 0; i < op->ids.count; i++) {
+            Entity *e = character_at(op, i);
+            if (e) snprintf(e->name, sizeof(e->name), "%s", op->charName);
         }
         break;
     case OP_COUNT:

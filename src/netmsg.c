@@ -535,6 +535,8 @@ static void get_op(Rd *r, NetOp *o) {
     case NOP_GRID_ORIENTATION:
     case NOP_INIT_CLEAR:
     case NOP_INIT_SHOW:
+    case NOP_SET_HEALTH: /* no body until Task 5 */
+    case NOP_SET_NAME:
         break;
     default:
         r->bad = true;

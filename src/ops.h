@@ -27,10 +27,13 @@ typedef enum {
     OP_INIT_SHOW,        /* toggles the turn order markers */
     OP_INIT_NEXT,        /* id: the entity whose turn it is now (0 = none); stale ops are refused */
     OP_SET_OWNER,        /* ids, name: player name, "" = no owner */
+    OP_SET_HEALTH,       /* ids, healthMode, value: set or change current HP (owners too) */
+    OP_SET_NAME,         /* ids, charName (owners too) */
     OP_COUNT
 } OpType;
 
 enum { STAT_SIZE = 1, STAT_MAXHEALTH = 2, STAT_SPEED = 4, STAT_INITIATIVE = 8 };
+enum { HEALTH_SET = 0, HEALTH_CHANGE = 1 }; /* OP_SET_HEALTH: value is the new HP / is added to it */
 
 /* An entity that OP_SPAWN creates. */
 typedef struct {
@@ -38,6 +41,7 @@ typedef struct {
     Texture *image; /* borrowed; the new entity takes its own reference */
     Hex tile;
     int size, maxHealth, health, attack, speed, initiative; /* characters only */
+    char name[CHAR_NAME_MAX]; /* characters: "" = no name */
 } EntitySpec;
 
 typedef struct Op {
@@ -51,6 +55,8 @@ typedef struct Op {
     int statMask;         /* OP_SET_STATS */
     int size, maxHealth, speed, initiative;
     char name[WAYPOINT_NAME_MAX]; /* OP_WAYPOINT_*: waypoint name, OP_SET_OWNER: player name */
+    int healthMode, value;        /* OP_SET_HEALTH */
+    char charName[CHAR_NAME_MAX]; /* OP_SET_NAME */
     bool remote;  /* someone else's op: leave the local selection and path preview alone */
     bool keepIds; /* OP_SPAWN from the host: create the entities with the ids in ids */
 } Op;
