@@ -845,22 +845,32 @@ static void draw_hp_panels(void) {
         return;
     }
     float fs = (float)gh->console.fontSize;
-    float frame_w = fs * 8, name_h = fs * 1.25f, bar_h = fs * 1.25f, panel_h = fs * 3;
+    float frame_w = fs * 8, name_h = fs * 1.25f, bar_h = fs * 1.25f;
     float frame_x = (float)gh->winW - HP_MARGIN - frame_w, right = frame_x + frame_w;
     float bottom = (float)(gh->winH - console_panel_rect().h);
     float ascent, descent;
     dr_font_metrics(FONT_PLAIN, fs, &ascent, &descent);
 
-    int fit = (int)((bottom - HP_MARGIN) / panel_h);
-    int shown = list.count <= fit ? list.count : (fit > 0 ? fit - 1 : 0); /* one row for "+N more" */
-    const Color bg = { 20, 20, 20, 200 }, red = { 200, 30, 30, 255 }, white = COLOR_WHITE;
+    /* Each panel has its own height. A panel is shown if it fits together with a "+N more" row when more follow. */
+    int shown = 0;
+    float used = HP_MARGIN;
+    for (int i = 0; i < list.count; i++) {
+        float ph = list.items[i]->maxStamina > 0 ? fs * 4.15f : fs * 3;
+        float need = used + ph + (i + 1 < list.count ? name_h : 0);
+        if (need > bottom) break;
+        used += ph;
+        shown++;
+    }
+    const Color bg = { 20, 20, 20, 200 }, red = { 200, 30, 30, 255 }, green = { 40, 160, 60, 255 };
+    const Color white = COLOR_WHITE;
     float y = HP_MARGIN;
-    for (int i = 0; i < shown; i++, y += panel_h) {
+    for (int i = 0; i < shown; i++) {
         const Entity *e = list.items[i];
-        char name[CHAR_NAME_MAX + 16], label[CHAR_NAME_MAX + 32], hp[32];
+        char name[CHAR_NAME_MAX + 16], label[CHAR_NAME_MAX + 32], hp[32], st[32];
         entity_display_name(e, name, sizeof(name));
         bool dead = hp_stage(e->health, e->maxHealth) == HP_DEAD;
-        snprintf(label, sizeof(label), dead ? "%s (dead)" : "%s", name);
+        bool tired = e->maxStamina > 0 && e->stamina <= 0;
+        snprintf(label, sizeof(label), "%s%s", name, dead ? " (dead)" : tired ? " (exhausted)" : "");
         hp_label(label, right, y, name_h, fs, ascent, descent);
 
         float by = y + name_h;
@@ -873,6 +883,19 @@ static void draw_hp_panels(void) {
         snprintf(hp, sizeof(hp), "%d/%d", e->health, e->maxHealth);
         float hw = dr_text_width(FONT_PLAIN, fs, hp);
         dr_text(FONT_PLAIN, fs, frame_x + (frame_w - hw) / 2, by + (bar_h + ascent - descent) / 2, white, hp);
+        if (e->maxStamina > 0) {
+            float sy = by + bar_h + fs * 0.25f, sh = fs * 0.9f;
+            HpBar s = hp_bar_layout(e->stamina, e->maxStamina, frame_x, frame_w);
+            dr_fill_rect(frame_x, sy, frame_w, sh, bg);
+            if (s.fill_w > 0) dr_fill_rect(s.fill_x, sy, s.fill_w, sh, green);
+            dr_stroke_rect(frame_x, sy, frame_w, sh, 1.5f, white);
+            snprintf(st, sizeof(st), "%d/%d", e->stamina, e->maxStamina);
+            float sw = dr_text_width(FONT_PLAIN, fs * 0.8f, st);
+            float sa, sd;
+            dr_font_metrics(FONT_PLAIN, fs * 0.8f, &sa, &sd);
+            dr_text(FONT_PLAIN, fs * 0.8f, frame_x + (frame_w - sw) / 2, sy + (sh + sa - sd) / 2, white, st);
+        }
+        y += e->maxStamina > 0 ? fs * 4.15f : fs * 3;
     }
     if (shown < list.count) {
         char more[32];
