@@ -15,9 +15,10 @@ Whenever a change adds, removes or changes anything a user does or sees, update 
 - hosting, joining and saving behaviour;
 - command-line options and environment variables.
 
-This is a standing task: check the guides after every change, and also when a new feature is designed or planned.
-- A feature that is approved but not built yet goes into the guides marked "coming soon, not in the game yet".
-- That note is replaced with the real instructions in the commit that implements the feature.
+This is a standing task: check the guides after every change.
+- The guides describe only what is in the game. Never add "coming soon" notes for features that are approved or
+  planned but not built.
+- A feature goes into the guides in the commit that implements it.
 
 Check `src/input.c`, `src/console.c`, `src/session.c`, `src/ops.c` and `src/tools.c` against both files.
 - `gmcontrols.md` covers everything.
