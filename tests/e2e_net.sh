@@ -63,6 +63,19 @@ faint() {
     awk -v v="$v" 'BEGIN { exit !(v > 0.70 && v < 0.86) }'
 }
 
+# Is the pixel X Y red (the HP bar)?
+red() {
+    local rgb
+    rgb=$(magick "$1" -crop 4x4+$(($2 - 2))+$(($3 - 2)) +repage -format '%[fx:mean.r] %[fx:mean.g] %[fx:mean.b]' info:)
+    awk -v s="$rgb" 'BEGIN { split(s, c, " "); exit !(c[1] > 0.6 && c[2] < 0.3 && c[3] < 0.3) }'
+}
+
+# The HP panel is anchored to the right edge (margin 8, frame width 128, first bar at y 28..48), and the
+# window manager may resize the window, so compute the pixel from the screenshot's width:
+# "panel_x FILE OFFSET" prints "X 38" with X = (width - 136) + OFFSET, the frame's left edge plus OFFSET.
+panel_x() { echo "$(($(magick identify -format %w "$1") - 136 + $2)) 38"; }
+HP_IN=10; HP_NEG=-16    # offsets: inside the frame, and left of it (negative HP)
+
 # The dice of a roll land anywhere on screen; ":r 0d6" right after ":r 2d6" clears them before any check.
 # Tiles (pixel coordinates): A = Bob's character, B = the GM's, C = spawned after Bob joined.
 A="300 200"; A2="300 260"    # Bob moves A one tile down
@@ -92,6 +105,9 @@ TOH_JOINCODE_FILE="$out/code" timeout 90 ./toh --size 600x400 --port "$port" --a
     --exec "@waitfile $out/requested" --exec "@wait 30" --exec "@shot $out/host-request.png" --exec "y" \
     --exec "@touch $out/created" --exec "@waitfile $out/client-moved2" --exec "@wait 30" \
     --exec "@shot $out/host-created.png" \
+    --exec "@click $A2" --exec ":c h 20" --exec "@wait 10" --exec "@shot $out/host-hp-full.png" \
+    --exec "@touch $out/hp-set" --exec "@waitfile $out/hp-damaged" --exec "@wait 30" \
+    --exec "@shot $out/host-hp.png" \
     --exec ":unhost" --exec "@wait 10" --exec ":q!" \
     > "$out/host.log" 2>&1 &
 host=$!
@@ -122,6 +138,9 @@ timeout 90 ./toh --size 600x400 --auto-file "$icon" \
     --exec "@shot $out/client-created.png" \
     --exec "@click $D" --exec "@down lshift" --exec "@click $D2" --exec "@up lshift" --exec "@wait 30" \
     --exec "@touch $out/client-moved2" \
+    --exec "@waitfile $out/hp-set" --exec "@wait 30" \
+    --exec "@click $A2" --exec ":c damage 25" --exec "@wait 30" --exec "@shot $out/client-hp.png" \
+    --exec "@touch $out/hp-damaged" \
     --exec "@wait 60" \
     --exec ":q" --exec "@shot $out/client-quit-refused.png" --exec ":q!" \
     > "$out/client.log" 2>&1 || fail "the client exited with status $? (see $out/client.log)"
@@ -156,6 +175,12 @@ faint "$out/host-request.png" $D || fail "the GM does not see a preview of the r
 occupied "$out/client-created.png" $D || fail "the accepted character does not show on the client"
 occupied "$out/host-created.png" $D2 || fail "Bob could not move the character he created"
 [ -f "$out/client-quit-refused.png" ] || fail ":q quit the client although the session ended"
+# HP panel: the GM's full bar, Bob's own damage (-5 of 20) on his screen and on the GM's
+red "$out/host-hp-full.png" $(panel_x "$out/host-hp-full.png" $HP_IN) || fail "the GM's HP panel does not show a full red bar"
+! red "$out/host-hp-full.png" $(panel_x "$out/host-hp-full.png" $HP_NEG) || fail "the full HP bar reaches left of its frame"
+red "$out/client-hp.png" $(panel_x "$out/client-hp.png" $HP_NEG) || fail "Bob's HP panel does not show negative HP left of the frame"
+! red "$out/client-hp.png" $(panel_x "$out/client-hp.png" $HP_IN) || fail "Bob's HP bar is still filled inside the frame at -5 HP"
+red "$out/host-hp.png" $(panel_x "$out/host-hp.png" $HP_NEG) || fail "the GM does not see Bob's damage on the HP panel"
 
 if [ "$mode" = relay ]; then
     grep -q linked "$out/relay.log" || fail "the client did not come through the relay (see $out/relay.log)"
