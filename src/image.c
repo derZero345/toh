@@ -88,3 +88,27 @@ Image image_cut_hex(const Image *src, bool flat) {
     }
     return out;
 }
+
+Image image_scale_to_fit(const Image *src, int max) {
+    int big = src->w > src->h ? src->w : src->h;
+    int w = src->w, h = src->h;
+    if (big > max) {
+        w = (int)((long long)src->w * max / big);
+        h = (int)((long long)src->h * max / big);
+        if (w < 1) w = 1;
+        if (h < 1) h = 1;
+    }
+    Image out = image_alloc(w, h);
+    for (int y = 0; y < h; y++) {
+        int y0 = (int)((long long)y * src->h / h), y1 = (int)((long long)(y + 1) * src->h / h);
+        for (int x = 0; x < w; x++) {
+            int x0 = (int)((long long)x * src->w / w), x1 = (int)((long long)(x + 1) * src->w / w);
+            unsigned sum[4] = { 0 }, n = 0;
+            for (int sy = y0; sy < y1; sy++)
+                for (int sx = x0; sx < x1; sx++, n++)
+                    for (int c = 0; c < 4; c++) sum[c] += src->px[((size_t)sy * src->w + sx) * 4 + c];
+            for (int c = 0; c < 4; c++) out.px[((size_t)y * w + x) * 4 + c] = (uint8_t)(sum[c] / n);
+        }
+    }
+    return out;
+}

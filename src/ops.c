@@ -43,6 +43,7 @@ const char *ops_result_text(OpResult r) {
     case OPR_ALREADY_OWNED: return "That character already has an owner";
     case OPR_CLAIM_PENDING: return "Wait for the GM to answer your earlier claim";
     case OPR_TOO_FAST:      return "Too many rolls; wait a moment";
+    case OPR_TILE_TAKEN:    return "That tile is taken";
     }
     return "Unknown error";
 }

@@ -14,6 +14,8 @@ void image_free(Image *img);
 
 /* Port of Calc.cutCirce: keeps a circle of the top-left min(w,h) square. */
 Image image_cut_circle(const Image *src);
+/* A copy that fits into max x max pixels (box filter); smaller images are copied unchanged. */
+Image image_scale_to_fit(const Image *src, int max);
 /* Port of Calc.cutHex: keeps a hexagon sized by the image height. */
 Image image_cut_hex(const Image *src, bool flat);
 

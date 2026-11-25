@@ -1,6 +1,7 @@
 /* Tests for the game core without a window: entity ids, op rules (ops_check) and
  * op effects (ops_apply). Run with `make test`. Stubs: tests/core_stubs.c. */
 #include "app.h"
+#include "image.h"
 #include "netmsg.h"
 #include "ops.h"
 #include "savefmt.h"
@@ -588,6 +589,19 @@ static void test_client_submit(void) {
     CHECK(strcmp(ops_result_text(OPR_ALREADY_OWNED), "That character already has an owner") == 0);
 }
 
+static void test_create_helpers(void) {
+    CHECK(strcmp(ops_result_text(OPR_TILE_TAKEN), "That tile is taken") == 0);
+    Image src = { .w = 1000, .h = 600, .px = calloc(1000 * 600, 4) };
+    for (int i = 0; i < 1000 * 600; i++) src.px[i * 4 + 3] = 255;
+    Image s = image_scale_to_fit(&src, 512);
+    CHECK(s.w == 512 && s.h == 307 && s.px && s.px[3] == 255 && s.px[(512 * 307 - 1) * 4 + 3] == 255);
+    image_free(&s);
+    Image small = image_scale_to_fit(&(Image){ .w = 10, .h = 20, .px = src.px }, 512);
+    CHECK(small.w == 10 && small.h == 20 && memcmp(small.px, src.px, 10 * 20 * 4) == 0);
+    image_free(&small);
+    image_free(&src);
+}
+
 int main(void) {
     test_entity_ids();
     test_initiative_values();
@@ -601,6 +615,7 @@ int main(void) {
     test_host_ids();
     test_remote_view_state();
     test_client_submit();
+    test_create_helpers();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
