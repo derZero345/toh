@@ -85,4 +85,9 @@ double rand_unit(void); /* [0,1) */
 typedef enum { ANSWER_UNCLEAR, ANSWER_NO, ANSWER_YES } Answer;
 Answer confirm_answer(const char *question, const char *line);
 
+/* Splits input at spaces and tabs into at most max arguments, written to buf (cap bytes).
+ * Double quotes keep spaces inside one argument and are removed; an unclosed quote runs to
+ * the end. Returns the number of arguments. */
+int split_args(const char *input, char *buf, size_t cap, char **argv, int max);
+
 #endif

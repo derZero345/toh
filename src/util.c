@@ -38,3 +38,22 @@ Answer confirm_answer(const char *question, const char *line) {
         if (n == strlen(words[i]) && strncasecmp(a, words[i], n) == 0) return i < 2 ? ANSWER_YES : ANSWER_NO;
     return ANSWER_UNCLEAR;
 }
+
+int split_args(const char *input, char *buf, size_t cap, char **argv, int max) {
+    size_t o = 0;
+    int argc = 0;
+    const char *p = input;
+    while (*p && argc < max) {
+        while (*p == ' ' || *p == '\t') p++;
+        if (!*p || o + 1 >= cap) break;
+        argv[argc++] = buf + o;
+        bool quoted = false;
+        while (*p && (quoted || (*p != ' ' && *p != '\t'))) {
+            if (*p == '"') quoted = !quoted;
+            else if (o + 1 < cap) buf[o++] = *p;
+            p++;
+        }
+        buf[o++] = '\0';
+    }
+    return argc;
+}

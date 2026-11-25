@@ -330,11 +330,8 @@ typedef struct {
     char buf[CONSOLE_TEXT_MAX];
 } Args;
 
-static void split_args(const char *input, Args *a) {
-    snprintf(a->buf, sizeof(a->buf), "%s", input);
-    a->argc = 0;
-    for (char *tok = strtok(a->buf, " \t"); tok && a->argc < 64; tok = strtok(NULL, " \t"))
-        a->argv[a->argc++] = tok;
+static void args_split(const char *input, Args *a) {
+    a->argc = split_args(input, a->buf, sizeof(a->buf), a->argv, 64);
 }
 
 static void lower(char *s) { for (; *s; s++) *s = (char)tolower((unsigned char)*s); }
@@ -837,7 +834,7 @@ void console_command(const char *raw) {
     }
 
     Args a;
-    split_args(input, &a);
+    args_split(input, &a);
     if (a.argc == 0) return;
     char cmd[64];
     snprintf(cmd, sizeof(cmd), "%s", a.argv[0]);

@@ -730,7 +730,25 @@ static void test_hp_rules(void) {
     CHECK(strcmp(name, "Mao") == 0);
 }
 
+static void test_split_args(void) {
+    char buf[128], *argv[8];
+    int n = split_args(":c name \"Mao Clausewitz\" h 20", buf, sizeof(buf), argv, 8);
+    CHECK(n == 5 && strcmp(argv[1], "name") == 0 && strcmp(argv[2], "Mao Clausewitz") == 0 &&
+          strcmp(argv[4], "20") == 0);
+    n = split_args("  a\tb  ", buf, sizeof(buf), argv, 8);
+    CHECK(n == 2 && strcmp(argv[0], "a") == 0 && strcmp(argv[1], "b") == 0);
+    n = split_args(":c name \"Open quote", buf, sizeof(buf), argv, 8); /* runs to the end */
+    CHECK(n == 3 && strcmp(argv[2], "Open quote") == 0);
+    n = split_args("x\"y z\"w", buf, sizeof(buf), argv, 8);
+    CHECK(n == 1 && strcmp(argv[0], "xy zw") == 0);
+    CHECK(split_args("a b c", buf, sizeof(buf), argv, 2) == 2);
+    n = split_args("abcdefghij", buf, 4, argv, 8); /* cut to the buffer */
+    CHECK(n == 1 && strcmp(argv[0], "abc") == 0);
+    CHECK(split_args("   ", buf, sizeof(buf), argv, 8) == 0);
+}
+
 int main(void) {
+    test_split_args();
     test_entity_ids();
     test_initiative_values();
     test_player_moves();
