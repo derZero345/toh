@@ -21,8 +21,9 @@ The GM gives you the code (it starts with `toh1-`); you can paste it with Ctrl +
 2. **Hold Left Shift** to preview where it would end up and the path it would take.
 3. **Shift + left click** a tile inside the green area to move there.
 
-You can only move characters the GM gave you. While initiative is running, you can only move on your
-character's turn.
+You can only move your own characters: the ones with a **thick ring in your color**. Every owned character has
+a ring in its owner's color (grey if that player isn't at the table); characters without a ring belong to the GM.
+While initiative is running, you can only move on your character's turn.
 
 ## 3. End your turn
 
@@ -55,12 +56,19 @@ game rolls, and everyone sees the result. You can roll at most 10 times in 10 se
 ## 6. Get a character
 
 **Claim one that exists:** select a character that has no owner yet, then type `:claim`. The GM answers yes or
-no. You can have at most 3 requests waiting at once.
+no.
 
-**Create your own (coming soon, not in the game yet):** with nothing selected, click an empty tile and type
-`:c` with your stats, for example `:c speed 6 maxhealth 20 armorclass 12`. Then pick a picture. The GM sees
-your stats and the picture and accepts or declines. The rest of the table only sees your character once the GM
-says yes, so you can surprise the party. Until then, ask the GM to create the character for you.
+**Create your own:**
+1. Click an empty tile, so that nothing else is selected.
+2. Type `:c` with your stats, for example `:c speed 6 maxhealth 20 armorclass 12`. Without `speed` your
+   character can't move.
+3. Pick a picture (PNG). Large pictures are shrunk to 512×512.
+
+The GM sees your stats and the picture and accepts or declines. The rest of the table only sees your character
+once the GM says yes, so you can surprise the party. It then belongs to you. If the tile is taken by then, you
+get "That tile is taken".
+
+Claims and new characters count together: at most 3 can wait for the GM at once.
 
 ## 7. Measure and aim
 
@@ -101,4 +109,4 @@ table sees your selection, measurements and attacks in your color.
 | `:cl` | Clear the log and command history |
 | Arrow keys, Enter | Play without a mouse: move a cursor, Enter = left click, Right Shift + Enter = right click, Right Shift + Up / Down = zoom |
 
-Everything else (creating characters, walls, initiative, the background) is the GM's job.
+Everything else (editing or deleting characters, walls, initiative, the background) is the GM's job.

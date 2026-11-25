@@ -195,7 +195,8 @@ Players can jump to waypoints but not create or delete them.
 | `:host --direct [name]` | Host without the relay: players connect straight to this computer (TCP port 41234). The game tries to open the router port; the log says if that failed (then forward the port by hand or use a VPN such as Tailscale). |
 | `:unhost` | End the session. Players keep a copy of the table. |
 
-Every `:host` makes a new code, so old codes stop working. Up to 32 players can join. A joining player's table
+Every `:host` makes a new code, so old codes stop working. Players need the same version of the game as you;
+otherwise they get "The host runs a different version of ToH". Up to 32 players can join. A joining player's table
 is replaced by yours. Your table changes are sent to everyone right away, and `:load` sends the new table to all
 players.
 
@@ -218,13 +219,22 @@ needed.
 "<player> wants to claim character #... Allow? (y/n)". Type `y` or `n` and press Enter. Several requests wait in
 line; each player can have at most 3 waiting.
 
-**Player-created characters and ownership rings (coming soon, not in the game yet):**
-- Players will be able to create their own character with `:c [stats]` and a picture. Your console asks
-  "<player> wants to create a character at [r|c]: size, max health, AC, speed, initiative. Allow? (y/n)", and only
-  your screen shows the picture faintly on that tile. On `y` the character is created and belongs to that player.
-  These requests count towards the same limit of 3.
-- During a session, every owned character will get a ring in its owner's color (grey if the owner isn't at the
-  table).
+**Player-created characters:**
+- Players can create their own character with `:c [stats]` on an empty tile and a picture (at most 512×512).
+- Your log says "<player> asks for a new character", and the console asks, for example,
+  `Bob: new character [2|7] size 0 HP 20 AC 12 speed 6 init 1. Allow? (y/n)`.
+- While the question is open, only your screen shows the picture faintly on that tile, so you can check it.
+- On `y` the character is created for everyone and belongs to that player; on `n` the player is told you
+  declined.
+- If the tile was taken in the meantime, nothing is created and the log says so.
+- Change its stats afterwards with `:c` like any other character.
+- These requests share the limit of 3 waiting requests per player with claims.
+
+**Ownership rings:**
+- During a session every owned character has a ring in its owner's color: blue, red, …, or grey if the owner isn't
+  at the table.
+- Each player sees the rings of their own characters thicker.
+- Characters without a ring are yours.
 
 ## 15. Saving and loading
 
@@ -288,14 +298,14 @@ Players can:
 - move their own characters (on their turn while initiative runs);
 - end their turn with `:i next`;
 - roll dice (at most 10 rolls in 10 seconds);
-- ask for characters with `:claim`;
+- ask for existing characters with `:claim`, or for a new one of their own with `:c` (you answer y/n);
 - jump to waypoints and coordinates;
 - use the measure and attack tools;
 - save a copy of the table;
 - change their own camera, zoom and theme.
 
 Everything else is yours, including:
-- creating, editing and deleting characters and walls;
+- creating characters directly, editing and deleting characters, and walls;
 - giving characters to players;
 - the initiative order (apart from `:i next`);
 - waypoints, the background and the grid;

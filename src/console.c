@@ -493,6 +493,7 @@ static void cmd_help(Args *a) {
         console_log(":c  or character # Create a character, or edit the selected ones");
         console_log("  delete | size <-2..3> | maxhealth <n> | armorclass <n>");
         console_log("  speed <n> | initiative <n> | icon | owner <player|none>");
+        console_log("  players: with nothing selected, asks the GM for a new character of your own");
     } else if (!strcmp(arg, "wall") || !strcmp(arg, ":w")) {
         console_log(":w  or wall # Place walls on the selected tiles - delete: remove walls");
     } else if (!strcmp(arg, "entity") || !strcmp(arg, ":e")) {

@@ -59,9 +59,9 @@ The host checks these in order; the first failure sends `NM_OP_REJECTED` with th
 
 | Check | Reason |
 |---|---|
-| The WebP decodes and is at most 512×512 | `OPR_INVALID` |
-| Every tile the character would cover is free (`character_occupied_tiles` + `entity_at`) | new `OPR_TILE_TAKEN` "That tile is taken" |
 | The player has fewer than `CLAIMS_PER_PLAYER` (3) requests waiting (claims and creations together) | `OPR_CLAIM_PENDING` |
+| Every tile the character would cover is free (`character_occupied_tiles` + `entity_at`) | new `OPR_TILE_TAKEN` "That tile is taken" |
+| The WebP decodes and is at most 512×512 | `OPR_INVALID` |
 
 After that the request joins the queue.
 
@@ -70,7 +70,8 @@ After that the request joins the queue.
   - claim: player, entity;
   - create: player, spec, tile, texture holding the decoded picture, hash.
 - `ask_next_claim` becomes `ask_next_request`. A create request asks:
-  `"<player> wants to create a character at [r|c]: size S, max health H, AC A, speed V, initiative I. Allow? (y/n)"`.
+  `"<player>: new character [r|c] size S HP H AC A speed V init I. Allow? (y/n)"`. It is kept short so the
+  name fits on the console's input line.
 - When a player leaves, their waiting requests are dropped, as claims are now. The textures are released.
 
 ### GM preview

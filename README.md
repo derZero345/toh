@@ -73,7 +73,8 @@ along and cannot read the game.
    needs a VPN.
 2. Players: `:join <code> <name>`. Their table is replaced by the GM's; camera, zoom and theme stay their own.
 3. The GM gives characters to players with `:c owner <name>`, or a player selects an unowned character and asks
-   with `:claim` (the GM answers y/n in the console).
+   with `:claim` (the GM answers y/n in the console). A player can also create a character of their own: `:c [stats]`
+   on an empty tile and a picture; the GM sees the stats and a faint preview and answers y/n.
 
 Players can move their own characters (Shift + click inside the green range; while initiative runs only on their
 turn), end their turn with `:i next`, roll dice (`:r`, rolled by the host and shown to everyone) and save a copy of
@@ -82,7 +83,8 @@ the table. Everything else is the GM's. `:players` lists who is at the table, `:
 A kicked player can rejoin with the same code; `:ban <name>` removes them and turns away both that name and their
 address (IPv4 address or IPv6 /64) until `:unban <name>` or the end of the session (`:ban` lists the bans). Players
 behind the same router share its address, so at school a ban can also keep out classmates: `:unban` them if so.
-A player can have at most 3 claims waiting for the GM and roll at most 10 times in 10 seconds.
+During a session every owned character has a ring in its owner's color. A player can have at most 3 requests
+(claims and new characters) waiting for the GM and roll at most 10 times in 10 seconds.
 
 Everyone sees what the others are pointing at, in their color (the GM is gold, players get blue, red, green,
 ...; `:players` lists the colors): selected tiles and characters with a name label, the movement preview while
