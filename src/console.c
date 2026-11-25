@@ -453,7 +453,7 @@ static void cmd_character(Args *a) {
         i += 2;
     }
 
-    if (gh->selectedEntityTiles.count == 0) {
+    if (gh->selectedEntities.count == 0) {
         if (has_owner) console_log("Select the characters first");
         else gfx_spawn_character(size, max_health, speed, initiative);
         return;
@@ -465,21 +465,20 @@ static void cmd_character(Args *a) {
         if (has[s]) stats.statMask |= 1 << s;
     Op own = { .type = OP_SET_OWNER };
     snprintf(own.name, sizeof(own.name), "%s", owner);
-    HexList icon_targets = { 0 };
-    for (int i = 0; i < gh->selectedEntityTiles.count; i++) {
-        Entity *e = entity_at(gh->selectedEntityTiles.items[i]);
+    int icon_targets = 0;
+    for (int i = 0; i < gh->selectedEntities.count; i++) {
+        Entity *e = entity_by_id(gh->selectedEntities.items[i]);
         if (!e || e->type != ENTITY_CHARACTER || op_has_id(&stats, e->id)) continue;
         da_push(&stats.ids, e->id);
         da_push(&own.ids, e->id);
-        if (has[4]) da_push(&icon_targets, e->tile);
+        icon_targets++;
     }
     if (stats.statMask && stats.ids.count > 0) ops_submit(&stats);
     if (has_owner && own.ids.count > 0 && ops_submit(&own) == OPR_OK) {
         if (owner[0]) console_log("%d character(s) now belong to %s", own.ids.count, owner);
         else console_log("%d character(s) no longer have an owner", own.ids.count);
     }
-    if (has[4] && icon_targets.count > 0) gfx_request_file(ACTION_CHARACTER_ICON, &icon_targets, 0, 0, 0, 0);
-    da_free(&icon_targets);
+    if (has[4] && icon_targets > 0) gfx_request_file(ACTION_CHARACTER_ICON, NULL, 0, 0, 0, 0);
     op_free(&stats);
     op_free(&own);
 }
@@ -604,8 +603,8 @@ static void cmd_roll(Args *a) {
 }
 
 static void collect_selected_entities(EntityList *out) {
-    for (int i = 0; i < gh->selectedEntityTiles.count; i++) {
-        Entity *e = entity_at(gh->selectedEntityTiles.items[i]);
+    for (int i = 0; i < gh->selectedEntities.count; i++) {
+        Entity *e = entity_by_id(gh->selectedEntities.items[i]);
         if (!e) continue;
         bool dup = false;
         for (int k = 0; k < out->count; k++) if (out->items[k] == e) dup = true;

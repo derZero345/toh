@@ -83,6 +83,7 @@ enum { SIZE_WEE = -2, SIZE_TINY = -1, SIZE_SMALL = 0, SIZE_NORMAL = 1, SIZE_BIG 
 #define SIZE_MAX_CLASS SIZE_GIGANTIC
 
 #define MAX_OCCUPIED 7
+#define TILE_BULK 5 /* a tile holds this much bulk; walls fill it */
 
 struct Marker;
 
@@ -92,7 +93,9 @@ typedef struct Entity {
     EntityType type;
     Texture *image;
     Hex tile;
-    Vec2 location;
+    Vec2 location;  /* top left corner of the picture, as last drawn */
+    float drawSize; /* characters: diameter of the picture, as last drawn */
+    int slot, slots; /* entity_layout: characters sharing a tile are drawn side by side in `slots` places */
     int size, maxHealth, health, attack, speed, initiative;
     struct Marker *debugMarker;
 } Entity;
@@ -107,6 +110,10 @@ void    entity_free(Entity *e);
 void    entity_set_image(Entity *e, Texture *image);
 int     entity_occupied_tiles(const Entity *e, Hex out[MAX_OCCUPIED]);
 int     character_occupied_tiles(Hex center, int size, Hex out[MAX_OCCUPIED]);
+/* Bulk a character of this size puts on one of its tiles (centre: its main tile). */
+int     character_bulk(int size, bool centre);
+/* Assigns slot/slots: characters of one tile on a shared tile get places side by side. */
+void    entity_layout(void);
 double  entity_draw_size(const Entity *e);
 bool    entity_occupies(const Entity *e, Hex h);
 /* GraphicsHandler.selectEntity: entity whose *main* tile is h. */
@@ -160,7 +167,10 @@ void    marker_remove(Marker *m);
 bool astar_path(Hex start, Hex end, bool ignore_obstacles, HexList *path);
 /* Like astar_path (with obstacles), but only finds paths of at most max_steps steps.
  * Much cheaper when the target is known to be close, e.g. inside a movement range. */
-bool astar_path_within(Hex start, Hex end, int max_steps, HexList *path);
+bool astar_path_within(Hex start, Hex end, int max_steps, const Entity *mover, HexList *path);
+/* Would a character of this size fit on tile? Every tile it covers must have no wall and room for its bulk
+ * next to the other entities there (except is not counted, e.g. the character itself). */
+bool character_fits(Hex tile, int size, const Entity *except);
 /* Characters can't be faster than this; keeps the movement range bounded. */
 #define MAX_SPEED 1000
 /* Reachable tiles within `speed` steps (moving may be NULL). */
@@ -312,6 +322,7 @@ typedef enum {
 typedef struct {
     ActionKind kind;
     HexList tiles;
+    DA(uint32_t) ids; /* ACTION_CHARACTER_ICON: the characters */
     int size, maxHealth, speed, initiative;
 } PendingAction;
 
@@ -343,7 +354,8 @@ typedef struct App {
     MarkerList markers;
     EntityList entities;
     uint32_t nextEntityId; /* last id handed out by entity_register */
-    HexList selectedTiles, selectedEntityTiles, entityPreviewTiles, attackTiles, path;
+    HexList selectedTiles, entityPreviewTiles, attackTiles, path;
+    DA(uint32_t) selectedEntities; /* ids, in the order they were selected */
     TileSet entityRangeTiles;
     DA(Waypoint) waypoints;
 
@@ -404,6 +416,8 @@ void gfx_handle_file_result(const char *path); /* path NULL = cancelled */
 void gfx_spawn_character(int size, int maxhealth, int speed, int initiative);
 /* Where a character of this size on tile is drawn: its picture's top left corner and diameter. */
 void gfx_character_rect(Hex tile, int size, float *x, float *y, float *d);
+/* Where this character is drawn, taking shared tiles into account (after entity_layout). */
+void gfx_entity_rect(const Entity *e, float *x, float *y, float *d);
 void gfx_summon_wall(void);
 void gfx_set_background_image(const char *path_or_null);
 /* NULL = no background; takes its own reference. Background and entity textures must keep their

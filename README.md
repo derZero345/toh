@@ -184,7 +184,8 @@ The changes below are deliberate:
 - **Keyboard cursor:** moving it past the window edge scrolls the view.
 - **`:c icon`** applies the new image cropped to a circle, as with newly created characters. It no
   longer swallows the arguments that follow it.
-- **Sizes** follow Tales of Honor (-2 Wee to 4 Gigantic, Normal = 1) instead of the Java version's D&D sizes.
+- **Sizes** follow Tales of Honor (-2 Wee to 4 Gigantic, Normal = 1) instead of the Java version's D&D sizes, and
+  characters may share a tile while their bulk fits (5 per tile). Selection follows characters, not tiles.
 - **Deleting entities** also removes them from initiative and clears stale selection highlights.
 - **Initiative order:** the first `:i next` starts with the highest roller (Java skipped them), removing
   the current character passes the turn to the next one in order (Java skipped that one too), and

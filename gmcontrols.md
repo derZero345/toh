@@ -60,7 +60,7 @@ Camera, zoom and theme are stored in save files but don't count as unsaved chang
 
 | Input | Action |
 |---|---|
-| Left click | Select a tile and the entity on it (click again to deselect) |
+| Left click | Select a tile and the entity on it (click again to deselect). On a tile several characters share, click the picture you mean |
 | Ctrl + left click | Add tiles / entities to the selection |
 | Ctrl + left drag | Select every tile the mouse passes over |
 | Ctrl + A | Select all entities |
@@ -99,15 +99,19 @@ Several can be combined: `:c speed 6 owner Bob`.
 
 Sizes:
 
-| Size | Name | Tiles |
-|---|---|---|
-| -2 | Wee | 1 |
-| -1 | Tiny | 1 |
-| 0 | Small | 1 |
-| 1 | Normal (the default) | 1 |
-| 2 | Big | 1 |
-| 3 | Huge | 3, a triangle |
-| 4 | Gigantic | 7, a tile and its six neighbours |
+| Size | Name | Tiles | Bulk per tile |
+|---|---|---|---|
+| -2 | Wee | 1 | 0 |
+| -1 | Tiny | 1 | 1 |
+| 0 | Small | 1 | 2 |
+| 1 | Normal (the default) | 1 | 3 |
+| 2 | Big | 1 | 4 |
+| 3 | Huge | 3, a triangle | 3 |
+| 4 | Gigantic | 7, a tile and its six neighbours | 5 in the centre, 3 on the edges |
+
+**Sharing tiles:** as in Tales of Honor, a tile holds 5 bulk, so characters can share one while their bulk adds up
+to 5 or less (a Normal and a Small, two Smalls and a Tiny, any number of Wee). Walls fill their tile. Characters on
+a shared tile are drawn side by side inside it; the selected one gets a blue circle.
 
 Saves from older versions used other sizes; they are converted when loaded so every character keeps its
 footprint (old large → Huge, old huge and gargantuan → Gigantic).
@@ -131,6 +135,10 @@ footprint (old large → Huge, old huge and gargantuan → Gigantic).
 | Hold Left Shift | Preview where it would stand and the path |
 | Shift + left click inside the green range | Move it there |
 | `:gm` | Gamemaster mode on / off: a plain left click on any tile moves the selected character there, without range limits |
+
+The green range and the path only use tiles the character fits on (see **Sharing tiles** in section 4), so it can
+walk through and stop on tiles other characters leave room on. You can still put characters anywhere: with `:gm`,
+or by creating them on a tile, no bulk is checked.
 
 `:gm` only works for the GM (not for joined players).
 
@@ -241,7 +249,7 @@ line; each player can have at most 3 waiting.
 - While the question is open, only your screen shows the picture faintly on that tile, so you can check it.
 - On `y` the character is created for everyone and belongs to that player; on `n` the player is told you
   declined.
-- If the tile was taken in the meantime, nothing is created and the log says so.
+- If the character no longer fits there (see **Sharing tiles**), nothing is created and the log says so.
 - Change its stats afterwards with `:c` like any other character.
 - These requests share the limit of 3 waiting requests per player with claims.
 

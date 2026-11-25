@@ -75,7 +75,7 @@ void gfx_shutdown(void) {
     da_free(&gh->markers);
     da_free(&gh->measures);
     da_free(&gh->selectedTiles);
-    da_free(&gh->selectedEntityTiles);
+    da_free(&gh->selectedEntities);
     ts_free(&gh->entityRangeTiles);
     da_free(&gh->entityPreviewTiles);
     da_free(&gh->attackTiles);
@@ -84,6 +84,7 @@ void gfx_shutdown(void) {
     da_free(&gh->initMarkers);
     da_free(&gh->waypoints);
     da_free(&gh->dialog.tiles);
+    da_free(&gh->dialog.ids);
     da_free(&gh->confirm.tiles);
     vkr_texture_release(gh->backgroundImage);
     toolbox_free(&gh->toolbox);
@@ -185,8 +186,8 @@ void gfx_drag(Vec2 p) {
 void gfx_toggle_grid_orientation(void) { gh->isFlat = !gh->isFlat; }
 
 void gfx_add_entity_preview_tiles(void) {
-    if (gh->selectedEntityTiles.count == 0 || !gh->hasTileUnderMouse) return;
-    Entity *sel = entity_at(gh->selectedEntityTiles.items[0]);
+    if (gh->selectedEntities.count == 0 || !gh->hasTileUnderMouse) return;
+    Entity *sel = entity_by_id(gh->selectedEntities.items[0]);
     if (!sel || sel->type != ENTITY_CHARACTER) return;
     Hex tiles[MAX_OCCUPIED];
     int n = character_occupied_tiles(gh->tileUnderMouse, sel->size, tiles);
@@ -195,7 +196,7 @@ void gfx_add_entity_preview_tiles(void) {
         da_push(&gh->entityPreviewTiles, tiles[i]);
         /* movement path preview when inside the range */
         if (ts_has(&gh->entityRangeTiles, tiles[i]))
-            astar_path_within(gh->selectedEntityTiles.items[0], tiles[i], sel->speed, &gh->path);
+            astar_path_within(sel->tile, tiles[i], sel->speed, sel, &gh->path);
     }
 }
 
@@ -221,6 +222,9 @@ void gfx_request_file(ActionKind kind, const HexList *tiles, int size, int maxHe
     a->kind = kind;
     if (tiles) hl_copy(&a->tiles, tiles);
     else da_clear(&a->tiles);
+    da_clear(&a->ids);
+    if (kind == ACTION_CHARACTER_ICON) /* the selected characters */
+        for (int i = 0; i < gh->selectedEntities.count; i++) da_push(&a->ids, gh->selectedEntities.items[i]);
     a->size = size;
     a->maxHealth = maxHealth;
     a->speed = speed;
@@ -317,9 +321,9 @@ void gfx_handle_file_result(const char *path) {
         image_free(&img);
         Texture *t = texture_from_image(&cut);
         Op op = { .type = OP_SET_ICON, .image = t };
-        for (int i = 0; i < a->tiles.count; i++) {
-            Entity *e = entity_at(a->tiles.items[i]);
-            if (e && e->type == ENTITY_CHARACTER) da_push(&op.ids, e->id);
+        for (int i = 0; i < a->ids.count; i++) {
+            Entity *e = entity_by_id(a->ids.items[i]);
+            if (e && e->type == ENTITY_CHARACTER) da_push(&op.ids, e->id); /* ids are unique */
         }
         if (op.ids.count > 0) ops_submit(&op);
         op_free(&op);
@@ -432,16 +436,37 @@ void gfx_character_rect(Hex tile, int size, float *x, float *y, float *d) {
     *d = (float)(ds * hs);
 }
 
+void gfx_entity_rect(const Entity *e, float *x, float *y, float *d) {
+    if (e->slots <= 1) {
+        gfx_character_rect(e->tile, e->size, x, y, d);
+        return;
+    }
+    /* k places on a ring inside the tile's inner circle (radius R), each as large as fits without overlapping:
+     * neighbouring centres are 2 r sin(pi/k) apart with r = R - dk/2, which gives dk = 2 R s / (1 + s) */
+    const double PI = 3.14159265358979323846;
+    double hs = gh->hexSize, R = SQRT3 / 2 * hs;
+    int k = e->slots > 7 ? 7 : e->slots; /* more than 7 (only Wee ones) overlap */
+    double s = sin(PI / k), dk = 2 * R * s / (1 + s), r = R - dk / 2;
+    double own = entity_draw_size(e) * hs, dd = own < dk ? own : dk;
+    double a = PI + 2 * PI * (e->slot % k) / k; /* place 0 on the left, then clockwise */
+    Vec2 c = hex_center(e->tile);
+    *d = (float)dd;
+    *x = (float)(c.x + r * cos(a) - dd / 2);
+    *y = (float)(c.y + r * sin(a) - dd / 2);
+}
+
 static void draw_entities(void) {
     double hs = gh->hexSize;
+    entity_layout();
     for (int i = 0; i < gh->entities.count; i++) {
         Entity *e = gh->entities.items[i];
         Vec2 c = hex_center(e->tile);
         double ds = entity_draw_size(e);
         if (e->type == ENTITY_CHARACTER) {
             float x, y, d;
-            gfx_character_rect(e->tile, e->size, &x, &y, &d);
+            gfx_entity_rect(e, &x, &y, &d);
             e->location = (Vec2){ x, y };
+            e->drawSize = d;
             dr_image(e->image, (int)e->location.x, (int)e->location.y, (int)d, (int)d);
         } else {
             e->location = (Vec2){ c.x - hs, c.y - (SQRT3 * hs / 2) };
@@ -462,9 +487,8 @@ static void draw_owner_rings(void) {
         uint32_t color;
         bool mine;
         if (e->type != ENTITY_CHARACTER || !session_owner_color(e->owner, &color, &mine)) continue;
-        float x, y, d;
-        gfx_character_rect(e->tile, e->size, &x, &y, &d);
-        dr_stroke_oval(x, y, d, d, mine ? th * 2 : th, rgb_hex(color));
+        dr_stroke_oval((float)e->location.x, (float)e->location.y, e->drawSize, e->drawSize, mine ? th * 2 : th,
+                       rgb_hex(color));
     }
 }
 
@@ -572,12 +596,15 @@ static void draw_grid(void) {
 
     for (int i = 0; i < gh->selectedTiles.count; i++) draw_hex(gh->selectedTiles.items[i], th + 2, COLOR_RED);
 
-    for (int i = 0; i < gh->selectedEntityTiles.count; i++) {
-        Entity *e = entity_at(gh->selectedEntityTiles.items[i]);
+    for (int i = 0; i < gh->selectedEntities.count; i++) {
+        Entity *e = entity_by_id(gh->selectedEntities.items[i]);
         if (!e) continue;
         Hex tiles[MAX_OCCUPIED];
         int n = entity_occupied_tiles(e, tiles);
         for (int k = 0; k < n; k++) draw_hex(tiles[k], th + 2, COLOR_BLUE);
+        if (e->type == ENTITY_CHARACTER && e->slots > 1) /* on a shared tile: which one */
+            dr_stroke_oval((float)e->location.x - 2, (float)e->location.y - 2, e->drawSize + 4, e->drawSize + 4, th + 2,
+                           COLOR_BLUE);
     }
     /* movement range: only the rendered tiles need drawing */
     if (gh->entityRangeTiles.side > 0)

@@ -271,7 +271,7 @@ static void clear_table(void) {
     vkr_texture_release(gh->backgroundImage);
     gh->backgroundImage = NULL;
     da_clear(&gh->selectedTiles);
-    da_clear(&gh->selectedEntityTiles);
+    da_clear(&gh->selectedEntities);
     da_clear(&gh->entityPreviewTiles);
     da_clear(&gh->attackTiles);
     da_clear(&gh->path);

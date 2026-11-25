@@ -17,13 +17,17 @@ The GM gives you the code (it starts with `toh1-`); you can paste it with Ctrl +
 
 ## 2. Move your character
 
-1. **Left click** your character to select it. A green area shows how far it can move.
+1. **Left click** your character to select it. A green area shows how far it can move. If several characters
+   share a tile, they stand side by side in it: click the one you mean.
 2. **Hold Left Shift** to preview where it would end up and the path it would take.
 3. **Shift + left click** a tile inside the green area to move there.
 
 You can only move your own characters: the ones with a **thick ring in your color**. Every owned character has
 a ring in its owner's color (grey if that player isn't at the table); characters without a ring belong to the GM.
 While initiative is running, you can only move on your character's turn.
+
+Characters can share a tile when there is room: a tile holds 5 bulk, and a Wee character takes 0, Tiny 1, Small 2,
+Normal 3, Big 4. So a Small character can step onto a Normal one's tile, but two Normal ones can't share.
 
 ## 3. End your turn
 
@@ -65,8 +69,8 @@ no.
 3. Pick a picture (PNG). Large pictures are shrunk to 512×512.
 
 The GM sees your stats and the picture and accepts or declines. The rest of the table only sees your character
-once the GM says yes, so you can surprise the party. It then belongs to you. If the tile is taken by then, you
-get "That tile is taken".
+once the GM says yes, so you can surprise the party. It then belongs to you. The tile needs room for your
+character (see section 2); otherwise you get "No room on that tile".
 
 Claims and new characters count together: at most 3 can wait for the GM at once.
 

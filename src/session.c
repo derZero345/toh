@@ -565,14 +565,8 @@ static int requests_of(uint8_t player) {
     return n;
 }
 
-/* No entity on any tile a character of this size on tile would cover. */
-static bool tiles_free(Hex tile, int size) {
-    Hex t[MAX_OCCUPIED];
-    int n = character_occupied_tiles(tile, size, t);
-    for (int i = 0; i < n; i++)
-        if (entity_at(t[i])) return false;
-    return true;
-}
+/* The new character fits there (Tales of Honor: tiles hold TILE_BULK, walls are full). */
+static bool tiles_free(Hex tile, int size) { return character_fits(tile, size, NULL); }
 
 /* NM_CREATE: a player asks for a new character of their own. */
 static void host_create(Player *p, const NetMsg *m) {
@@ -788,7 +782,7 @@ static void answer_create(const Request *r, Player *p, bool yes) {
         return;
     }
     if (!tiles_free(r->spec.tile, r->spec.size)) {
-        console_log("The tile [%d|%d] is taken now; %s's character was not created.", r->spec.tile.row,
+        console_log("No room on [%d|%d] any more; %s's character was not created.", r->spec.tile.row,
                     r->spec.tile.col, p->name);
         NetMsg rej = { .type = NM_OP_REJECTED, .reason = OPR_TILE_TAKEN };
         net_send(S.net, p->conn, &rej);
@@ -948,7 +942,7 @@ static void client_applied(const NetMsg *m) {
     op.remote = m->player != S.myId;
     ops_apply(&op);
     /* our own move: input.c dropped the selection when it sent the move; select the character again */
-    if (op.type == OP_MOVE && !op.remote && gh->selectedEntityTiles.count == 0) {
+    if (op.type == OP_MOVE && !op.remote && gh->selectedEntities.count == 0) {
         Entity *e = entity_by_id(op.id);
         if (e) io_select_entity(e);
     }
@@ -1402,8 +1396,8 @@ void session_cmd_claim(void) {
     }
     Entity *found = NULL;
     int count = 0;
-    for (int i = 0; i < gh->selectedEntityTiles.count; i++) {
-        Entity *e = entity_at(gh->selectedEntityTiles.items[i]);
+    for (int i = 0; i < gh->selectedEntities.count; i++) {
+        Entity *e = entity_by_id(gh->selectedEntities.items[i]);
         if (!e || e == found) continue;
         found = e;
         count++;

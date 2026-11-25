@@ -151,6 +151,57 @@ bool entity_occupies(const Entity *e, Hex h) {
     return false;
 }
 
+int character_bulk(int size, bool centre) {
+    switch (size) {
+    case SIZE_WEE:      return 0;
+    case SIZE_TINY:     return 1;
+    case SIZE_SMALL:    return 2;
+    case SIZE_BIG:      return 4;
+    case SIZE_GIGANTIC: return centre ? 5 : 3;
+    default:            return 3; /* normal, huge */
+    }
+}
+
+/* entity_layout: per tile, how many one-tile characters stand on it and whether something bigger covers it */
+typedef struct {
+    Hex h;
+    int singles, next;
+    bool covered, used;
+} LayoutSlot;
+
+static LayoutSlot *layout_find(LayoutSlot *t, uint32_t mask, Hex h) {
+    uint32_t s = (((uint32_t)h.row * 73856093u) ^ ((uint32_t)h.col * 19349663u)) & mask;
+    while (t[s].used && !hex_eq(t[s].h, h)) s = (s + 1) & mask;
+    if (!t[s].used) t[s] = (LayoutSlot){ .h = h, .used = true };
+    return &t[s];
+}
+
+void entity_layout(void) {
+    uint32_t cap = 64;
+    while (cap < (uint32_t)gh->entities.count * MAX_OCCUPIED * 2) cap <<= 1;
+    LayoutSlot *t = calloc(cap, sizeof(*t));
+    if (!t) abort();
+    for (int i = 0; i < gh->entities.count; i++) {
+        Entity *e = gh->entities.items[i];
+        Hex tiles[MAX_OCCUPIED];
+        int n = entity_occupied_tiles(e, tiles);
+        if (e->type == ENTITY_CHARACTER && n == 1) layout_find(t, cap - 1, e->tile)->singles++;
+        else
+            for (int k = 0; k < n; k++) layout_find(t, cap - 1, tiles[k])->covered = true;
+    }
+    for (int i = 0; i < gh->entities.count; i++) {
+        Entity *e = gh->entities.items[i];
+        e->slot = 0;
+        e->slots = 1;
+        Hex tiles[MAX_OCCUPIED];
+        if (e->type != ENTITY_CHARACTER || entity_occupied_tiles(e, tiles) != 1) continue;
+        LayoutSlot *l = layout_find(t, cap - 1, e->tile);
+        e->slots = l->singles + (l->covered ? 1 : 0);
+        e->slot = (l->covered ? 1 : 0) + l->next++; /* place 0 is left to whatever bigger covers the tile */
+    }
+    free(t);
+}
+
 double entity_draw_size(const Entity *e) {
     if (e->type != ENTITY_CHARACTER) return SQRT3;
     switch (e->size) {
@@ -209,7 +260,7 @@ void entity_delete(Entity *e) {
 }
 
 void entities_clear_highlights(void) {
-    da_clear(&gh->selectedEntityTiles);
+    da_clear(&gh->selectedEntities);
     ts_free(&gh->entityRangeTiles);
     da_clear(&gh->entityPreviewTiles);
     da_clear(&gh->path);

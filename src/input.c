@@ -7,7 +7,6 @@
 #define CON (&gh->console)
 
 static void select_entity(void);
-static void select_entity_no_deselection(void);
 static void select_tile(void);
 
 void io_toggle_game_master(void) { gh->gameMaster = !gh->gameMaster; }
@@ -100,43 +99,62 @@ static void move_tile_under_mouse(int dir) {
 
 /* ---- selection ---------------------------------------------------------------------------- */
 
+/* The entity on the current tile nearest to the pointer. Characters sharing a tile are drawn side by side,
+ * so they are told apart by where their picture was drawn; walls count from the tile's centre. */
+static Entity *entity_under_cursor(void) {
+    Vec2 p = gh->mouseActive ? gh->mousePos : hex_center(gh->currentHexagon);
+    Entity *best = NULL;
+    double best_d = 0;
+    for (int i = 0; i < gh->entities.count; i++) {
+        Entity *e = gh->entities.items[i];
+        if (!entity_occupies(e, gh->currentHexagon)) continue;
+        Vec2 c = e->type == ENTITY_CHARACTER && e->drawSize > 0
+                     ? (Vec2){ e->location.x + e->drawSize / 2, e->location.y + e->drawSize / 2 }
+                     : hex_center(e->tile);
+        double d = (c.x - p.x) * (c.x - p.x) + (c.y - p.y) * (c.y - p.y);
+        if (!best || d < best_d) {
+            best = e;
+            best_d = d;
+        }
+    }
+    return best;
+}
+
+/* Adds e (may be NULL) to the selection and shows the first selected character's movement range. */
+static void select_one(Entity *e) {
+    if (e) {
+        bool have = false;
+        for (int i = 0; i < gh->selectedEntities.count; i++) have |= gh->selectedEntities.items[i] == e->id;
+        if (!have) da_push(&gh->selectedEntities, e->id);
+        gh->hasSelectedEntity = true;
+    }
+
+    if (gh->hasSelectedEntity) ts_free(&gh->entityRangeTiles);
+    if (!gh->hasSelectedEntity || gh->selectedEntities.count == 0) return;
+
+    /* movement range of the first selected character; astar_range already checks
+     * that the character fits on every tile it would cover */
+    Entity *ch = entity_by_id(gh->selectedEntities.items[0]);
+    if (!ch || ch->type != ENTITY_CHARACTER) return;
+    astar_range(ch->tile, ch->speed, ch, &gh->entityRangeTiles);
+}
+
+/* Click: selects the entity under the pointer, or deselects it when it is selected already. */
 static void select_entity(void) {
-    for (int i = 0; i < gh->selectedEntityTiles.count; i++) {
-        if (hex_eq(gh->currentHexagon, gh->selectedEntityTiles.items[i])) {
-            da_remove_at(&gh->selectedEntityTiles, i); /* toggle off */
+    Entity *e = entity_under_cursor();
+    for (int i = 0; e && i < gh->selectedEntities.count; i++) {
+        if (gh->selectedEntities.items[i] == e->id) {
+            da_remove_at(&gh->selectedEntities, i); /* toggle off */
             return;
         }
     }
-    select_entity_no_deselection();
+    select_one(e);
 }
 
 void io_select_entity(const Entity *e) {
     gh->currentHexagon = e->tile;
     gh->hasCurrentHex = true;
-    select_entity_no_deselection();
-}
-
-static void select_entity_no_deselection(void) {
-    for (int i = 0; i < gh->entities.count; i++) {
-        Entity *en = gh->entities.items[i];
-        Hex tiles[MAX_OCCUPIED];
-        int n = entity_occupied_tiles(en, tiles);
-        for (int k = 0; k < n; k++) {
-            if (hex_eq(gh->currentHexagon, tiles[k])) {
-                da_push(&gh->selectedEntityTiles, en->tile);
-                gh->hasSelectedEntity = true;
-            }
-        }
-    }
-
-    if (gh->hasSelectedEntity) ts_free(&gh->entityRangeTiles);
-    if (!gh->hasSelectedEntity || gh->selectedEntityTiles.count == 0) return;
-
-    /* movement range of the first selected character; astar_range already checks
-     * that every tile the character would cover is free of other entities */
-    Entity *ch = entity_at(gh->selectedEntityTiles.items[0]);
-    if (!ch || ch->type != ENTITY_CHARACTER) return;
-    astar_range(ch->tile, ch->speed, ch, &gh->entityRangeTiles);
+    select_one((Entity *)e);
 }
 
 static void select_tile(void) {
@@ -148,9 +166,9 @@ static void select_tile(void) {
         }
     }
     if (!gh->isShiftDown) da_push(&gh->selectedTiles, gh->currentHexagon);
-    if (gh->selectedEntityTiles.count == 0) return;
+    if (gh->selectedEntities.count == 0) return;
 
-    Entity *sel = entity_at(gh->selectedEntityTiles.items[0]);
+    Entity *sel = entity_by_id(gh->selectedEntities.items[0]);
     bool is_char = sel && sel->type == ENTITY_CHARACTER;
     /* Shift+click inside the range moves the character; GM mode moves anywhere. */
     if (is_char && ((gh->isShiftDown && ts_has(&gh->entityRangeTiles, gh->currentHexagon)) || gh->gameMaster)) {
@@ -158,17 +176,13 @@ static void select_tile(void) {
         if (ops_submit(&op) != OPR_OK) return;
 
         gh->hasSelectedEntity = false;
-        da_clear(&gh->selectedEntityTiles);
+        da_clear(&gh->selectedEntities);
         ts_free(&gh->entityRangeTiles);
         da_clear(&gh->selectedTiles);
 
-        /* reselect the entity at its new position */
-        Hex h;
-        if (hex_find_closest(gh->mousePos, &h)) {
-            gh->currentHexagon = h;
-            gh->hasCurrentHex = true;
-            select_entity();
-        }
+        /* reselect it at its new position (in a session the move comes back from the host first,
+         * and session.c selects it then) */
+        if (hex_eq(sel->tile, gh->currentHexagon)) io_select_entity(sel);
     }
 }
 
@@ -180,7 +194,7 @@ static void lmb_pressed(void) {
         if (rect_contains(gh->toolbox.tools[i].hitbox, gh->mousePos)) select_tool(i);
 
     if (!gh->isCtrlDown && !gh->isShiftDown) {
-        da_clear(&gh->selectedEntityTiles);
+        da_clear(&gh->selectedEntities);
         da_clear(&gh->selectedTiles);
     }
     Hex h;
@@ -269,8 +283,8 @@ static void mouse_wheel(int notches) {
 static void copy_entities(void) {
     for (int i = 0; i < gh->clipboard.count; i++) entity_free(gh->clipboard.items[i]);
     da_clear(&gh->clipboard);
-    for (int i = 0; i < gh->selectedEntityTiles.count; i++) {
-        Entity *en = entity_at(gh->selectedEntityTiles.items[i]);
+    for (int i = 0; i < gh->selectedEntities.count; i++) {
+        Entity *en = entity_by_id(gh->selectedEntities.items[i]);
         if (en) da_push(&gh->clipboard, entity_clone(en, false));
     }
 }
@@ -296,8 +310,7 @@ static void select_all_entities(void) {
         Entity *en = gh->entities.items[i];
         gh->currentHexagon = en->tile;
         gh->hasCurrentHex = true;
-        if (hl_contains(&gh->selectedEntityTiles, en->tile)) continue;
-        select_entity_no_deselection();
+        select_one(en);
     }
 }
 
@@ -344,7 +357,7 @@ static void key_pressed(const SDL_KeyboardEvent *k) {
     switch (key) {
     case SDLK_LSHIFT:
         gh->isShiftDown = true;
-        if (gh->selectedEntityTiles.count > 0) refresh_preview();
+        if (gh->selectedEntities.count > 0) refresh_preview();
         break;
     case SDLK_RSHIFT: gh->isRShiftDown = true; break;
     case SDLK_LCTRL: case SDLK_RCTRL: gh->isCtrlDown = true; break;

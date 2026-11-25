@@ -43,7 +43,7 @@ const char *ops_result_text(OpResult r) {
     case OPR_ALREADY_OWNED: return "That character already has an owner";
     case OPR_CLAIM_PENDING: return "Wait for the GM to answer your earlier claim";
     case OPR_TOO_FAST:      return "Too many rolls; wait a moment";
-    case OPR_TILE_TAKEN:    return "That tile is taken";
+    case OPR_TILE_TAKEN:    return "No room on that tile";
     }
     return "Unknown error";
 }
@@ -176,7 +176,7 @@ static void apply_spawn(Op *op) {
 
 /* The entity whose selection highlights are shown, if any. */
 static Entity *selected_entity(void) {
-    return gh->hasSelectedEntity && gh->selectedEntityTiles.count > 0 ? entity_at(gh->selectedEntityTiles.items[0]) : NULL;
+    return gh->hasSelectedEntity && gh->selectedEntities.count > 0 ? entity_by_id(gh->selectedEntities.items[0]) : NULL;
 }
 
 static void apply_delete(const Op *op) {

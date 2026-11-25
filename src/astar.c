@@ -8,8 +8,9 @@
 
 typedef struct {
     Hex h;
-    Entity *e;
-    bool used, multi; /* multi: more than one entity occupies this tile */
+    Entity *e; /* the first entity covering this tile */
+    int bulk;  /* of all entities on this tile together */
+    bool used, multi, wall; /* multi: more than one entity occupies this tile */
 } OccSlot;
 
 typedef struct {
@@ -36,9 +37,15 @@ static OccTable occ_build(void) {
             uint32_t s = hex_hash(tiles[j]) & t.mask;
             while (t.slots[s].used && !hex_eq(t.slots[s].h, tiles[j])) s = (s + 1) & t.mask;
             if (!t.slots[s].used) {
-                t.slots[s] = (OccSlot){ tiles[j], e, true, false };
+                t.slots[s] = (OccSlot){ .h = tiles[j], .e = e, .used = true };
             } else if (t.slots[s].e != e) {
                 t.slots[s].multi = true;
+            }
+            if (e->type == ENTITY_WALL) {
+                t.slots[s].wall = true;
+                t.slots[s].bulk += TILE_BULK;
+            } else {
+                t.slots[s].bulk += character_bulk(e->size, j == 0);
             }
         }
     }
@@ -122,6 +129,32 @@ static bool occ_other(const OccTable *t, Hex h, const Entity *except) {
     const OccSlot *s = occ_find(t, h);
     return s && (s->e != except || s->multi);
 }
+
+/* Is there room on h for `bulk` more, not counting `except`? Walls leave no room. */
+static bool occ_room(const OccTable *t, Hex h, int bulk, const Entity *except) {
+    const OccSlot *s = occ_find(t, h);
+    if (!s) return true;
+    if (s->wall) return false;
+    int other = s->bulk;
+    if (except && except->type == ENTITY_CHARACTER) {
+        Hex own[MAX_OCCUPIED];
+        int n = entity_occupied_tiles(except, own);
+        for (int i = 0; i < n; i++)
+            if (hex_eq(own[i], h)) other -= character_bulk(except->size, i == 0);
+    }
+    return other + bulk <= TILE_BULK;
+}
+
+/* Would a character of `size` fit with its main tile on `at`? */
+static bool occ_fits(const OccTable *t, Hex at, int size, const Entity *except) {
+    Hex tiles[MAX_OCCUPIED];
+    int n = character_occupied_tiles(at, size, tiles);
+    for (int i = 0; i < n; i++)
+        if (!occ_room(t, tiles[i], character_bulk(size, i == 0), except)) return false;
+    return true;
+}
+
+bool character_fits(Hex tile, int size, const Entity *except) { return occ_fits(occ_get(), tile, size, except); }
 
 /* AStar.findEntityOccupyingHex: the first entity (in list order) covering h. The table
  * keeps the first entity inserted for each tile, and it is built in list order. */
@@ -237,7 +270,10 @@ static Node heap_pop(Heap *h) {
 
 /* ---- A* --------------------------------------------------------------------------------- */
 
-static bool astar_search(Hex start, Hex end, bool ignore_obstacles, int max_steps, HexList *path) {
+/* mover: the character walking the path (NULL: the first entity on start). Characters pass tiles they fit on;
+ * anything else only passes empty tiles. */
+static bool astar_search(Hex start, Hex end, bool ignore_obstacles, int max_steps, const Entity *mover,
+                         HexList *path) {
     da_clear(path);
     if (max_steps > 0 && hex_distance(start, end) > max_steps) {
         if (gh->debugMode) console_log("No path found");
@@ -252,10 +288,10 @@ static bool astar_search(Hex start, Hex end, bool ignore_obstacles, int max_step
     grid_include(&g, end, 2);
 
     const OccTable *occ = NULL;
-    Entity *source = NULL;
+    const Entity *source = NULL;
     if (!ignore_obstacles) {
         occ = occ_get();
-        source = entity_occupying(occ, start);
+        source = mover ? mover : entity_occupying(occ, start);
         if (OC.has_tiles) {
             grid_include(&g, OC.min, 2);
             grid_include(&g, OC.max, 2);
@@ -286,7 +322,11 @@ static bool astar_search(Hex start, Hex end, bool ignore_obstacles, int max_step
         for (int k = 0; k < 6; k++) {
             Hex nb = hex_neighbor_raw(cur.h, k);
             if (!grid_has(&g, nb)) continue;
-            if (!ignore_obstacles && occ_other(occ, nb, source)) continue;
+            if (!ignore_obstacles) {
+                bool pass = source && source->type == ENTITY_CHARACTER ? occ_fits(occ, nb, source->size, source)
+                                                                       : !occ_other(occ, nb, source);
+                if (!pass) continue;
+            }
             double tg = cg + 1;
             /* hex_distance never overestimates, so this can't cut off a valid path */
             if (max_steps > 0 && tg + hex_distance(nb, end) > max_steps) continue;
@@ -322,15 +362,15 @@ static bool astar_search(Hex start, Hex end, bool ignore_obstacles, int max_step
 }
 
 bool astar_path(Hex start, Hex end, bool ignore_obstacles, HexList *path) {
-    return astar_search(start, end, ignore_obstacles, 0, path);
+    return astar_search(start, end, ignore_obstacles, 0, NULL, path);
 }
 
-bool astar_path_within(Hex start, Hex end, int max_steps, HexList *path) {
+bool astar_path_within(Hex start, Hex end, int max_steps, const Entity *mover, HexList *path) {
     if (max_steps <= 0) {
         da_clear(path);
         return hex_eq(start, end);
     }
-    return astar_search(start, end, false, max_steps, path);
+    return astar_search(start, end, false, max_steps, mover, path);
 }
 
 /* ---- movement range ------------------------------------------------------------------ */
@@ -345,9 +385,6 @@ void astar_range(Hex center, int speed, Entity *moving, TileSet *out) {
     const OccTable *occ = occ_get();
     Entity *center_entity = moving ? NULL : entity_occupying(occ, center);
 
-    Hex own[MAX_OCCUPIED];
-    int nown = moving ? entity_occupied_tiles(moving, own) : 0;
-
     HexList current = { 0 }, next = { 0 };
     da_push(&current, center);
     for (int step = 0; step < speed; step++) {
@@ -359,16 +396,9 @@ void astar_range(Hex center, int speed, Entity *moving, TileSet *out) {
 
                 bool valid = true;
                 if (moving) {
-                    /* every tile the character would cover must be free of other entities
-                     * (tiles it currently covers itself are not checked) */
-                    Hex target[MAX_OCCUPIED];
-                    int nt = character_occupied_tiles(hex, moving->size, target);
-                    for (int t = 0; t < nt && valid; t++) {
-                        bool own_tile = false;
-                        for (int o = 0; o < nown; o++)
-                            if (hex_eq(own[o], target[t])) { own_tile = true; break; }
-                        if (!own_tile && occ_other(occ, target[t], moving)) valid = false;
-                    }
+                    /* the character must fit on every tile it would cover (Tales of Honor: a tile holds
+                     * TILE_BULK; its own bulk where it stands now is not counted) */
+                    valid = occ_fits(occ, hex, moving->size, moving);
                 } else {
                     valid = !occ_other(occ, hex, center_entity);
                 }

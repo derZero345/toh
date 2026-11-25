@@ -548,8 +548,8 @@ static void test_remote_view_state(void) {
     Entity *b = add_character((Hex){ 5, 5 }, 3, "");
     /* a is selected locally and shows a path */
     app.hasSelectedEntity = true;
-    da_clear(&app.selectedEntityTiles);
-    da_push(&app.selectedEntityTiles, a->tile);
+    da_clear(&app.selectedEntities);
+    da_push(&app.selectedEntities, a->id);
     da_clear(&app.path);
     da_push(&app.path, ((Hex){ 0, 1 }));
 
@@ -563,13 +563,13 @@ static void test_remote_view_state(void) {
     da_push(&del.ids, b->id);
     del.remote = true;
     ops_apply(&del);
-    CHECK(app.hasSelectedEntity && app.selectedEntityTiles.count == 1);
+    CHECK(app.hasSelectedEntity && app.selectedEntities.count == 1);
     op_free(&del);
 
     /* someone else moves the selected entity: its highlights go */
     Op mv2 = { .type = OP_MOVE, .id = a->id, .tile = { 0, 1 }, .remote = true };
     ops_apply(&mv2);
-    CHECK(!app.hasSelectedEntity && app.selectedEntityTiles.count == 0);
+    CHECK(!app.hasSelectedEntity && app.selectedEntities.count == 0);
 }
 
 static void test_client_submit(void) {
@@ -591,7 +591,7 @@ static void test_client_submit(void) {
 }
 
 static void test_create_helpers(void) {
-    CHECK(strcmp(ops_result_text(OPR_TILE_TAKEN), "That tile is taken") == 0);
+    CHECK(strcmp(ops_result_text(OPR_TILE_TAKEN), "No room on that tile") == 0);
     Image src = { .w = 1000, .h = 600, .px = calloc(1000 * 600, 4) };
     for (int i = 0; i < 1000 * 600; i++) src.px[i * 4 + 3] = 255;
     Image s = image_scale_to_fit(&src, 512);
@@ -614,6 +614,56 @@ static void test_size_footprints(void) {
     }
 }
 
+/* Tales of Honor: a tile holds 5 bulk (Wee 0, Tiny 1, Small 2, Normal 3, Big 4; Huge 3 per tile; Gigantic 5 in
+ * the centre, 3 on the edges); walls fill their tile */
+static void test_tile_sharing(void) {
+    reset_table();
+    Hex t = { 0, 0 };
+    Entity *a = add_character(t, 3, ""); /* Normal: 3 */
+    CHECK(character_fits(t, SIZE_SMALL, NULL) && character_fits(t, SIZE_WEE, NULL));
+    CHECK(!character_fits(t, SIZE_NORMAL, NULL) && !character_fits(t, SIZE_BIG, NULL));
+    CHECK(character_fits(t, SIZE_BIG, a)); /* a itself is not counted */
+    add_wall((Hex){ 0, 2 });
+    CHECK(!character_fits((Hex){ 0, 2 }, SIZE_WEE, NULL));
+
+    Hex g = { 10, 10 };
+    Entity *big = add_character(g, 3, "");
+    big->size = SIZE_GIGANTIC;
+    Hex edge = hex_neighbor_raw(g, 0);
+    CHECK(character_fits(g, SIZE_WEE, NULL) && !character_fits(g, SIZE_TINY, NULL));
+    CHECK(character_fits(edge, SIZE_SMALL, NULL) && !character_fits(edge, SIZE_NORMAL, NULL));
+    big->size = SIZE_HUGE; /* a triangle, 3 on each tile */
+    CHECK(character_fits(g, SIZE_SMALL, NULL) && !character_fits(g, SIZE_NORMAL, NULL));
+    CHECK(!character_fits(hex_neighbor_raw(g, 1), SIZE_NORMAL, NULL) && character_fits(hex_neighbor_raw(g, 3), SIZE_BIG, NULL));
+
+    /* moving: a Small character may step onto a's tile and walk through it, a Normal one may not */
+    Hex left = hex_neighbor_raw(t, 3), right = hex_neighbor_raw(t, 0);
+    Entity *s = add_character(left, 2, "");
+    s->size = SIZE_SMALL;
+    TileSet r = { 0 };
+    astar_range(s->tile, 2, s, &r);
+    CHECK(ts_has(&r, t) && ts_has(&r, right));
+    ts_free(&r);
+    HexList path = { 0 };
+    CHECK(astar_path_within(left, right, 2, s, &path) && path.count == 3 && hex_eq(path.items[1], t));
+    s->size = SIZE_NORMAL;
+    astar_range(s->tile, 2, s, &r);
+    CHECK(!ts_has(&r, t));
+    ts_free(&r);
+    CHECK(!astar_path_within(left, right, 2, s, &path));
+    da_free(&path);
+
+    /* drawing: the two on one tile get different places; alone, a character has the tile to itself */
+    s->size = SIZE_SMALL;
+    s->tile = t;
+    entity_layout();
+    CHECK(a->slots == 2 && s->slots == 2 && a->slot != s->slot && big->slots == 1);
+    Entity *wee = add_character(hex_neighbor_raw(g, 1), 3, ""); /* on the Huge one's edge */
+    wee->size = SIZE_WEE;
+    entity_layout();
+    CHECK(wee->slots == 2 && wee->slot == 1);
+}
+
 int main(void) {
     test_entity_ids();
     test_initiative_values();
@@ -629,6 +679,7 @@ int main(void) {
     test_client_submit();
     test_create_helpers();
     test_size_footprints();
+    test_tile_sharing();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;

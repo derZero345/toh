@@ -77,11 +77,11 @@ void presence_collect(NetPresence *out) {
     }
 
     /* selected entities */
-    if (gh->selectedEntityTiles.count > 0) {
-        out->entities = malloc(sizeof(uint32_t) * (size_t)gh->selectedEntityTiles.count);
+    if (gh->selectedEntities.count > 0) {
+        out->entities = malloc(sizeof(uint32_t) * (size_t)gh->selectedEntities.count);
         if (!out->entities) abort();
-        for (int i = 0; i < gh->selectedEntityTiles.count && out->nentities < NETMSG_MAX_SEL_ENTITIES; i++) {
-            Entity *e = entity_at(gh->selectedEntityTiles.items[i]);
+        for (int i = 0; i < gh->selectedEntities.count && out->nentities < NETMSG_MAX_SEL_ENTITIES; i++) {
+            Entity *e = entity_by_id(gh->selectedEntities.items[i]);
             if (!e || e->id == 0) continue;
             bool dup = false;
             for (uint32_t k = 0; k < out->nentities; k++) dup |= out->entities[k] == e->id;
@@ -270,7 +270,7 @@ void presence_draw(const RemotePresence *list, int n) {
         for (uint32_t k = 0; k < p->nentities; k++) {
             Entity *e = entity_by_id(p->entities[k]);
             if (!e) continue;
-            double s = entity_draw_size(e) * gh->hexSize;
+            double s = e->drawSize;
             Vec2 c = hex_center(e->tile);
             if (e->type == ENTITY_CHARACTER) {
                 double cx = e->location.x + s / 2, cy = e->location.y + s / 2;
