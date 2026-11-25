@@ -156,8 +156,8 @@ screenshot, which makes headless-ish regression checks possible:
              --exec "@click 300 250" --exec "@shot out.png" --exec "@quit"
 ```
 
-See the comment at the top of `src/main.c` for the full action list (including `@waitnet`, `@waitfile` and
-`@touch`, which `tests/e2e_net.sh` uses to synchronize a host and a client).
+See the comment at the top of `src/main.c` for the full action list (including `@waitnet`, `@waitfile`,
+`@waitbars` (waits until the HP panel bars stop moving) and `@touch`, which `tests/e2e_net.sh` uses to synchronize a host and a client).
 
 ## Differences from the Java version
 

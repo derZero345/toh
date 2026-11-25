@@ -115,9 +115,9 @@ TOH_JOINCODE_FILE="$out/code" timeout 90 ./toh --size 600x400 --port "$port" --a
     --exec "@waitfile $out/requested" --exec "@wait 30" --exec "@shot $out/host-request.png" --exec "y" \
     --exec "@touch $out/created" --exec "@waitfile $out/client-moved2" --exec "@wait 30" \
     --exec "@shot $out/host-created.png" \
-    --exec "@click $A2" --exec ":c h 20 ms 9" --exec "@wait 10" --exec "@shot $out/host-hp-full.png" \
+    --exec "@click $A2" --exec ":c h 20 ms 9" --exec "@wait 10" --exec "@waitbars" --exec "@shot $out/host-hp-full.png" \
     --exec "@touch $out/hp-set" --exec "@waitfile $out/hp-damaged" --exec "@wait 30" \
-    --exec "@shot $out/host-hp.png" \
+    --exec "@waitbars" --exec "@shot $out/host-hp.png" \
     --exec ":unhost" --exec "@wait 10" --exec ":q!" \
     > "$out/host.log" 2>&1 &
 host=$!
@@ -149,7 +149,7 @@ timeout 90 ./toh --size 600x400 --auto-file "$icon" \
     --exec "@click $D" --exec "@down lshift" --exec "@click $D2" --exec "@up lshift" --exec "@wait 30" \
     --exec "@touch $out/client-moved2" \
     --exec "@waitfile $out/hp-set" --exec "@wait 30" \
-    --exec "@click $A2" --exec ":c damage 25" --exec ":c spend 4" --exec ":c spend 9" --exec "@wait 30" --exec "@shot $out/client-hp.png" \
+    --exec "@click $A2" --exec ":c damage 25" --exec ":c spend 4" --exec ":c spend 9" --exec "@wait 30" --exec "@waitbars" --exec "@shot $out/client-hp.png" \
     --exec "@touch $out/hp-damaged" \
     --exec "@wait 60" \
     --exec ":q" --exec "@shot $out/client-quit-refused.png" --exec ":q!" \

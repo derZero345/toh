@@ -160,6 +160,8 @@ footprint (old large → Huge, old huge and gargantuan → Gigantic).
   - a red bar with `current/max` inside it;
   - under it, a green stamina bar with `current/max`, if the character has max stamina (below 0 it grows to the left out of its frame too);
   - a line in the middle where the character becomes injured.
+  - When HP or stamina changes, the bar slides to the new value; a loss leaves a lighter part for a moment that
+    shows how much was lost.
 - While a character is dying, the bar grows to the left out of its frame, and a second line shows where it
   becomes critical. If the panels don't fit, the last line says `+N more`. Ctrl + `+` / `-` changes their size.
 
