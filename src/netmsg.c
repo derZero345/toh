@@ -33,7 +33,7 @@ static bool spec_ok(const NetSpec *s) {
     if (s->type > SAVE_ENT_WALL || !coord_ok(s->row) || !coord_ok(s->col)) return false;
     if (s->name[0] && (s->type != SAVE_ENT_CHARACTER || !savefmt_char_name_valid(s->name))) return false;
     if (s->type != SAVE_ENT_CHARACTER) return true;
-    return s->speed <= SAVEFMT_MAX_SPEED && s->max_stamina >= -SAVEFMT_MAX_HP && s->max_stamina <= SAVEFMT_MAX_HP &&
+    return s->speed <= SAVEFMT_MAX_SPEED && s->max_stamina >= 0 && s->max_stamina <= SAVEFMT_MAX_HP &&
            s->stamina >= -SAVEFMT_MAX_HP && s->stamina <= SAVEFMT_MAX_HP;
 }
 
@@ -51,6 +51,7 @@ static bool op_ok(const NetOp *o) {
         return true;
     case NOP_SET_STATS:
         if (o->stat_mask == 0 || o->stat_mask > NSTAT_ALL) return false;
+        if ((o->stat_mask & NSTAT_MAXSTAMINA) && (o->max_stamina < 0 || o->max_stamina > SAVEFMT_MAX_HP)) return false;
         return !(o->stat_mask & NSTAT_SPEED) || o->speed <= SAVEFMT_MAX_SPEED;
     case NOP_SET_ICON:
         return o->has_image;

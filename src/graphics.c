@@ -878,7 +878,10 @@ static void draw_hp_panels(void) {
         dr_fill_rect(frame_x, by, frame_w, bar_h, bg);
         if (b.fill_w > 0) dr_fill_rect(b.fill_x, by, b.fill_w, bar_h, red);
         if (b.lines) dr_line(b.injured_x, by, b.injured_x, by + bar_h, 2, white);
-        if (b.critical) dr_line(b.critical_x, by - 3, b.critical_x, by + bar_h + 3, 2, white);
+        if (b.critical) {
+            float tick = fminf(3, fs * 0.25f - 1); /* stays clear of the stamina bar */
+            dr_line(b.critical_x, by - 3, b.critical_x, by + bar_h + tick, 2, white);
+        }
         dr_stroke_rect(frame_x, by, frame_w, bar_h, 1.5f, white);
         snprintf(hp, sizeof(hp), "%d/%d", e->health, e->maxHealth);
         float hw = dr_text_width(FONT_PLAIN, fs, hp);

@@ -125,7 +125,7 @@ typedef struct {
     int32_t size, max_health, speed, initiative, max_stamina;
     char name[SAVEFMT_NAME_MAX]; /* waypoint or player name */
     char dice[NETMSG_MAX_DICE];
-    uint8_t health_mode; /* SET_HEALTH: 0 = set, 1 = change */
+    uint8_t health_mode; /* SET_HEALTH, SET_STAMINA: 0 = set, 1 = change, 2 = spend (stamina only) */
     int32_t value;       /* SET_HEALTH, at most SAVEFMT_MAX_HP either way */
     char char_name[SAVEFMT_CHAR_NAME_MAX]; /* SET_NAME */
 } NetOp;

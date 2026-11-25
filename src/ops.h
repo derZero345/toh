@@ -58,7 +58,7 @@ typedef struct Op {
     int statMask;         /* OP_SET_STATS */
     int size, maxHealth, speed, initiative, maxStamina;
     char name[WAYPOINT_NAME_MAX]; /* OP_WAYPOINT_*: waypoint name, OP_SET_OWNER: player name */
-    int healthMode, value;        /* OP_SET_HEALTH */
+    int healthMode, value;        /* OP_SET_HEALTH, OP_SET_STAMINA */
     char charName[CHAR_NAME_MAX]; /* OP_SET_NAME */
     bool remote;  /* someone else's op: leave the local selection and path preview alone */
     bool keepIds; /* OP_SPAWN from the host: create the entities with the ids in ids */

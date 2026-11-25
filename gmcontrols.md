@@ -139,9 +139,11 @@ footprint (old large → Huge, old huge and gargantuan → Gigantic).
   - Critical below −½ max HP;
   - dead at −max HP.
 - After each change your log shows the result, e.g. `Mao: 14/20 -> 10/20 (Injured)`.
-- `damage` and `heal` add to the current HP, so changes from several people at once add up. HP values go up to
-  1,000,000 either way, and one command takes at most 8 HP or stamina changes. Values go from -1000000 to 1000000.
+- `damage` and `heal` add to the current HP, so changes from several people at once add up. HP and stamina values
+  go from -1,000,000 to 1,000,000 (max stamina from 0), and one command takes at most 8 HP or stamina changes.
 - `hp`, `damage`, `heal`, `stamina`, `spend`, `recover` and `name` on a selection without characters say "Select the characters first".
+- `stamina`, `spend` and `recover` on a character without max stamina say "<name> has no stamina; give it some with
+  :c maxstamina <n>".
 - A character at full HP stays at full HP when you change its max HP.
 - **Stamina:** a character with max stamina above 0 has a stamina stat, as in Tales of Honor.
   - `spend` is refused with "Not enough stamina" if the result would be below 0. If several characters are selected

@@ -39,8 +39,11 @@ Track stamina as in Tales of Honor and show it as a green bar under the HP bar o
 - Who may use them:
   - `stamina`, `spend` and `recover`: the GM on any character, a player on their own characters (like `hp`);
   - `maxstamina`: the GM, plus players in their `:c` request for a new character (like `maxhealth`).
-- `spend` is refused when it would take any of the selected characters below 0. The whole command is then
-  refused and the log says "Not enough stamina". The GM can still set a negative value with `:c stamina <n>`.
+- `spend` is refused when it would take any of the selected characters below 0. That stamina change is
+  then refused for all of them and the log says "Not enough stamina"; other changes in the same command still apply.
+- `stamina`, `spend` and `recover` on a character without a stamina stat (max 0) log
+  "<name> has no stamina; give it some with :c maxstamina <n>".
+- Max stamina goes from 0 to 1,000,000. The GM can still set a negative value with `:c stamina <n>`.
 - `stamina`, `spend` and `recover` need selected characters, otherwise "Select the characters first".
 - Negative numbers after `spend` / `recover` are refused with "Expected a number after ...".
 - Values are limited to ±1,000,000, like HP.

@@ -38,7 +38,7 @@ critical.
 
 If your character has stamina, a green bar under the HP bar shows it (`current/max`). Type `:c spend <n>` to use
 stamina (refused with "Not enough stamina" if you don't have enough) and `:c recover <n>` to get it back, up to the
-maximum. At 0 your character is exhausted. `:c stamina <n>` sets it directly.
+maximum. At 0 or below your character is exhausted. `:c stamina <n>` sets it directly.
 
 Select your character and type `:c damage <n>`, `:c heal <n>` or `:c hp <n>` to change its HP, and
 `:c name <name>` to name it (quotes for spaces: `:c name "Mao Clausewitz"`).

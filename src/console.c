@@ -485,6 +485,10 @@ static void cmd_character(Args *a) {
             console_log("Sizes go from -2 (Wee) to 4 (Gigantic)");
             return;
         }
+        if (slot == 4 && has[4] && (max_stamina < 0 || max_stamina > SAVEFMT_MAX_HP)) {
+            console_log("Max stamina goes from 0 to %d", SAVEFMT_MAX_HP);
+            return;
+        }
         if (slot == 2 && has[2] && speed > MAX_SPEED) {
             console_log("Speed is capped at %d", MAX_SPEED);
             speed = MAX_SPEED;
@@ -522,6 +526,19 @@ static void cmd_character(Args *a) {
         op_free(&nm);
     }
     for (int k = 0; k < nres && stats.ids.count > 0; k++) {
+        if (res[k].stamina && !(stats.statMask & STAT_MAXSTAMINA && max_stamina > 0)) {
+            const Entity *none = NULL; /* a character without a stamina stat */
+            for (int i = 0; i < stats.ids.count && !none; i++) {
+                const Entity *e = entity_by_id(stats.ids.items[i]);
+                if (e && e->maxStamina <= 0) none = e;
+            }
+            if (none) {
+                char nm[CHAR_NAME_MAX + 16];
+                entity_display_name(none, nm, sizeof(nm));
+                console_log("%s has no stamina; give it some with :c maxstamina <n>", nm);
+                continue;
+            }
+        }
         Op h = { .type = res[k].stamina ? OP_SET_STAMINA : OP_SET_HEALTH, .healthMode = res[k].mode,
                  .value = res[k].value };
         for (int i = 0; i < stats.ids.count; i++) da_push(&h.ids, stats.ids.items[i]);

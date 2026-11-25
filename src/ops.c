@@ -89,6 +89,7 @@ static OpResult check_structure(const Op *op) {
             if (!s->image || (s->type != ENTITY_CHARACTER && s->type != ENTITY_WALL)) return OPR_INVALID;
             if (!memchr(s->name, '\0', sizeof(s->name))) return OPR_INVALID;
             if (s->name[0] && (s->type != ENTITY_CHARACTER || !savefmt_char_name_valid(s->name))) return OPR_INVALID;
+            if (s->maxStamina < 0 || s->maxStamina > SAVEFMT_MAX_HP) return OPR_INVALID; /* the wire's limit */
         }
         return OPR_OK;
     case OP_SET_ICON:
@@ -121,8 +122,11 @@ static OpResult check_structure(const Op *op) {
     case OP_SET_NAME:
         if (!savefmt_char_name_valid(op->charName)) return OPR_INVALID;
         return ids_exist(op) ? OPR_OK : OPR_NO_ENTITY;
-    case OP_DELETE:
     case OP_SET_STATS:
+        if ((op->statMask & STAT_MAXSTAMINA) && (op->maxStamina < 0 || op->maxStamina > SAVEFMT_MAX_HP))
+            return OPR_INVALID;
+        return ids_exist(op) ? OPR_OK : OPR_NO_ENTITY;
+    case OP_DELETE:
     case OP_INIT_REMOVE:
         return ids_exist(op) ? OPR_OK : OPR_NO_ENTITY;
     case OP_WAYPOINT_SET:

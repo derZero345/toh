@@ -886,6 +886,20 @@ static void test_stamina(void) {
     ops_apply(&ms);
     CHECK(hero->stamina == -5 && orc->stamina == 5);
 
+    /* max stamina stays within what the network can carry (spec: 0 to 1,000,000) */
+    Op big = { .type = OP_SET_STATS, .statMask = STAT_MAXSTAMINA, .maxStamina = SAVEFMT_MAX_HP + 1 };
+    da_push(&big.ids, hero->id);
+    CHECK_R(ops_check(&big, &GM), OPR_INVALID);
+    big.maxStamina = -1;
+    CHECK_R(ops_check(&big, &GM), OPR_INVALID);
+    op_free(&big);
+    Op sp = { .type = OP_SPAWN };
+    EntitySpec bs = op_spec_from_entity(hero);
+    bs.maxStamina = SAVEFMT_MAX_HP + 1;
+    da_push(&sp.specs, bs);
+    CHECK_R(ops_check(&sp, &GM), OPR_INVALID);
+    op_free(&sp);
+
     /* copies keep stamina */
     EntitySpec s = op_spec_from_entity(orc);
     CHECK(s.stamina == 5 && s.maxStamina == 5);
