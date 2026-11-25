@@ -49,7 +49,7 @@ for "injured" and, while dying, the negative part of the bar and a line for "cri
 - Changing Max HP with `:c h <n>`: a character that was at full HP stays at full HP (current = new max).
   Otherwise current HP is clamped to the new range. A new character starts at full HP (current = max), as now.
 - The person who made the change gets a log line per character:
-  `Mao: 14/20 → 10/20 (Injured)`. The stage words are Healthy, Injured, Dying, Critical and Dead.
+  `Mao: 14/20 -> 10/20 (Injured)`. The stage words are Healthy, Injured, Dying, Critical and Dead.
 
 ## Who may do what
 
@@ -106,11 +106,11 @@ Layout:
   - the full-HP rule when Max HP changes;
   - saving and loading names, and loading a v4 save;
   - encoding and decoding `OP_SET_HEALTH`, `OP_SET_NAME` and named spawns and requests;
-  - quoted console arguments.
+  - quoted console arguments;
+  - two `damage` changes add up (core test; the e2e test covers a player's damage reaching the GM).
 - Permission tests: a player may change their own character's HP and name, but not others'.
 - e2e:
-  - a player damages their own character and the GM's table shows the new HP;
-  - concurrent `damage` from GM and player adds up.
+  - a player damages their own character and the GM's table shows the new HP.
 - A screenshot of the panel when healthy, injured and dying, checked by eye.
 
 ## Docs

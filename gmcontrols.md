@@ -41,7 +41,8 @@ The console at the bottom of the window takes all commands.
 | Mouse wheel over the console | Scroll the log |
 | `:h` / `:h <command>` | List the commands / help for one command |
 
-Most commands have a long and a short form (`character` / `:c`). When the game asks a yes/no question in the
+Most commands have a long and a short form (`character` / `:c`). Double quotes keep spaces inside one argument:
+`:c name "Mao Clausewitz"`. When the game asks a yes/no question in the
 console, type `y` or `n` (or `yes` / `no`) and press Enter. Enter alone also means yes. Anything else is not
 taken as an answer: the log says "Please answer y or n" and the question is asked again.
 
@@ -78,7 +79,7 @@ Many commands act on the selection: `:c` (edit characters), `:w` (walls on the s
 - every selected tile, if several are selected (the console asks first);
 - otherwise the tile under the mouse.
 
-Stats can be given right away, e.g. `:c size 3 maxhealth 30 speed 6 initiative 2`. Without `size` a character is
+Stats can be given right away, e.g. `:c name Mao size 3 maxhealth 30 speed 6 initiative 2`. Without `size` a character is
 Normal (1).
 **Set a speed:** a new character's speed is 0 unless you give one, so it cannot move.
 
@@ -116,6 +117,33 @@ a shared tile are drawn side by side inside it; the selected one gets a blue cir
 
 Saves from older versions used other sizes; they are converted when loaded so every character keeps its
 footprint (old large → Huge, old huge and gargantuan → Gigantic).
+
+### Names and current HP
+
+| Command | Short | Action |
+|---|---|---|
+| `:c name <name>` | `nm` | Name the selected characters, or the new one when creating. Use quotes for spaces: `:c name "Mao Clausewitz"`. 1 to 32 bytes. |
+| `:c hp <n>` | | Set current HP |
+| `:c damage <n>` | `dmg` | Lower current HP by n |
+| `:c heal <n>` | | Raise current HP by n |
+
+- You can change the name and HP of any character. Players can change them for their own characters.
+- HP goes from max HP down to −max HP, as in Tales of Honor:
+  - Healthy at ½ max HP or more;
+  - Injured at 1 or more;
+  - Dying at 0 or below;
+  - Critical below −½ max HP;
+  - dead at −max HP.
+- After each change your log shows the result, e.g. `Mao: 14/20 -> 10/20 (Injured)`.
+- `damage` and `heal` add to the current HP, so changes from several people at once add up.
+- A character at full HP stays at full HP when you change its max HP.
+- **HP panel** in the top right corner: you see one for each selected character, and players see one for each
+  character they own. Each panel shows:
+  - the name, with "(dead)" at −max HP;
+  - a red bar with `current/max` inside it;
+  - a line in the middle where the character becomes injured.
+- While a character is dying, the bar grows to the left out of its frame, and a second line shows where it
+  becomes critical. If the panels don't fit, the last line says `+N more`. Ctrl + `+` / `-` changes their size.
 
 ### Delete
 
@@ -246,7 +274,7 @@ anything else asks again). Several requests wait in line; each player can have a
 **Player-created characters:**
 - Players can create their own character with `:c [stats]` on an empty tile and a picture (at most 512×512).
 - Your log says "<player> asks for a new character", and the console asks, for example,
-  `Bob: new character [2|7] size 1 HP 20 speed 6 init 1. Allow? (y/n)`.
+  `Bob: new character Mao [2|7] size 1 HP 20 speed 6 init 1. Allow? (y/n)` (the name only if they gave one).
 - While the question is open, only your screen shows the picture faintly on that tile, so you can check it.
 - On `y` the character is created for everyone and belongs to that player; on `n` the player is told you
   declined.
@@ -274,7 +302,7 @@ anything else asks again). Several requests wait in line; each player can have a
 
 Paths may contain spaces; `~/` means your home folder. The window's close button always quits.
 
-A save holds the background, characters (image, stats and owner), walls, initiative, waypoints, grid orientation,
+A save holds the background, characters (image, stats, current HP, name and owner), walls, initiative, waypoints, grid orientation,
 camera and theme. It does not hold the console, selections, clipboard or measurements. Saves from older versions
 still load; an armor class stored in them is ignored.
 
@@ -327,10 +355,11 @@ Players can:
 - jump to waypoints and coordinates;
 - use the measure and attack tools;
 - save a copy of the table;
+- change the HP and name of their own characters (`:c hp`, `damage`, `heal`, `name`);
 - change their own camera, zoom and theme.
 
 Everything else is yours, including:
-- creating characters directly, editing and deleting characters, and walls;
+- creating characters directly, editing characters' other stats, deleting characters, and walls;
 - giving characters to players;
 - the initiative order (apart from `:i next`);
 - waypoints, the background and the grid;

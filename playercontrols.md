@@ -29,7 +29,17 @@ While initiative is running, you can only move on your character's turn.
 Characters can share a tile when there is room: a tile holds 5 bulk, and a Wee character takes 0, Tiny 1, Small 2,
 Normal 3, Big 4. So a Small character can step onto a Normal one's tile, but two Normal ones can't share.
 
-## 3. End your turn
+## 3. Your HP
+
+The top right corner shows a panel for each of your characters: its name and a red HP bar with
+`current/max` inside it. The line in the middle marks where your character becomes injured. Below 0 HP your
+character is dying: the bar grows to the left out of its frame, and a second line shows where it becomes
+critical.
+
+Select your character and type `:c damage <n>`, `:c heal <n>` or `:c hp <n>` to change its HP, and
+`:c name <name>` to name it (quotes for spaces: `:c name "Mao Clausewitz"`).
+
+## 4. End your turn
 
 ```
 :i next
@@ -38,7 +48,7 @@ Normal 3, Big 4. So a Small character can step onto a Normal one's tile, but two
 Ends your character's turn, so the next one in the initiative order is up. While initiative runs, a marker above
 each character shows the order: **green** = whose turn it is, **yellow** = next, **red** = later.
 
-## 4. Roll dice
+## 5. Roll dice
 
 ```
 :r 1d20+3
@@ -47,7 +57,7 @@ each character shows the order: **green** = whose turn it is, **yellow** = next,
 Format: `<number>d<sides>`, optionally followed by `+<n>` or `-<n>` (for example `:r 2d6`, `:r 1d8-1`). The GM's
 game rolls, and everyone sees the result. You can roll at most 10 times in 10 seconds.
 
-## 5. Look around
+## 6. Look around
 
 | Input | Action |
 |---|---|
@@ -57,14 +67,14 @@ game rolls, and everyone sees the result. You can roll at most 10 times in 10 se
 | `tp <waypoint>` | Jump to a waypoint the GM made (`tp waypoint` lists them) |
 | `tp <row> <col>` | Jump to a tile |
 
-## 6. Get a character
+## 7. Get a character
 
 **Claim one that exists:** select a character that has no owner yet, then type `:claim`. The GM answers yes or
 no.
 
 **Create your own:**
 1. Click an empty tile, so that nothing else is selected.
-2. Type `:c` with your stats, for example `:c speed 6 maxhealth 20 initiative 2`. Without `speed` your
+2. Type `:c` with your stats, for example `:c name Mao speed 6 maxhealth 20 initiative 2`. Without `speed` your
    character can't move.
 3. Pick a picture (PNG). Large pictures are shrunk to 512×512.
 
@@ -74,7 +84,7 @@ character (see section 2); otherwise you get "No room on that tile".
 
 Claims and new characters count together: at most 3 can wait for the GM at once.
 
-## 7. Measure and aim
+## 8. Measure and aim
 
 Pick a tool in the toolbox on the left, or with these shortcuts:
 
@@ -89,7 +99,7 @@ Pick a tool in the toolbox on the left, or with these shortcuts:
 Hold Ctrl while aiming to aim at the exact mouse position instead of the middle of a tile. Everyone at the
 table sees your selection, measurements and attacks in your color.
 
-## 8. Other useful commands
+## 9. Other useful commands
 
 | Command | Action |
 |---|---|
@@ -99,7 +109,7 @@ table sees your selection, measurements and attacks in your color.
 | `:q` / `:q!` | Quit / quit without saving |
 | `:h [command]` | Help |
 
-## 9. Comfort
+## 10. Comfort
 
 | Input | Action |
 |---|---|
@@ -113,4 +123,4 @@ table sees your selection, measurements and attacks in your color.
 | `:cl` | Clear the log and command history |
 | Arrow keys, Enter | Play without a mouse: move a cursor, Enter = left click, Right Shift + Enter = right click, Right Shift + Up / Down = zoom |
 
-Everything else (editing or deleting characters, walls, initiative, the background) is the GM's job.
+Everything else (editing your characters' other stats, deleting characters, walls, initiative, the background) is the GM's job.
