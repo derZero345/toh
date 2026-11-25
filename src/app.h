@@ -348,7 +348,7 @@ typedef struct {
     ActionKind kind;
     HexList tiles;
     DA(uint32_t) ids; /* ACTION_CHARACTER_ICON: the characters */
-    int size, maxHealth, speed, initiative;
+    int size, maxHealth, speed, initiative, maxStamina;
     char name[CHAR_NAME_MAX]; /* ACTION_SPAWN_CHARACTERS: name of the new characters, "" = none */
 } PendingAction;
 
@@ -438,9 +438,9 @@ void gfx_drag(Vec2 p);
 void gfx_toggle_grid_orientation(void);
 void gfx_add_entity_preview_tiles(void);
 void gfx_request_file(ActionKind kind, const HexList *tiles, int size, int maxHealth, int speed, int initiative,
-                      const char *name);
+                      int maxStamina, const char *name);
 void gfx_handle_file_result(const char *path); /* path NULL = cancelled */
-void gfx_spawn_character(int size, int maxhealth, int speed, int initiative, const char *name);
+void gfx_spawn_character(int size, int maxhealth, int speed, int initiative, int maxStamina, const char *name);
 /* Where a character of this size on tile is drawn: its picture's top left corner and diameter. */
 void gfx_character_rect(Hex tile, int size, float *x, float *y, float *d);
 /* Where this character is drawn, taking shared tiles into account (after entity_layout). */

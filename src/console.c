@@ -19,7 +19,7 @@ typedef struct {
     const char *const *args; /* NULL-terminated, NULL = no arguments */
 } CommandDef;
 
-static const char *const ARGS_CHARACTER[] = { "delete", "size", "maxhealth", "speed", "initiative", "icon", "owner",
+static const char *const ARGS_CHARACTER[] = { "delete", "size", "maxhealth", "speed", "initiative", "maxstamina", "stamina", "spend", "recover", "icon", "owner",
                                               "name", "hp", "damage", "heal", NULL };
 static const char *const ARGS_DELETE[]    = { "delete", NULL };
 static const char *const ARGS_HELP[]      = { "quit", "background", "debug", "character", "wall", "entity", "help",
@@ -401,14 +401,14 @@ static void cmd_entity(Args *a) {
 }
 
 static void cmd_character(Args *a) {
-    int size = SIZE_NORMAL, max_health = 0, speed = 0, initiative = 0;
-    bool has[5] = { 0 }; /* size, maxhealth, speed, initiative (= STAT_* bit order), icon */
+    int size = SIZE_NORMAL, max_health = 0, speed = 0, initiative = 0, max_stamina = 0;
+    bool has[6] = { 0 }; /* size, maxhealth, speed, initiative, maxstamina (= STAT_* bit order), icon */
     bool has_owner = false;
     char owner[PLAYER_NAME_MAX] = "";
     char name[CHAR_NAME_MAX] = "";
     bool has_name = false;
-    struct { int mode, value; } hp[8]; /* hp / damage / heal, in the order given */
-    int nhp = 0;
+    struct { int mode, value; bool stamina; } res[8]; /* hp / stamina changes, in the order given */
+    int nres = 0;
     for (int i = 1; i < a->argc;) {
         char key[64];
         snprintf(key, sizeof(key), "%s", a->argv[i]);
@@ -418,7 +418,7 @@ static void cmd_character(Args *a) {
             delete_entities(0);
             return;
         } else if (strcmp(key, "ic") == 0 || strcmp(key, "icon") == 0) {
-            has[4] = true;
+            has[5] = true;
             i += 1;
             continue;
         } else if (strcmp(key, "ow") == 0 || strcmp(key, "owner") == 0) {
@@ -448,24 +448,27 @@ static void cmd_character(Args *a) {
             i += 2;
             continue;
         }
-        if (!strcmp(key, "hp") || !strcmp(key, "damage") || !strcmp(key, "dmg") || !strcmp(key, "heal")) {
+        bool is_st = !strcmp(key, "st") || !strcmp(key, "stamina") || !strcmp(key, "spend") || !strcmp(key, "recover");
+        if (is_st || !strcmp(key, "hp") || !strcmp(key, "damage") || !strcmp(key, "dmg") || !strcmp(key, "heal")) {
             int v;
-            bool change = strcmp(key, "hp") != 0;
+            bool change = strcmp(key, "hp") != 0 && strcmp(key, "st") != 0 && strcmp(key, "stamina") != 0;
             if (!parse_int_arg(val, &v) || (change && v < 0)) {
                 console_log("Expected a number after \"%s\"", a->argv[i]);
                 return;
             }
             if (v > SAVEFMT_MAX_HP || v < -SAVEFMT_MAX_HP) {
-                console_log("HP values go from -%d to %d", SAVEFMT_MAX_HP, SAVEFMT_MAX_HP);
+                console_log("Values go from -%d to %d", SAVEFMT_MAX_HP, SAVEFMT_MAX_HP);
                 return;
             }
-            if (nhp == 8) {
-                console_log("At most 8 HP changes per command");
+            if (nres == 8) {
+                console_log("At most 8 HP or stamina changes per command");
                 return;
             }
-            hp[nhp].mode = change ? HEALTH_CHANGE : HEALTH_SET;
-            hp[nhp].value = !strcmp(key, "damage") || !strcmp(key, "dmg") ? -v : v;
-            nhp++;
+            res[nres].stamina = is_st;
+            if (!strcmp(key, "spend")) res[nres].mode = STAMINA_SPEND;
+            else res[nres].mode = change ? HEALTH_CHANGE : HEALTH_SET;
+            res[nres].value = !strcmp(key, "damage") || !strcmp(key, "dmg") ? -v : v;
+            nres++;
             i += 2;
             continue;
         }
@@ -474,6 +477,7 @@ static void cmd_character(Args *a) {
         if      (!strcmp(key, "sz") || !strcmp(key, "size"))       { target = &size; slot = 0; }
         else if (!strcmp(key, "h")  || !strcmp(key, "maxhealth"))  { target = &max_health; slot = 1; }
         else if (!strcmp(key, "s")  || !strcmp(key, "speed"))      { target = &speed; slot = 2; }
+        else if (!strcmp(key, "ms") || !strcmp(key, "maxstamina")) { target = &max_stamina; slot = 4; }
         else if (!strcmp(key, "in") || !strcmp(key, "initiative")) { target = &initiative; slot = 3; }
         if (target && parse_int_arg(val, target)) has[slot] = true;
         else if (target) console_log("Expected a number after \"%s\"", a->argv[i]);
@@ -489,14 +493,14 @@ static void cmd_character(Args *a) {
     }
 
     if (gh->selectedEntities.count == 0) {
-        if (has_owner || nhp > 0) console_log("Select the characters first");
-        else gfx_spawn_character(size, max_health, speed, initiative, has_name ? name : NULL);
+        if (has_owner || nres > 0) console_log("Select the characters first");
+        else gfx_spawn_character(size, max_health, speed, initiative, max_stamina, has_name ? name : NULL);
         return;
     }
 
     Op stats = { .type = OP_SET_STATS, .size = size, .maxHealth = max_health, .speed = speed,
-                 .initiative = initiative };
-    for (int s = 0; s < 4; s++)
+                 .initiative = initiative, .maxStamina = max_stamina };
+    for (int s = 0; s < 5; s++)
         if (has[s]) stats.statMask |= 1 << s;
     Op own = { .type = OP_SET_OWNER };
     snprintf(own.name, sizeof(own.name), "%s", owner);
@@ -509,7 +513,7 @@ static void cmd_character(Args *a) {
         icon_targets++;
     }
     if (stats.statMask && stats.ids.count > 0) ops_submit(&stats);
-    if ((has_name || nhp > 0) && stats.ids.count == 0) console_log("Select the characters first");
+    if ((has_name || nres > 0) && stats.ids.count == 0) console_log("Select the characters first");
     if (has_name && stats.ids.count > 0) {
         Op nm = { .type = OP_SET_NAME };
         snprintf(nm.charName, sizeof(nm.charName), "%s", name);
@@ -517,8 +521,9 @@ static void cmd_character(Args *a) {
         ops_submit(&nm);
         op_free(&nm);
     }
-    for (int k = 0; k < nhp && stats.ids.count > 0; k++) {
-        Op h = { .type = OP_SET_HEALTH, .healthMode = hp[k].mode, .value = hp[k].value };
+    for (int k = 0; k < nres && stats.ids.count > 0; k++) {
+        Op h = { .type = res[k].stamina ? OP_SET_STAMINA : OP_SET_HEALTH, .healthMode = res[k].mode,
+                 .value = res[k].value };
         for (int i = 0; i < stats.ids.count; i++) da_push(&h.ids, stats.ids.items[i]);
         ops_submit(&h);
         op_free(&h);
@@ -527,7 +532,7 @@ static void cmd_character(Args *a) {
         if (owner[0]) console_log("%d character(s) now belong to %s", own.ids.count, owner);
         else console_log("%d character(s) no longer have an owner", own.ids.count);
     }
-    if (has[4] && icon_targets > 0) gfx_request_file(ACTION_CHARACTER_ICON, NULL, 0, 0, 0, 0, NULL);
+    if (has[5] && icon_targets > 0) gfx_request_file(ACTION_CHARACTER_ICON, NULL, 0, 0, 0, 0, 0, NULL);
     op_free(&stats);
     op_free(&own);
 }
@@ -546,6 +551,7 @@ static void cmd_help(Args *a) {
         console_log("  sizes: -2 wee, -1 tiny, 0 small, 1 normal, 2 big, 3 huge, 4 gigantic");
         console_log("  initiative <n> | icon | owner <player|none>");
         console_log("  name <name> (quotes for spaces) | hp <n> | damage <n> | heal <n>");
+        console_log("  maxstamina <n> | stamina <n> | spend <n> | recover <n>");
         console_log("  players: name and HP of your own characters; with nothing selected,");
         console_log("  asks the GM for a new character of your own");
     } else if (!strcmp(arg, "wall") || !strcmp(arg, ":w")) {
