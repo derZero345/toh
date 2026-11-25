@@ -308,12 +308,14 @@ void console_reset_suggestions(void) {
 
 static ConfirmFn confirm_fn;
 static void *confirm_ctx;
+static char confirm_question[CONSOLE_TEXT_MAX]; /* the input line starts with it; the answer follows */
 
 bool console_confirm_busy(void) { return C->confirm; }
 
 bool console_confirm(const char *question, ConfirmFn fn, void *ctx) {
     if (C->confirm) return false;
     console_set_text(question);
+    snprintf(confirm_question, sizeof(confirm_question), "%s", question);
     C->confirm = true;
     confirm_fn = fn;
     confirm_ctx = ctx;
@@ -804,20 +806,15 @@ static const char *rest_of_line(const char *input, char *out, size_t cap) {
     return out;
 }
 
-static bool ends_with(const char *s, const char *suffix) {
-    size_t a = strlen(s), b = strlen(suffix);
-    return a >= b && strcmp(s + a - b, suffix) == 0;
-}
-
 void console_command(const char *raw) {
     char input[CONSOLE_TEXT_MAX];
     snprintf(input, sizeof(input), "%s", raw);
     bool blank = true;
     for (const char *p = input; *p; p++) if (!isspace((unsigned char)*p)) blank = false;
-    if (blank) return;
+    if (blank && !C->confirm) return; /* an empty answer to a question is yes */
 
     /* history (skip duplicates of the last entry) */
-    if (!(C->history.count > 1 && strcmp(input, C->history.items[C->history.count - 1]) == 0))
+    if (!blank && !(C->history.count > 1 && strcmp(input, C->history.items[C->history.count - 1]) == 0))
         da_push(&C->history, str_dup(input));
     C->historyIndex = C->history.count;
     console_set_text("");
@@ -825,13 +822,16 @@ void console_command(const char *raw) {
 
     if (C->confirm) {
         /* Y/N answer to a confirmation prompt */
-        char low[CONSOLE_TEXT_MAX];
-        snprintf(low, sizeof(low), "%s", input);
-        lower(low);
+        Answer ans = confirm_answer(confirm_question, input);
+        if (ans == ANSWER_UNCLEAR) {
+            console_log("Please answer y or n");
+            console_set_text(confirm_question);
+            return;
+        }
         C->confirm = false;
         ConfirmFn fn = confirm_fn;
         confirm_fn = NULL;
-        if (fn) fn(!(ends_with(low, "n") || low[0] == 'n'), confirm_ctx);
+        if (fn) fn(ans == ANSWER_YES, confirm_ctx);
         if (!C->confirm) session_prompt_free();
         return;
     }

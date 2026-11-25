@@ -664,6 +664,30 @@ static void test_tile_sharing(void) {
     CHECK(wee->slots == 2 && wee->slot == 1);
 }
 
+/* The console line holds the question, then the GM's answer. */
+static void test_confirm_answer(void) {
+    const char *q = "Nina: new character [2|7] size 1 HP 20 speed 6 init 1. Allow? (y/n)";
+    char line[256];
+    snprintf(line, sizeof(line), "%sy", q);
+    CHECK(confirm_answer(q, line) == ANSWER_YES); /* a name starting with N is not the answer */
+    snprintf(line, sizeof(line), "%s n", q);
+    CHECK(confirm_answer(q, line) == ANSWER_NO);
+    snprintf(line, sizeof(line), "%sNo", q);
+    CHECK(confirm_answer(q, line) == ANSWER_NO);
+    snprintf(line, sizeof(line), "%sYES ", q);
+    CHECK(confirm_answer(q, line) == ANSWER_YES);
+    CHECK(confirm_answer(q, q) == ANSWER_YES); /* just Enter */
+    snprintf(line, sizeof(line), "%s#", q);
+    CHECK(confirm_answer(q, line) == ANSWER_UNCLEAR); /* asked again */
+    snprintf(line, sizeof(line), "%snope", q);
+    CHECK(confirm_answer(q, line) == ANSWER_UNCLEAR);
+    const char *b = "Bob wants to claim character #3. Allow? (y/n)";
+    CHECK(confirm_answer(b, "y") == ANSWER_YES); /* the GM cleared the line first */
+    CHECK(confirm_answer(b, " no ") == ANSWER_NO);
+    CHECK(confirm_answer(b, "") == ANSWER_YES);
+    CHECK(confirm_answer(b, "Bob wants to claim") == ANSWER_UNCLEAR); /* an edited question */
+}
+
 int main(void) {
     test_entity_ids();
     test_initiative_values();
@@ -680,6 +704,7 @@ int main(void) {
     test_create_helpers();
     test_size_footprints();
     test_tile_sharing();
+    test_confirm_answer();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;

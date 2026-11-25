@@ -42,7 +42,8 @@ The console at the bottom of the window takes all commands.
 | `:h` / `:h <command>` | List the commands / help for one command |
 
 Most commands have a long and a short form (`character` / `:c`). When the game asks a yes/no question in the
-console, type `y` or `n` and press Enter.
+console, type `y` or `n` (or `yes` / `no`) and press Enter. Enter alone also means yes. Anything else is not
+taken as an answer: the log says "Please answer y or n" and the question is asked again.
 
 ## 2. Camera and view
 
@@ -239,8 +240,8 @@ school a ban can also keep out classmates. The log then says "Turned away ... (s
 needed.
 
 **Claims:** a player can select an unowned character and type `:claim`. The console then asks you
-"<player> wants to claim character #... Allow? (y/n)". Type `y` or `n` and press Enter. Several requests wait in
-line; each player can have at most 3 waiting.
+"<player> wants to claim character #... Allow? (y/n)". Type `y` or `n` and press Enter (Enter alone is yes;
+anything else asks again). Several requests wait in line; each player can have at most 3 waiting.
 
 **Player-created characters:**
 - Players can create their own character with `:c [stats]` on an empty tile and a picture (at most 512×512).

@@ -79,5 +79,10 @@ char *str_dup(const char *s);
 /* Formats a double the way Java's Double.toString does for ordinary values. */
 void  fmt_java_double(char *out, size_t n, double v);
 double rand_unit(void); /* [0,1) */
+/* The answer to a y/n question in the console. line is the whole input line, which starts with the
+ * question unless it was edited; only what follows it counts. y / yes and an empty answer (just Enter)
+ * are yes, n / no are no (any case), anything else is unclear: the question is asked again. */
+typedef enum { ANSWER_UNCLEAR, ANSWER_NO, ANSWER_YES } Answer;
+Answer confirm_answer(const char *question, const char *line);
 
 #endif
