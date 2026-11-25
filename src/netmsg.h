@@ -21,7 +21,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define NET_PROTOCOL_VERSION 4
+#define NET_PROTOCOL_VERSION 5
 #define NET_DEFAULT_PORT     41234
 #define NET_MAX_FRAME        (64u << 20)            /* one encrypted frame */
 #define NETMSG_MAX_BLOB      (NET_MAX_FRAME - 1024) /* SNAPSHOT / IMAGE payload */
@@ -60,7 +60,7 @@ typedef enum {
     NM_IMAGE,         /* H->C hash, image_kind (SAVE_IMG_*), data: WebP bytes */
     NM_LOG,           /* H->C text */
     NM_CLOSE,         /* H->C reason (NET_CLOSE_*) */
-    NM_CREATE,        /* C->H seq, spec (a character; no image hash), data: WebP bytes of its picture */
+    NM_CREATE,        /* C->H seq, spec (a character with optional name; no image hash), data: WebP bytes of its picture */
     NM_COUNT
 } NetMsgType;
 
@@ -104,6 +104,7 @@ typedef struct {
     uint8_t image[NET_HASH_SIZE];
     int32_t row, col;
     int32_t size, max_health, health, attack, speed, initiative;
+    char name[SAVEFMT_CHAR_NAME_MAX]; /* characters: "" = no name */
 } NetSpec;
 
 typedef struct {
@@ -122,6 +123,9 @@ typedef struct {
     int32_t size, max_health, speed, initiative;
     char name[SAVEFMT_NAME_MAX]; /* waypoint or player name */
     char dice[NETMSG_MAX_DICE];
+    uint8_t health_mode; /* SET_HEALTH: 0 = set, 1 = change */
+    int32_t value;       /* SET_HEALTH, at most SAVEFMT_MAX_HP either way */
+    char char_name[SAVEFMT_CHAR_NAME_MAX]; /* SET_NAME */
 } NetOp;
 
 typedef struct {

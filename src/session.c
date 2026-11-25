@@ -297,6 +297,9 @@ static bool net_from_op(const Op *op, NetOp *o) {
     o->speed = op->speed;
     o->initiative = op->initiative;
     snprintf(o->name, sizeof(o->name), "%s", op->name);
+    o->health_mode = (uint8_t)op->healthMode;
+    o->value = op->value;
+    snprintf(o->char_name, sizeof(o->char_name), "%s", op->charName);
     if (op->type == OP_SET_ICON || (op->type == OP_SET_BACKGROUND && op->image)) {
         o->has_image = true;
         uint8_t kind = op->type == OP_SET_BACKGROUND ? SAVE_IMG_LOSSY : SAVE_IMG_LOSSLESS;
@@ -314,6 +317,7 @@ static bool net_from_op(const Op *op, NetOp *o) {
         n->attack = s->attack;
         n->speed = s->speed;
         n->initiative = s->initiative;
+        snprintf(n->name, sizeof(n->name), "%s", s->name);
         if (!s->image || !texture_hash(s->image, SAVE_IMG_LOSSLESS, n->image)) return false;
     }
     return true;
@@ -334,6 +338,9 @@ static bool op_from_net(const NetOp *o, Op *op) {
     op->speed = o->speed;
     op->initiative = o->initiative;
     snprintf(op->name, sizeof(op->name), "%s", o->name);
+    op->healthMode = o->health_mode;
+    op->value = o->value;
+    snprintf(op->charName, sizeof(op->charName), "%s", o->char_name);
     if (o->has_image && !(op->image = cache_find(o->image))) return false;
     for (uint32_t i = 0; i < o->nspecs; i++) {
         const NetSpec *n = &o->specs[i];
@@ -342,6 +349,7 @@ static bool op_from_net(const NetOp *o, Op *op) {
                          .maxHealth = n->max_health, .health = n->health, .attack = n->attack,
                          .speed = n->speed, .initiative = n->initiative };
         if (!s.image) return false;
+        snprintf(s.name, sizeof(s.name), "%s", n->name);
         da_push(&op->specs, s);
     }
     return true;
@@ -593,6 +601,7 @@ static void host_create(Player *p, const NetMsg *m) {
     r.spec = (EntitySpec){ .type = ENTITY_CHARACTER, .image = t, .tile = tile, .size = m->spec.size,
                            .maxHealth = m->spec.max_health, .health = m->spec.max_health,
                            .speed = m->spec.speed, .initiative = m->spec.initiative };
+    snprintf(r.spec.name, sizeof(r.spec.name), "%s", m->spec.name);
     da_push(&S.requests, r);
     console_log("%s asks for a new character.", p->name);
     ask_next_request();
@@ -830,8 +839,10 @@ static void ask_next_request(void) {
             snprintf(q, sizeof(q), "%s wants to claim %s. Allow? (y/n)", p->name, label);
         } else {
             /* short: the input line shows about 70 characters */
-            snprintf(q, sizeof(q), "%s: new character [%d|%d] size %d HP %d speed %d init %d. Allow? (y/n)",
-                     p->name, c->spec.tile.row, c->spec.tile.col, c->spec.size, c->spec.maxHealth,
+            char named[CHAR_NAME_MAX + 2] = "";
+            if (c->spec.name[0]) snprintf(named, sizeof(named), " %s", c->spec.name);
+            snprintf(q, sizeof(q), "%s: new character%s [%d|%d] size %d HP %d speed %d init %d. Allow? (y/n)",
+                     p->name, named, c->spec.tile.row, c->spec.tile.col, c->spec.size, c->spec.maxHealth,
                      c->spec.speed, c->spec.initiative);
         }
         gfx_set_console_visibility(true);
@@ -852,7 +863,7 @@ void session_draw_request_preview(void) {
 }
 
 void session_request_character(const Image *pic, Hex tile, int size, int maxHealth, int speed,
-                               int initiative) {
+                               int initiative, const char *name) {
     if (S.role != ROLE_CLIENT) {
         console_log("Wait until you have joined the table");
         return;
@@ -866,6 +877,7 @@ void session_request_character(const Image *pic, Hex tile, int size, int maxHeal
     m.spec = (NetSpec){ .type = SAVE_ENT_CHARACTER, .row = tile.row, .col = tile.col, .size = size,
                         .max_health = maxHealth, .health = maxHealth,
                         .speed = speed > MAX_SPEED ? MAX_SPEED : speed, .initiative = initiative };
+    snprintf(m.spec.name, sizeof(m.spec.name), "%s", name ? name : "");
     if (b.len > NET_CREATE_MAX_BLOB) console_log("The picture is too large");
     else if (!net_send(S.net, 1, &m)) console_log("Could not send that to the host");
     else console_log("Asked the GM to create your character.");

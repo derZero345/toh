@@ -31,6 +31,7 @@ static bool dice_ok(const char *s) {
 
 static bool spec_ok(const NetSpec *s) {
     if (s->type > SAVE_ENT_WALL || !coord_ok(s->row) || !coord_ok(s->col)) return false;
+    if (s->name[0] && (s->type != SAVE_ENT_CHARACTER || !savefmt_char_name_valid(s->name))) return false;
     return s->type != SAVE_ENT_CHARACTER || s->speed <= SAVEFMT_MAX_SPEED;
 }
 
@@ -63,6 +64,10 @@ static bool op_ok(const NetOp *o) {
         return true;
     case NOP_SET_OWNER:
         return o->name[0] == '\0' || savefmt_owner_valid(o->name);
+    case NOP_SET_HEALTH:
+        return o->health_mode <= 1 && o->value >= -SAVEFMT_MAX_HP && o->value <= SAVEFMT_MAX_HP;
+    case NOP_SET_NAME:
+        return savefmt_char_name_valid(o->char_name);
     case NOP_ROLL:
         if (o->nvalues > NETMSG_MAX_ROLLS || (o->nvalues && !o->values)) return false;
         for (uint32_t i = 0; i < o->nvalues; i++)
@@ -218,6 +223,7 @@ static void put_op(Buf *b, const NetOp *o) {
                 put_sv(b, s->attack);
                 put_sv(b, s->speed);
                 put_sv(b, s->initiative);
+                put_str(b, s->name);
             }
         }
         put_ids(b, o->ids, o->nids);
@@ -261,6 +267,15 @@ static void put_op(Buf *b, const NetOp *o) {
     case NOP_SET_OWNER:
         put_ids(b, o->ids, o->nids);
         put_str(b, o->name);
+        break;
+    case NOP_SET_HEALTH:
+        put_ids(b, o->ids, o->nids);
+        put_u8(b, o->health_mode);
+        put_sv(b, o->value);
+        break;
+    case NOP_SET_NAME:
+        put_ids(b, o->ids, o->nids);
+        put_str(b, o->char_name);
         break;
     case NOP_ROLL:
         put_str(b, o->dice);
@@ -334,6 +349,7 @@ bool netmsg_encode(const NetMsg *m, uint8_t **out, size_t *out_len) {
         put_sv(&b, m->spec.max_health);
         put_sv(&b, m->spec.speed);
         put_sv(&b, m->spec.initiative);
+        put_str(&b, m->spec.name);
         put_bytes(&b, m->data, m->data_len);
         break;
     }
@@ -468,6 +484,7 @@ static void get_op(Rd *r, NetOp *o) {
                 s->attack = get_sv(r);
                 s->speed = get_sv(r);
                 s->initiative = get_sv(r);
+                get_str(r, s->name, sizeof(s->name));
             }
         }
         o->ids = get_ids(r, &o->nids);
@@ -524,6 +541,15 @@ static void get_op(Rd *r, NetOp *o) {
         o->ids = get_ids(r, &o->nids);
         get_str(r, o->name, sizeof(o->name));
         break;
+    case NOP_SET_HEALTH:
+        o->ids = get_ids(r, &o->nids);
+        o->health_mode = get_u8(r);
+        o->value = get_sv(r);
+        break;
+    case NOP_SET_NAME:
+        o->ids = get_ids(r, &o->nids);
+        get_str(r, o->char_name, sizeof(o->char_name));
+        break;
     case NOP_ROLL: {
         get_str(r, o->dice, sizeof(o->dice));
         uint32_t n = get_count(r, NETMSG_MAX_ROLLS, 8);
@@ -535,8 +561,6 @@ static void get_op(Rd *r, NetOp *o) {
     case NOP_GRID_ORIENTATION:
     case NOP_INIT_CLEAR:
     case NOP_INIT_SHOW:
-    case NOP_SET_HEALTH: /* no body until Task 5 */
-    case NOP_SET_NAME:
         break;
     default:
         r->bad = true;
@@ -616,6 +640,7 @@ bool netmsg_decode(const uint8_t *buf, size_t len, NetMsg *out) {
         out->spec.max_health = get_sv(&r);
         out->spec.speed = get_sv(&r);
         out->spec.initiative = get_sv(&r);
+        get_str(&r, out->spec.name, sizeof(out->spec.name));
         out->spec.health = out->spec.max_health;
         get_blob(&r, out);
         break;
