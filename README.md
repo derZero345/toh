@@ -107,9 +107,9 @@ close button always quits.
 
 A save contains the background, characters (image, stats, current HP, name and owner), walls, the initiative order, waypoints, grid
 orientation, camera and theme; not the console, selections, clipboard or measurements. `:c owner <player>` gives the
-selected characters to a player (for the upcoming multiplayer mode); pasted copies have no owner.
+selected characters to a player; pasted copies have no owner.
 
-The format (`src/savefmt.h`, version 2; version 1 files still load) is binary and compact: the game state is packed with varints and zstd-compressed, and
+The format (`src/savefmt.h`, version 5; files from older versions still load) is binary and compact: the game state is packed with varints and zstd-compressed, and
 every image is stored once as WebP (lossless for characters and walls, quality 90 for the background; images over
 16383 px are scaled down). Saves are written to `file.tmp` first and then renamed, and a load only replaces the
 table once the whole file has been checked.
