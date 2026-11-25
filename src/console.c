@@ -19,7 +19,8 @@ typedef struct {
     const char *const *args; /* NULL-terminated, NULL = no arguments */
 } CommandDef;
 
-static const char *const ARGS_CHARACTER[] = { "delete", "size", "maxhealth", "speed", "initiative", "icon", "owner", NULL };
+static const char *const ARGS_CHARACTER[] = { "delete", "size", "maxhealth", "speed", "initiative", "icon", "owner",
+                                              "name", "hp", "damage", "heal", NULL };
 static const char *const ARGS_DELETE[]    = { "delete", NULL };
 static const char *const ARGS_HELP[]      = { "quit", "background", "debug", "character", "wall", "entity", "help",
                                               "roll", "grid", "gamemaster", "init", "clear", "theme", "teleport", "save", "load",
@@ -404,6 +405,10 @@ static void cmd_character(Args *a) {
     bool has[5] = { 0 }; /* size, maxhealth, speed, initiative (= STAT_* bit order), icon */
     bool has_owner = false;
     char owner[PLAYER_NAME_MAX] = "";
+    char name[CHAR_NAME_MAX] = "";
+    bool has_name = false;
+    struct { int mode, value; } hp[8]; /* hp / damage / heal, in the order given */
+    int nhp = 0;
     for (int i = 1; i < a->argc;) {
         char key[64];
         snprintf(key, sizeof(key), "%s", a->argv[i]);
@@ -433,6 +438,31 @@ static void cmd_character(Args *a) {
             i += 2;
             continue;
         }
+        if (strcmp(key, "nm") == 0 || strcmp(key, "name") == 0) {
+            if (!val || !savefmt_char_name_valid(val)) {
+                console_log("Names are 1 to %d bytes long", CHAR_NAME_MAX - 1);
+                return;
+            }
+            snprintf(name, sizeof(name), "%s", val);
+            has_name = true;
+            i += 2;
+            continue;
+        }
+        if (!strcmp(key, "hp") || !strcmp(key, "damage") || !strcmp(key, "dmg") || !strcmp(key, "heal")) {
+            int v;
+            bool change = strcmp(key, "hp") != 0;
+            if (!parse_int_arg(val, &v) || (change && v < 0) || v > SAVEFMT_MAX_HP || v < -SAVEFMT_MAX_HP) {
+                console_log("Expected a number after \"%s\"", a->argv[i]);
+                return;
+            }
+            if (nhp < 8) {
+                hp[nhp].mode = change ? HEALTH_CHANGE : HEALTH_SET;
+                hp[nhp].value = !strcmp(key, "damage") || !strcmp(key, "dmg") ? -v : v;
+                nhp++;
+            }
+            i += 2;
+            continue;
+        }
         int *target = NULL;
         int slot = -1;
         if      (!strcmp(key, "sz") || !strcmp(key, "size"))       { target = &size; slot = 0; }
@@ -453,8 +483,8 @@ static void cmd_character(Args *a) {
     }
 
     if (gh->selectedEntities.count == 0) {
-        if (has_owner) console_log("Select the characters first");
-        else gfx_spawn_character(size, max_health, speed, initiative);
+        if (has_owner || nhp > 0) console_log("Select the characters first");
+        else gfx_spawn_character(size, max_health, speed, initiative, has_name ? name : NULL);
         return;
     }
 
@@ -473,11 +503,24 @@ static void cmd_character(Args *a) {
         icon_targets++;
     }
     if (stats.statMask && stats.ids.count > 0) ops_submit(&stats);
+    if (has_name && stats.ids.count > 0) {
+        Op nm = { .type = OP_SET_NAME };
+        snprintf(nm.charName, sizeof(nm.charName), "%s", name);
+        for (int i = 0; i < stats.ids.count; i++) da_push(&nm.ids, stats.ids.items[i]);
+        ops_submit(&nm);
+        op_free(&nm);
+    }
+    for (int k = 0; k < nhp && stats.ids.count > 0; k++) {
+        Op h = { .type = OP_SET_HEALTH, .healthMode = hp[k].mode, .value = hp[k].value };
+        for (int i = 0; i < stats.ids.count; i++) da_push(&h.ids, stats.ids.items[i]);
+        ops_submit(&h);
+        op_free(&h);
+    }
     if (has_owner && own.ids.count > 0 && ops_submit(&own) == OPR_OK) {
         if (owner[0]) console_log("%d character(s) now belong to %s", own.ids.count, owner);
         else console_log("%d character(s) no longer have an owner", own.ids.count);
     }
-    if (has[4] && icon_targets > 0) gfx_request_file(ACTION_CHARACTER_ICON, NULL, 0, 0, 0, 0);
+    if (has[4] && icon_targets > 0) gfx_request_file(ACTION_CHARACTER_ICON, NULL, 0, 0, 0, 0, NULL);
     op_free(&stats);
     op_free(&own);
 }
@@ -495,7 +538,9 @@ static void cmd_help(Args *a) {
         console_log("  delete | size <-2..4> | maxhealth <n> | speed <n>");
         console_log("  sizes: -2 wee, -1 tiny, 0 small, 1 normal, 2 big, 3 huge, 4 gigantic");
         console_log("  initiative <n> | icon | owner <player|none>");
-        console_log("  players: with nothing selected, asks the GM for a new character of your own");
+        console_log("  name <name> (quotes for spaces) | hp <n> | damage <n> | heal <n>");
+        console_log("  players: name and HP of your own characters; with nothing selected,");
+        console_log("  asks the GM for a new character of your own");
     } else if (!strcmp(arg, "wall") || !strcmp(arg, ":w")) {
         console_log(":w  or wall # Place walls on the selected tiles - delete: remove walls");
     } else if (!strcmp(arg, "entity") || !strcmp(arg, ":e")) {

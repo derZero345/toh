@@ -413,7 +413,7 @@ void save_command(const char *path) {
     path = expand_home(path, buf, sizeof(buf));
     if (path && *path) save_to(path);
     else if (current_file[0]) save_to(current_file);
-    else gfx_request_file(ACTION_SAVE, NULL, 0, 0, 0, 0);
+    else gfx_request_file(ACTION_SAVE, NULL, 0, 0, 0, 0, NULL);
 }
 
 void load_command(const char *path, bool force) {
@@ -428,7 +428,7 @@ void load_command(const char *path, bool force) {
     char buf[PATH_MAX_LEN * 2];
     path = expand_home(path, buf, sizeof(buf));
     if (path && *path) load_from(path);
-    else gfx_request_file(ACTION_LOAD, NULL, 0, 0, 0, 0);
+    else gfx_request_file(ACTION_LOAD, NULL, 0, 0, 0, 0, NULL);
 }
 
 void quit_command(bool force) {

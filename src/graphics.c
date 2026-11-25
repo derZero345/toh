@@ -213,7 +213,8 @@ static void SDLCALL dialog_callback(void *userdata, const char *const *filelist,
     SDL_PushEvent(&ev);
 }
 
-void gfx_request_file(ActionKind kind, const HexList *tiles, int size, int maxHealth, int speed, int initiative) {
+void gfx_request_file(ActionKind kind, const HexList *tiles, int size, int maxHealth, int speed, int initiative,
+                      const char *name) {
     if (gh->dialog.kind != ACTION_NONE) {
         console_log("A file dialog is already open");
         return;
@@ -229,6 +230,7 @@ void gfx_request_file(ActionKind kind, const HexList *tiles, int size, int maxHe
     a->maxHealth = maxHealth;
     a->speed = speed;
     a->initiative = initiative;
+    snprintf(a->name, sizeof(a->name), "%s", name ? name : "");
 
     if (gh->autoFile) {
         gfx_handle_file_result(gh->autoFile);
@@ -289,16 +291,19 @@ void gfx_handle_file_result(const char *path) {
             image_free(&cut);
             if (a->tiles.count == 1)
                 session_request_character(&small, a->tiles.items[0], a->size, a->maxHealth, a->speed,
-                                          a->initiative, "");
+                                          a->initiative, a->name);
             image_free(&small);
             break;
         }
         Texture *t = texture_from_image(&cut);
         Op op = { .type = OP_SPAWN };
-        for (int i = 0; i < a->tiles.count; i++)
-            da_push(&op.specs, ((EntitySpec){ .type = ENTITY_CHARACTER, .image = t, .tile = a->tiles.items[i],
-                                               .size = a->size, .maxHealth = a->maxHealth, .health = a->maxHealth,
-                                               .speed = a->speed, .initiative = a->initiative }));
+        for (int i = 0; i < a->tiles.count; i++) {
+            EntitySpec s = { .type = ENTITY_CHARACTER, .image = t, .tile = a->tiles.items[i], .size = a->size,
+                             .maxHealth = a->maxHealth, .health = a->maxHealth, .speed = a->speed,
+                             .initiative = a->initiative };
+            snprintf(s.name, sizeof(s.name), "%s", a->name);
+            da_push(&op.specs, s);
+        }
         ops_submit(&op);
         op_free(&op);
         vkr_texture_release(t);
@@ -338,7 +343,7 @@ void gfx_handle_file_result(const char *path) {
 
 void gfx_set_background_image(const char *path) {
     if (!path) {
-        gfx_request_file(ACTION_BACKGROUND, NULL, 0, 0, 0, 0);
+        gfx_request_file(ACTION_BACKGROUND, NULL, 0, 0, 0, 0, NULL);
         return;
     }
     gh->dialog.kind = ACTION_BACKGROUND;
@@ -349,11 +354,11 @@ static void spawn_confirmed(bool yes, void *ctx) {
     (void)ctx;
     PendingAction *c = &gh->confirm;
     if (c->kind == ACTION_SPAWN_CHARACTERS && yes)
-        gfx_request_file(ACTION_SPAWN_CHARACTERS, &c->tiles, c->size, c->maxHealth, c->speed, c->initiative);
+        gfx_request_file(ACTION_SPAWN_CHARACTERS, &c->tiles, c->size, c->maxHealth, c->speed, c->initiative, c->name);
     c->kind = ACTION_NONE;
 }
 
-void gfx_spawn_character(int size, int maxhealth, int speed, int initiative) {
+void gfx_spawn_character(int size, int maxhealth, int speed, int initiative, const char *name) {
     if (session_is_client() && gh->selectedTiles.count > 1) { /* players ask for one character at a time */
         console_log("Select one tile");
         return;
@@ -374,6 +379,7 @@ void gfx_spawn_character(int size, int maxhealth, int speed, int initiative) {
         c->maxHealth = maxhealth;
         c->speed = speed;
         c->initiative = initiative;
+        snprintf(c->name, sizeof(c->name), "%s", name ? name : "");
         gfx_set_console_visibility(true);
         char msg[128];
         snprintf(msg, sizeof(msg), "are you sure you want to create [%d] Characters: (Y/N)", gh->selectedTiles.count);
@@ -386,7 +392,7 @@ void gfx_spawn_character(int size, int maxhealth, int speed, int initiative) {
         if (hex_find_closest((Vec2){ gh->winW / 2, gh->winH / 2 }, &h)) da_push(&tiles, h);
     }
     if (tiles.count == 0) console_log("Character summon canceled");
-    else gfx_request_file(ACTION_SPAWN_CHARACTERS, &tiles, size, maxhealth, speed, initiative);
+    else gfx_request_file(ACTION_SPAWN_CHARACTERS, &tiles, size, maxhealth, speed, initiative, name);
     da_free(&tiles);
 }
 
@@ -395,7 +401,7 @@ void gfx_summon_wall(void) {
         console_log("Select the tiles to place walls on first");
         return;
     }
-    gfx_request_file(ACTION_WALLS, &gh->selectedTiles, 0, 0, 0, 0);
+    gfx_request_file(ACTION_WALLS, &gh->selectedTiles, 0, 0, 0, 0, NULL);
 }
 
 /* Per-frame tool updates (done during painting in the Java version). */
