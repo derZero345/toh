@@ -117,6 +117,31 @@ a shared tile are drawn side by side inside it; the selected one gets a blue cir
 Saves from older versions used other sizes; they are converted when loaded so every character keeps its
 footprint (old large → Huge, old huge and gargantuan → Gigantic).
 
+### Names and current HP (coming soon, not in the game yet)
+
+| Command | Short | Action |
+|---|---|---|
+| `:c name <name>` | `nm` | Name the selected characters, or the new one when creating. Use quotes for spaces: `:c name "Mao Clausewitz"`. 1 to 32 bytes. |
+| `:c hp <n>` | | Set current HP |
+| `:c damage <n>` | `dmg` | Lower current HP by n |
+| `:c heal <n>` | | Raise current HP by n |
+
+- You can change the name and HP of any character; players can change them for their own characters.
+- HP goes from max HP down to −max HP, as in Tales of Honor:
+  - Healthy at ½ max HP or more;
+  - Injured at 1 or more;
+  - Dying at 0 or below;
+  - Critical below −½ max HP;
+  - dead at −max HP.
+- A character at full HP stays at full HP when you change its max HP.
+- **HP panel** in the top right corner: you see one for each selected character, players see one for each
+  character they own. Each panel shows:
+  - the name;
+  - a red bar with `current/max` inside it;
+  - a line in the middle where the character becomes injured.
+- While a character is dying, the bar grows to the left out of its frame and a second line shows where it
+  becomes critical.
+
 ### Delete
 
 `:c delete` (or `:c d`) deletes **every character on the table**, not just the selected ones.

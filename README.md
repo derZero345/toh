@@ -53,7 +53,8 @@ in the Java version.
 | Alt + X / S / A / C / V | drag / measure / area / cone / line tool |
 
 Console commands: `:q` quit, `:b [file.png]` background, `:d` debug, `:c` character
-(`delete`, `size n`, `maxhealth n`, `speed n`, `initiative n`, `icon`, `owner <player|none>`),
+(`delete`, `size n`, `maxhealth n`, `speed n`, `initiative n`, `icon`, `owner <player|none>`;
+coming soon, not in the game yet: `name <name>`, `hp n`, `damage n`, `heal n` and an HP panel in the top right corner),
 `:w [delete]` wall, `:e delete`, `:r 2d6+3` roll, `:g` grid orientation, `:gm` gamemaster,
 `:i [add|remove|clear|show|next]` initiative, `:cl` clear, `:t [name]` theme, `:h [command]` help,
 `:save [file]` / `:load[!] [file]` save files (see below), `:q!` quit without saving,
