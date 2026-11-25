@@ -60,7 +60,7 @@ no.
 
 **Create your own:**
 1. Click an empty tile, so that nothing else is selected.
-2. Type `:c` with your stats, for example `:c speed 6 maxhealth 20 armorclass 12`. Without `speed` your
+2. Type `:c` with your stats, for example `:c speed 6 maxhealth 20 initiative 2`. Without `speed` your
    character can't move.
 3. Pick a picture (PNG). Large pictures are shrunk to 512×512.
 

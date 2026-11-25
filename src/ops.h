@@ -30,14 +30,14 @@ typedef enum {
     OP_COUNT
 } OpType;
 
-enum { STAT_SIZE = 1, STAT_MAXHEALTH = 2, STAT_AC = 4, STAT_SPEED = 8, STAT_INITIATIVE = 16 };
+enum { STAT_SIZE = 1, STAT_MAXHEALTH = 2, STAT_SPEED = 4, STAT_INITIATIVE = 8 };
 
 /* An entity that OP_SPAWN creates. */
 typedef struct {
     EntityType type;
     Texture *image; /* borrowed; the new entity takes its own reference */
     Hex tile;
-    int size, maxHealth, health, attack, ac, speed, initiative; /* characters only */
+    int size, maxHealth, health, attack, speed, initiative; /* characters only */
 } EntitySpec;
 
 typedef struct Op {
@@ -49,7 +49,7 @@ typedef struct Op {
     DA(EntitySpec) specs; /* OP_SPAWN */
     Texture *image;       /* OP_SET_ICON, OP_SET_BACKGROUND; borrowed */
     int statMask;         /* OP_SET_STATS */
-    int size, maxHealth, ac, speed, initiative;
+    int size, maxHealth, speed, initiative;
     char name[WAYPOINT_NAME_MAX]; /* OP_WAYPOINT_*: waypoint name, OP_SET_OWNER: player name */
     bool remote;  /* someone else's op: leave the local selection and path preview alone */
     bool keepIds; /* OP_SPAWN from the host: create the entities with the ids in ids */

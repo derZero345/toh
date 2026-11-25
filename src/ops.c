@@ -18,7 +18,7 @@ void op_free(Op *op) {
 
 EntitySpec op_spec_from_entity(const Entity *e) {
     return (EntitySpec){ .type = e->type, .image = e->image, .tile = e->tile, .size = e->size,
-                         .maxHealth = e->maxHealth, .health = e->health, .attack = e->attack, .ac = e->ac,
+                         .maxHealth = e->maxHealth, .health = e->health, .attack = e->attack,
                          .speed = e->speed, .initiative = e->initiative };
 }
 
@@ -163,7 +163,7 @@ static void apply_spawn(Op *op) {
         if (s->type == ENTITY_WALL) {
             e = entity_new_wall(s->image, s->tile);
         } else {
-            e = entity_new_character(s->image, s->tile, s->size, s->maxHealth, s->ac, s->speed, s->initiative);
+            e = entity_new_character(s->image, s->tile, s->size, s->maxHealth, s->speed, s->initiative);
             e->health = s->health;
             e->attack = s->attack;
         }
@@ -217,7 +217,6 @@ static void apply_stats(const Op *op) {
         if (!e) continue;
         if (op->statMask & STAT_SIZE)       e->size = op->size;
         if (op->statMask & STAT_MAXHEALTH)  e->maxHealth = op->maxHealth;
-        if (op->statMask & STAT_AC)         e->ac = op->ac;
         if (op->statMask & STAT_SPEED)      e->speed = op->speed > MAX_SPEED ? MAX_SPEED : op->speed;
         if (op->statMask & STAT_INITIATIVE) e->initiative = op->initiative;
     }

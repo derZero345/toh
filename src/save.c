@@ -86,7 +86,6 @@ static void gather(Gathered *g) {
         s->max_health = e->maxHealth;
         s->health = e->health;
         s->attack = e->attack;
-        s->ac = e->ac;
         s->speed = e->speed;
         s->initiative = e->initiative;
         if (e->type == ENTITY_CHARACTER) snprintf(s->owner, sizeof(s->owner), "%s", e->owner);
@@ -323,7 +322,7 @@ static void apply(SaveData *d, bool keep_view) {
         if (s->type == SAVE_ENT_WALL) {
             e = entity_new_wall(tex[s->image], tile);
         } else {
-            e = entity_new_character(tex[s->image], tile, s->size, s->max_health, s->ac, s->speed, s->initiative);
+            e = entity_new_character(tex[s->image], tile, s->size, s->max_health, s->speed, s->initiative);
             e->health = s->health;
             e->attack = s->attack;
             snprintf(e->owner, sizeof(e->owner), "%s", s->owner);
@@ -409,7 +408,7 @@ void save_command(const char *path) {
     path = expand_home(path, buf, sizeof(buf));
     if (path && *path) save_to(path);
     else if (current_file[0]) save_to(current_file);
-    else gfx_request_file(ACTION_SAVE, NULL, 0, 0, 0, 0, 0);
+    else gfx_request_file(ACTION_SAVE, NULL, 0, 0, 0, 0);
 }
 
 void load_command(const char *path, bool force) {
@@ -424,7 +423,7 @@ void load_command(const char *path, bool force) {
     char buf[PATH_MAX_LEN * 2];
     path = expand_home(path, buf, sizeof(buf));
     if (path && *path) load_from(path);
-    else gfx_request_file(ACTION_LOAD, NULL, 0, 0, 0, 0, 0);
+    else gfx_request_file(ACTION_LOAD, NULL, 0, 0, 0, 0);
 }
 
 void quit_command(bool force) {

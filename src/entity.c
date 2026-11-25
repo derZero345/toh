@@ -76,13 +76,12 @@ static Entity *entity_alloc(EntityType type, Texture *image, Hex tile) {
     return e;
 }
 
-Entity *entity_new_character(Texture *image, Hex tile, int size, int maxhealth, int ac, int speed, int initiative) {
+Entity *entity_new_character(Texture *image, Hex tile, int size, int maxhealth, int speed, int initiative) {
     Entity *e = entity_alloc(ENTITY_CHARACTER, image, tile);
     e->size = size;
     e->maxHealth = maxhealth;
     e->health = maxhealth;
     e->attack = 0;
-    e->ac = ac;
     e->speed = speed > MAX_SPEED ? MAX_SPEED : speed;
     e->initiative = initiative;
     return e;

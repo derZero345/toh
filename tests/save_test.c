@@ -59,8 +59,8 @@ static void sample_init(Sample *s) {
     s->bg = pattern(64, 48, 2);
     s->images[0] = (SaveImage){ .kind = SAVE_IMG_LOSSY, .w = 64, .h = 48, .rgba = s->bg, .id = 101 };
     s->images[1] = (SaveImage){ .kind = SAVE_IMG_LOSSLESS, .w = 8, .h = 8, .rgba = s->icon, .id = 102 };
-    s->entities[0] = (SaveEntity){ SAVE_ENT_CHARACTER, 1, 3, -4, 1, 30, 25, -2, 15, 6, 12, "" };
-    s->entities[1] = (SaveEntity){ SAVE_ENT_CHARACTER, 1, -100, 250, -2, 7, 7, 0, 10, 1000, -3, "" };
+    s->entities[0] = (SaveEntity){ SAVE_ENT_CHARACTER, 1, 3, -4, 1, 30, 25, -2, 6, 12, "" };
+    s->entities[1] = (SaveEntity){ SAVE_ENT_CHARACTER, 1, -100, 250, -2, 7, 7, 0, 1000, -3, "" };
     s->entities[2] = (SaveEntity){ .type = SAVE_ENT_WALL, .image = 1, .row = 5, .col = 5 };
     snprintf(s->entities[0].owner, SAVEFMT_OWNER_MAX, "Alice");
     s->init[0] = (SaveInit){ 1, 0.875 };
@@ -562,51 +562,52 @@ static void test_owner_names(void) {
     sample_free(&s);
 }
 
-/* one character record without (version 1) or with (version 2) an owner string */
-static void wcharacter(W *w, const char *owner) {
+/* One character record in the layout of a version: size 1, max health 2, health 3, attack 4, speed 6,
+ * initiative 7; versions 1 and 2 also store an armor class (5) after attack, version 2 on an owner string. */
+static void wcharacter(W *w, int version, const char *owner) {
     w8(w, SAVE_ENT_CHARACTER);
     wuv(w, 0);
     wsv(w, 1);
     wsv(w, 2);
-    for (int i = 0; i < 7; i++) wsv(w, 0); /* size .. initiative */
-    if (owner) wstr(w, owner);
+    for (int v = 1; v <= 7; v++)
+        if (v != 5 || version < 3) wsv(w, v);
+    if (version >= 2) wstr(w, owner);
 }
 
 static void test_owner_versions(void) {
-    W v1 = { .n = 0 }, v2 = { .n = 0 }, bad = { .n = 0 }, im = { .n = 0 };
+    W st[5] = { { .n = 0 } }, im = { .n = 0 };
     wimage(&im, 8, 8);
-    W *states[3] = { &v1, &v2, &bad };
-    const char *owners[3] = { NULL, "Alice", "A B" };
-    for (int i = 0; i < 3; i++) {
-        wworld(states[i], 0);
-        wuv(states[i], 1);
-        wcharacter(states[i], owners[i]);
-        wuv(states[i], 0); wuv(states[i], 0); /* no initiative, current turn 0 */
-        wuv(states[i], 0);                    /* no waypoints */
+    /* body version, owner: v1, v2, v3, a bad owner, and a v1 body to be wrapped as version 2 */
+    const int body[5] = { 1, 2, 3, 3, 1 };
+    const char *owners[5] = { NULL, "Alice", "Bob", "A B", NULL };
+    for (int i = 0; i < 5; i++) {
+        wworld(&st[i], 0);
+        wuv(&st[i], 1);
+        wcharacter(&st[i], body[i], owners[i]);
+        wuv(&st[i], 0); wuv(&st[i], 0); /* no initiative, current turn 0 */
+        wuv(&st[i], 0);                  /* no waypoints */
     }
     SaveData d;
     size_t len;
-
-    uint8_t *f = wrap_v(&v1, &im, &len, 1, 1);
-    CHECK_ERR(savefmt_decode(f, len, &d), SAVE_OK);
-    CHECK(d.nentities == 1 && d.entities[0].owner[0] == '\0');
-    savefmt_free(&d);
-    free(f);
-
-    f = wrap_v(&v2, &im, &len, 1, 2);
-    CHECK_ERR(savefmt_decode(f, len, &d), SAVE_OK);
-    CHECK(d.nentities == 1 && strcmp(d.entities[0].owner, "Alice") == 0);
-    savefmt_free(&d);
-    free(f);
+    const char *want[3] = { "", "Alice", "Bob" };
+    for (int v = 1; v <= 3; v++) { /* every version loads; the old armor class is skipped */
+        uint8_t *f = wrap_v(&st[v - 1], &im, &len, 1, (uint8_t)v);
+        CHECK_ERR(savefmt_decode(f, len, &d), SAVE_OK);
+        const SaveEntity *e = d.nentities == 1 ? &d.entities[0] : NULL;
+        CHECK(e && strcmp(e->owner, want[v - 1]) == 0 && e->size == 1 && e->max_health == 2 && e->health == 3 &&
+              e->attack == 4 && e->speed == 6 && e->initiative == 7);
+        savefmt_free(&d);
+        free(f);
+    }
 
     /* a version 1 body in a version 2 file lacks the owner string */
-    f = wrap_v(&v1, &im, &len, 1, 2);
+    uint8_t *f = wrap_v(&st[4], &im, &len, 1, 2);
     CHECK_ERR(savefmt_decode(f, len, &d), SAVE_ERR_CORRUPT);
     savefmt_free(&d);
     free(f);
 
     /* owner names follow savefmt_owner_valid */
-    f = wrap_v(&bad, &im, &len, 1, 2);
+    f = wrap_v(&st[3], &im, &len, 1, 3);
     CHECK_ERR(savefmt_decode(f, len, &d), SAVE_ERR_CORRUPT);
     savefmt_free(&d);
     free(f);

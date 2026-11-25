@@ -20,7 +20,7 @@ _Static_assert((int)NOP_MOVE == (int)OP_MOVE && (int)NOP_SPAWN == (int)OP_SPAWN 
                (int)NOP_INIT_CLEAR == (int)OP_INIT_CLEAR && (int)NOP_INIT_SHOW == (int)OP_INIT_SHOW &&
                (int)NOP_INIT_NEXT == (int)OP_INIT_NEXT && (int)NOP_SET_OWNER == (int)OP_SET_OWNER && (int)NOP_ROLL == (int)OP_COUNT,
                "NetOpType must match OpType");
-_Static_assert((int)NSTAT_SIZE == (int)STAT_SIZE && (int)NSTAT_MAXHEALTH == (int)STAT_MAXHEALTH && (int)NSTAT_AC == (int)STAT_AC &&
+_Static_assert((int)NSTAT_SIZE == (int)STAT_SIZE && (int)NSTAT_MAXHEALTH == (int)STAT_MAXHEALTH &&
                (int)NSTAT_SPEED == (int)STAT_SPEED && (int)NSTAT_INITIATIVE == (int)STAT_INITIATIVE, "stat bits must match");
 _Static_assert((int)OPR_INVALID <= (int)NETMSG_MAX_REASON, "OpResult must fit OP_REJECTED");
 _Static_assert(PLAYER_NAME_MAX == SAVEFMT_OWNER_MAX && WAYPOINT_NAME_MAX == SAVEFMT_NAME_MAX, "name sizes");
@@ -67,7 +67,7 @@ static void reset_table(void) {
 }
 
 static Entity *add_character(Hex tile, int speed, const char *owner) {
-    Entity *e = entity_new_character(TEX_A, tile, SIZE_NORMAL, 10, 12, speed, 0);
+    Entity *e = entity_new_character(TEX_A, tile, SIZE_NORMAL, 10, speed, 0);
     snprintf(e->owner, sizeof(e->owner), "%s", owner);
     entity_register(e);
     return e;
@@ -342,7 +342,7 @@ static void test_apply_entities(void) {
     Op spawn = { .type = OP_SPAWN };
     da_push(&spawn.specs, ((EntitySpec){ .type = ENTITY_CHARACTER, .image = TEX_A, .tile = { 5, 5 },
                                          .size = SIZE_NORMAL, .maxHealth = 20, .health = 7, .attack = 1,
-                                         .ac = 14, .speed = 4, .initiative = 2 }));
+                                         .speed = 4, .initiative = 2 }));
     da_push(&spawn.specs, ((EntitySpec){ .type = ENTITY_WALL, .image = TEX_B, .tile = { 5, 6 } }));
     int a0 = stub_refs(TEX_A), b0 = stub_refs(TEX_B);
     CHECK_R(ops_submit(&spawn), OPR_OK);
@@ -351,7 +351,7 @@ static void test_apply_entities(void) {
     Entity *hero = entity_by_id(spawn.ids.items[0]);
     Entity *wall = entity_by_id(spawn.ids.items[1]);
     CHECK(hero && hero->type == ENTITY_CHARACTER && hero->image == TEX_A && hex_eq(hero->tile, (Hex){ 5, 5 }));
-    CHECK(hero && hero->maxHealth == 20 && hero->health == 7 && hero->attack == 1 && hero->ac == 14 &&
+    CHECK(hero && hero->maxHealth == 20 && hero->health == 7 && hero->attack == 1 &&
           hero->speed == 4 && hero->initiative == 2);
     CHECK(wall && wall->type == ENTITY_WALL && wall->image == TEX_B && hex_eq(wall->tile, (Hex){ 5, 6 }));
     op_free(&spawn);
@@ -362,11 +362,11 @@ static void test_apply_entities(void) {
     CHECK(hex_eq(hero->tile, (Hex){ 7, 5 }));
 
     /* only the masked stats change, speed is capped, walls are skipped */
-    Op st = { .type = OP_SET_STATS, .statMask = STAT_SPEED | STAT_AC, .speed = 5000, .ac = 9, .maxHealth = 1 };
+    Op st = { .type = OP_SET_STATS, .statMask = STAT_SPEED | STAT_INITIATIVE, .speed = 5000, .initiative = 9, .maxHealth = 1 };
     da_push(&st.ids, hero->id);
     da_push(&st.ids, wall->id);
     CHECK_R(ops_submit(&st), OPR_OK);
-    CHECK(hero->speed == MAX_SPEED && hero->ac == 9 && hero->maxHealth == 20);
+    CHECK(hero->speed == MAX_SPEED && hero->initiative == 9 && hero->maxHealth == 20);
     op_free(&st);
 
     Op icon = { .type = OP_SET_ICON, .image = TEX_B };

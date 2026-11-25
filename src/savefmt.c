@@ -131,7 +131,6 @@ static void write_state(Buf *b, const SaveData *d, bool fingerprint) {
             put_sv(b, e->max_health);
             put_sv(b, e->health);
             put_sv(b, e->attack);
-            put_sv(b, e->ac);
             put_sv(b, e->speed);
             put_sv(b, e->initiative);
             put_str(b, e->owner);
@@ -186,7 +185,7 @@ static SaveError read_state(const uint8_t *p, size_t n, uint16_t version, SaveDa
             e->max_health = get_sv(&r);
             e->health = get_sv(&r);
             e->attack = get_sv(&r);
-            e->ac = get_sv(&r);
+            if (version < 3) (void)get_sv(&r); /* armor class, no longer used */
             e->speed = get_sv(&r);
             e->initiative = get_sv(&r);
             if (version >= 2) get_str(&r, e->owner, sizeof(e->owner));

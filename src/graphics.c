@@ -212,7 +212,7 @@ static void SDLCALL dialog_callback(void *userdata, const char *const *filelist,
     SDL_PushEvent(&ev);
 }
 
-void gfx_request_file(ActionKind kind, const HexList *tiles, int size, int maxHealth, int ac, int speed, int initiative) {
+void gfx_request_file(ActionKind kind, const HexList *tiles, int size, int maxHealth, int speed, int initiative) {
     if (gh->dialog.kind != ACTION_NONE) {
         console_log("A file dialog is already open");
         return;
@@ -223,7 +223,6 @@ void gfx_request_file(ActionKind kind, const HexList *tiles, int size, int maxHe
     else da_clear(&a->tiles);
     a->size = size;
     a->maxHealth = maxHealth;
-    a->ac = ac;
     a->speed = speed;
     a->initiative = initiative;
 
@@ -285,7 +284,7 @@ void gfx_handle_file_result(const char *path) {
             Image small = image_scale_to_fit(&cut, NET_CREATE_MAX_DIM);
             image_free(&cut);
             if (a->tiles.count == 1)
-                session_request_character(&small, a->tiles.items[0], a->size, a->maxHealth, a->ac, a->speed,
+                session_request_character(&small, a->tiles.items[0], a->size, a->maxHealth, a->speed,
                                           a->initiative);
             image_free(&small);
             break;
@@ -295,7 +294,7 @@ void gfx_handle_file_result(const char *path) {
         for (int i = 0; i < a->tiles.count; i++)
             da_push(&op.specs, ((EntitySpec){ .type = ENTITY_CHARACTER, .image = t, .tile = a->tiles.items[i],
                                                .size = a->size, .maxHealth = a->maxHealth, .health = a->maxHealth,
-                                               .ac = a->ac, .speed = a->speed, .initiative = a->initiative }));
+                                               .speed = a->speed, .initiative = a->initiative }));
         ops_submit(&op);
         op_free(&op);
         vkr_texture_release(t);
@@ -335,7 +334,7 @@ void gfx_handle_file_result(const char *path) {
 
 void gfx_set_background_image(const char *path) {
     if (!path) {
-        gfx_request_file(ACTION_BACKGROUND, NULL, 0, 0, 0, 0, 0);
+        gfx_request_file(ACTION_BACKGROUND, NULL, 0, 0, 0, 0);
         return;
     }
     gh->dialog.kind = ACTION_BACKGROUND;
@@ -346,11 +345,11 @@ static void spawn_confirmed(bool yes, void *ctx) {
     (void)ctx;
     PendingAction *c = &gh->confirm;
     if (c->kind == ACTION_SPAWN_CHARACTERS && yes)
-        gfx_request_file(ACTION_SPAWN_CHARACTERS, &c->tiles, c->size, c->maxHealth, c->ac, c->speed, c->initiative);
+        gfx_request_file(ACTION_SPAWN_CHARACTERS, &c->tiles, c->size, c->maxHealth, c->speed, c->initiative);
     c->kind = ACTION_NONE;
 }
 
-void gfx_spawn_character(int size, int maxhealth, int ac, int speed, int initiative) {
+void gfx_spawn_character(int size, int maxhealth, int speed, int initiative) {
     if (session_is_client() && gh->selectedTiles.count > 1) { /* players ask for one character at a time */
         console_log("Select one tile");
         return;
@@ -369,7 +368,6 @@ void gfx_spawn_character(int size, int maxhealth, int ac, int speed, int initiat
         hl_copy(&c->tiles, &gh->selectedTiles);
         c->size = size;
         c->maxHealth = maxhealth;
-        c->ac = ac;
         c->speed = speed;
         c->initiative = initiative;
         gfx_set_console_visibility(true);
@@ -384,7 +382,7 @@ void gfx_spawn_character(int size, int maxhealth, int ac, int speed, int initiat
         if (hex_find_closest((Vec2){ gh->winW / 2, gh->winH / 2 }, &h)) da_push(&tiles, h);
     }
     if (tiles.count == 0) console_log("Character summon canceled");
-    else gfx_request_file(ACTION_SPAWN_CHARACTERS, &tiles, size, maxhealth, ac, speed, initiative);
+    else gfx_request_file(ACTION_SPAWN_CHARACTERS, &tiles, size, maxhealth, speed, initiative);
     da_free(&tiles);
 }
 
@@ -393,7 +391,7 @@ void gfx_summon_wall(void) {
         console_log("Select the tiles to place walls on first");
         return;
     }
-    gfx_request_file(ACTION_WALLS, &gh->selectedTiles, 0, 0, 0, 0, 0);
+    gfx_request_file(ACTION_WALLS, &gh->selectedTiles, 0, 0, 0, 0);
 }
 
 /* Per-frame tool updates (done during painting in the Java version). */

@@ -216,7 +216,6 @@ static void put_op(Buf *b, const NetOp *o) {
                 put_sv(b, s->max_health);
                 put_sv(b, s->health);
                 put_sv(b, s->attack);
-                put_sv(b, s->ac);
                 put_sv(b, s->speed);
                 put_sv(b, s->initiative);
             }
@@ -230,8 +229,8 @@ static void put_op(Buf *b, const NetOp *o) {
     case NOP_SET_STATS: {
         put_ids(b, o->ids, o->nids);
         put_u8(b, o->stat_mask);
-        const int32_t v[5] = { o->size, o->max_health, o->ac, o->speed, o->initiative };
-        for (int i = 0; i < 5; i++)
+        const int32_t v[4] = { o->size, o->max_health, o->speed, o->initiative };
+        for (int i = 0; i < 4; i++)
             if (o->stat_mask & (1 << i)) put_sv(b, v[i]);
         break;
     }
@@ -333,7 +332,6 @@ bool netmsg_encode(const NetMsg *m, uint8_t **out, size_t *out_len) {
         put_sv(&b, m->spec.col);
         put_sv(&b, m->spec.size);
         put_sv(&b, m->spec.max_health);
-        put_sv(&b, m->spec.ac);
         put_sv(&b, m->spec.speed);
         put_sv(&b, m->spec.initiative);
         put_bytes(&b, m->data, m->data_len);
@@ -468,7 +466,6 @@ static void get_op(Rd *r, NetOp *o) {
                 s->max_health = get_sv(r);
                 s->health = get_sv(r);
                 s->attack = get_sv(r);
-                s->ac = get_sv(r);
                 s->speed = get_sv(r);
                 s->initiative = get_sv(r);
             }
@@ -483,14 +480,13 @@ static void get_op(Rd *r, NetOp *o) {
     case NOP_SET_STATS: {
         o->ids = get_ids(r, &o->nids);
         o->stat_mask = get_u8(r);
-        int32_t v[5] = { 0 };
-        for (int i = 0; i < 5; i++)
+        int32_t v[4] = { 0 };
+        for (int i = 0; i < 4; i++)
             if (o->stat_mask & (1 << i)) v[i] = get_sv(r);
         o->size = v[0];
         o->max_health = v[1];
-        o->ac = v[2];
-        o->speed = v[3];
-        o->initiative = v[4];
+        o->speed = v[2];
+        o->initiative = v[3];
         break;
     }
     case NOP_SET_ICON:
@@ -616,7 +612,6 @@ bool netmsg_decode(const uint8_t *buf, size_t len, NetMsg *out) {
         out->spec.col = get_sv(&r);
         out->spec.size = get_sv(&r);
         out->spec.max_health = get_sv(&r);
-        out->spec.ac = get_sv(&r);
         out->spec.speed = get_sv(&r);
         out->spec.initiative = get_sv(&r);
         out->spec.health = out->spec.max_health;

@@ -77,7 +77,7 @@ Many commands act on the selection: `:c` (edit characters), `:w` (walls on the s
 - every selected tile, if several are selected (the console asks first);
 - otherwise the tile under the mouse.
 
-Stats can be given right away, e.g. `:c size 1 maxhealth 30 armorclass 15 speed 6 initiative 2`.
+Stats can be given right away, e.g. `:c size 1 maxhealth 30 speed 6 initiative 2`.
 **Set a speed:** a new character's speed is 0 unless you give one, so it cannot move.
 
 ### Edit
@@ -88,7 +88,6 @@ Select one or more characters, then:
 |---|---|---|
 | `:c size <n>` | `sz` | Size from -2 to 3 (bigger sizes cover more tiles) |
 | `:c maxhealth <n>` | `h` | Maximum health |
-| `:c armorclass <n>` | `ac` | Armor class |
 | `:c speed <n>` | `s` | Movement range in tiles (5 ft each), at most 1000 |
 | `:c initiative <n>` | `in` | Initiative stat |
 | `:c icon` | `ic` | Choose a new image |
@@ -222,7 +221,7 @@ line; each player can have at most 3 waiting.
 **Player-created characters:**
 - Players can create their own character with `:c [stats]` on an empty tile and a picture (at most 512×512).
 - Your log says "<player> asks for a new character", and the console asks, for example,
-  `Bob: new character [2|7] size 0 HP 20 AC 12 speed 6 init 1. Allow? (y/n)`.
+  `Bob: new character [2|7] size 0 HP 20 speed 6 init 1. Allow? (y/n)`.
 - While the question is open, only your screen shows the picture faintly on that tile, so you can check it.
 - On `y` the character is created for everyone and belongs to that player; on `n` the player is told you
   declined.
@@ -251,7 +250,8 @@ line; each player can have at most 3 waiting.
 Paths may contain spaces; `~/` means your home folder. The window's close button always quits.
 
 A save holds the background, characters (image, stats and owner), walls, initiative, waypoints, grid orientation,
-camera and theme. It does not hold the console, selections, clipboard or measurements.
+camera and theme. It does not hold the console, selections, clipboard or measurements. Saves from older versions
+still load; an armor class stored in them is ignored.
 
 ## 16. Display and comfort
 

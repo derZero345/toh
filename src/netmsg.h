@@ -21,7 +21,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define NET_PROTOCOL_VERSION 2
+#define NET_PROTOCOL_VERSION 3
 #define NET_DEFAULT_PORT     41234
 #define NET_MAX_FRAME        (64u << 20)            /* one encrypted frame */
 #define NETMSG_MAX_BLOB      (NET_MAX_FRAME - 1024) /* SNAPSHOT / IMAGE payload */
@@ -94,14 +94,14 @@ typedef enum {
 } NetOpType;
 
 /* NetOp.stat_mask bits, the same values as STAT_* in ops.h. Values follow in this order. */
-enum { NSTAT_SIZE = 1, NSTAT_MAXHEALTH = 2, NSTAT_AC = 4, NSTAT_SPEED = 8, NSTAT_INITIATIVE = 16, NSTAT_ALL = 31 };
+enum { NSTAT_SIZE = 1, NSTAT_MAXHEALTH = 2, NSTAT_SPEED = 4, NSTAT_INITIATIVE = 8, NSTAT_ALL = 15 };
 
 /* An entity created by NOP_SPAWN. Walls carry only type, image and tile. */
 typedef struct {
     uint8_t type; /* SAVE_ENT_* */
     uint8_t image[NET_HASH_SIZE];
     int32_t row, col;
-    int32_t size, max_health, health, attack, ac, speed, initiative;
+    int32_t size, max_health, health, attack, speed, initiative;
 } NetSpec;
 
 typedef struct {
@@ -117,7 +117,7 @@ typedef struct {
     bool has_image;
     uint8_t image[NET_HASH_SIZE];
     uint8_t stat_mask;
-    int32_t size, max_health, ac, speed, initiative;
+    int32_t size, max_health, speed, initiative;
     char name[SAVEFMT_NAME_MAX]; /* waypoint or player name */
     char dice[NETMSG_MAX_DICE];
 } NetOp;

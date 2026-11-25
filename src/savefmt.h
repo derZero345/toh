@@ -2,8 +2,9 @@
 #define TOH_SAVEFMT_H
 
 /*
- * .tuhh file format, version 2: encoding, decoding and validation.
+ * .tuhh file format, version 3: encoding, decoding and validation.
  * Version 2 adds an owner name after each character's stats; version 1 files still load (no owners).
+ * Version 3 drops the armor class (versions 1 and 2 store one after attack; it is skipped).
  *
  * Plain C11 on top of libzstd, libwebp and libsodium. It knows nothing about SDL,
  * Vulkan or the App struct, so tools or a server can reuse it to validate files.
@@ -18,7 +19,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SAVEFMT_VERSION     2
+#define SAVEFMT_VERSION     3
 #define SAVEFMT_TAG_SIZE    32
 #define SAVEFMT_HEADER_SIZE 12 /* magic, version, flags, state_len */
 
@@ -68,7 +69,7 @@ typedef struct {
     uint32_t image; /* index into SaveData.images */
     int32_t row, col;
     /* characters only (not stored for walls) */
-    int32_t size, max_health, health, attack, ac, speed, initiative;
+    int32_t size, max_health, health, attack, speed, initiative;
     char owner[SAVEFMT_OWNER_MAX]; /* characters only: player name, "" = no owner (version 2) */
 } SaveEntity;
 

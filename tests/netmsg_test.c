@@ -58,7 +58,7 @@ static NetOp sample_op(int type) {
         break;
     case NOP_SPAWN:
         specs2[0] = (NetSpec){ .type = SAVE_ENT_CHARACTER, .row = 3, .col = -4, .size = 1, .max_health = 30,
-                               .health = 12, .attack = 5, .ac = 15, .speed = 6, .initiative = -1 };
+                               .health = 12, .attack = 5, .speed = 6, .initiative = -1 };
         fill_hash(specs2[0].image, 1);
         specs2[1] = (NetSpec){ .type = SAVE_ENT_WALL, .row = -1000000, .col = 9 };
         fill_hash(specs2[1].image, 2);
@@ -71,7 +71,7 @@ static NetOp sample_op(int type) {
         break;
     case NOP_SET_STATS:
         o.ids = ids3; o.nids = 1;
-        o.stat_mask = 1 | 4 | 16; o.size = -2; o.ac = 21; o.initiative = 4;
+        o.stat_mask = 1 | 4 | 8; o.size = -2; o.speed = 21; o.initiative = 4;
         break;
     case NOP_SET_ICON:
         o.ids = ids3; o.nids = 2;
@@ -129,7 +129,7 @@ static NetMsg sample_msg(int t, int op_type) {
     case NM_CREATE:
         m.seq = 7;
         m.spec = (NetSpec){ .type = SAVE_ENT_CHARACTER, .row = 3, .col = -4, .size = -2, .max_health = 20,
-                            .health = 20, .ac = 12, .speed = 6, .initiative = 1 };
+                            .health = 20, .speed = 6, .initiative = 1 };
         m.data = blob; m.data_len = sizeof(blob);
         break;
     }
@@ -214,8 +214,8 @@ static void test_fields_survive(void) {
     netmsg_free(&d);
 
     m = sample_msg(NM_OP, NOP_SET_STATS);
-    CHECK(round_trip(&m, &d) && d.seq == 99 && d.op.stat_mask == 21 && d.op.size == -2 && d.op.ac == 21 &&
-          d.op.initiative == 4 && d.op.speed == 0);
+    CHECK(round_trip(&m, &d) && d.seq == 99 && d.op.stat_mask == 13 && d.op.size == -2 && d.op.speed == 21 &&
+          d.op.initiative == 4 && d.op.max_health == 0);
     netmsg_free(&d);
 
     m = sample_msg(NM_OP, NOP_INIT_ADD);
@@ -356,8 +356,8 @@ static void test_encoder_refuses_invalid(void) {
     m = sample_msg(NM_OP, NOP_SPAWN); specs2[0].speed = SAVEFMT_MAX_SPEED + 1; check_invalid(m, "speed too big");
     m = sample_msg(NM_OP, NOP_SPAWN); specs2[1].type = 2; check_invalid(m, "unknown entity type");
     m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = 0; check_invalid(m, "empty stat mask");
-    m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = 32; check_invalid(m, "unknown stat bit");
-    m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = 8; m.op.speed = SAVEFMT_MAX_SPEED + 1; check_invalid(m, "stat speed too big");
+    m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = 16; check_invalid(m, "unknown stat bit");
+    m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = NSTAT_SPEED; m.op.speed = SAVEFMT_MAX_SPEED + 1; check_invalid(m, "stat speed too big");
     m = sample_msg(NM_OP, NOP_SET_ICON); m.op.has_image = false; check_invalid(m, "icon without image");
     m = sample_msg(NM_OP, NOP_INIT_ADD); m.op.nvalues = 2; check_invalid(m, "values != ids");
     m = sample_msg(NM_OP, NOP_INIT_ADD); values3[2] = NAN; check_invalid(m, "NaN initiative"); values3[2] = 19.0;
@@ -401,7 +401,7 @@ static void test_create(void) {
     NetMsg m = sample_msg(NM_CREATE, 0), d;
     CHECK(round_trip(&m, &d) && d.seq == 7 && d.spec.type == SAVE_ENT_CHARACTER && d.spec.row == 3 &&
           d.spec.col == -4 && d.spec.size == -2 && d.spec.max_health == 20 && d.spec.health == 20 &&
-          d.spec.ac == 12 && d.spec.speed == 6 && d.spec.initiative == 1 && d.data_len == sizeof(blob));
+          d.spec.speed == 6 && d.spec.initiative == 1 && d.data_len == sizeof(blob));
     netmsg_free(&d);
     uint8_t *buf;
     size_t len;
