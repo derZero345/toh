@@ -22,22 +22,13 @@ static const uint8_t TAG_KEY[32] = {
 #define ZSTD_LEVEL 19
 #define WEBP_LOSSY_QUALITY 90
 
-bool savefmt_char_name_valid(const char *name) {
+/* Names shown to people: valid UTF-8 shorter than cap, without control, invisible or formatting
+ * characters. spaces: plain spaces are allowed, but not a name of spaces only. */
+static bool name_valid(const char *name, size_t cap, bool spaces) {
     if (!name) return false;
-    size_t n = strnlen(name, SAVEFMT_CHAR_NAME_MAX);
-    if (n == 0 || n >= SAVEFMT_CHAR_NAME_MAX || !utf8_valid(name, n)) return false;
-    for (size_t i = 0; i < n; i++) {
-        uint8_t c = (uint8_t)name[i];
-        if (c < 0x20 || c == 0x7F) return false;
-        if (c == 0xC2 && (uint8_t)name[i + 1] <= 0x9F) return false; /* U+0080..U+009F (utf8_valid: a continuation follows) */
-    }
-    return true;
-}
-
-bool savefmt_owner_valid(const char *name) {
-    if (!name) return false;
-    size_t n = strnlen(name, SAVEFMT_OWNER_MAX);
-    if (n == 0 || n >= SAVEFMT_OWNER_MAX || !utf8_valid(name, n)) return false;
+    size_t n = strnlen(name, cap);
+    if (n == 0 || n >= cap || !utf8_valid(name, n)) return false;
+    bool visible = false;
     for (size_t i = 0; i < n;) {
         uint8_t c = (uint8_t)name[i];
         uint32_t cp;
@@ -48,12 +39,18 @@ bool savefmt_owner_valid(const char *name) {
         else { cp = c & 0x07; len = 4; }
         for (size_t k = 1; k < len; k++) cp = (cp << 6) | ((uint8_t)name[i + k] & 0x3F);
         i += len;
+        if (cp == 0x20 && spaces) continue;
         if (cp <= 0x20 || (cp >= 0x7F && cp <= 0xA0) || cp == 0xAD) return false;
         if ((cp >= 0x2000 && cp <= 0x200F) || (cp >= 0x2028 && cp <= 0x202F)) return false;
         if ((cp >= 0x205F && cp <= 0x206F) || cp == 0x3000 || cp == 0xFEFF) return false;
+        visible = true;
     }
-    return true;
+    return visible;
 }
+
+bool savefmt_char_name_valid(const char *name) { return name_valid(name, SAVEFMT_CHAR_NAME_MAX, true); }
+
+bool savefmt_owner_valid(const char *name) { return name_valid(name, SAVEFMT_OWNER_MAX, false); }
 
 /* ---- validation (shared by encoder and decoder) ------------------------------------------ */
 

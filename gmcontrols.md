@@ -135,7 +135,9 @@ footprint (old large → Huge, old huge and gargantuan → Gigantic).
   - Critical below −½ max HP;
   - dead at −max HP.
 - After each change your log shows the result, e.g. `Mao: 14/20 -> 10/20 (Injured)`.
-- `damage` and `heal` add to the current HP, so changes from several people at once add up.
+- `damage` and `heal` add to the current HP, so changes from several people at once add up. HP values go up to
+  1,000,000 either way, and one command takes at most 8 HP changes.
+- `hp`, `damage`, `heal` and `name` on a selection without characters say "Select the characters first".
 - A character at full HP stays at full HP when you change its max HP.
 - **HP panel** in the top right corner: you see one for each selected character, and players see one for each
   character they own. Each panel shows:
@@ -178,7 +180,7 @@ or by creating them on a tile, no bulk is checked.
 | Ctrl + C | Copy the selected entities |
 | Ctrl + V | Paste them at the tile under the mouse, in the same arrangement. Each paste is relative to the previous one, so pasting repeatedly makes a row. |
 
-Pasted characters have no owner.
+Pasted characters keep their name and HP but have no owner.
 
 ## 8. Initiative
 
@@ -300,7 +302,7 @@ anything else asks again). Several requests wait in line; each player can have a
 | `:q` | Quit (refused if there are unsaved changes) |
 | `:q!` | Quit without saving |
 
-Paths may contain spaces; `~/` means your home folder. The window's close button always quits.
+Paths may contain spaces, with or without quotes around them; `~/` means your home folder. The window's close button always quits.
 
 A save holds the background, characters (image, stats, current HP, name and owner), walls, initiative, waypoints, grid orientation,
 camera and theme. It does not hold the console, selections, clipboard or measurements. Saves from older versions

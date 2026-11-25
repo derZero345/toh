@@ -120,7 +120,8 @@ static bool blob_ok(const NetMsg *m) { return m->data && m->data_len >= 1 && m->
 
 static bool msg_ok(const NetMsg *m) {
     switch (m->type) {
-    case NM_HELLO:         return savefmt_owner_valid(m->name);
+    case NM_HELLO: /* no '"': console arguments drop quotes, so :kick / :ban could not name the player */
+        return savefmt_owner_valid(m->name) && !strchr(m->name, '"');
     case NM_WELCOME:       return true;
     case NM_REJECT:        return m->reason >= 1 && m->reason <= NET_REJECT_MAX;
     case NM_CLOSE:         return m->reason >= 1 && m->reason <= NET_CLOSE_MAX;

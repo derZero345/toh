@@ -13,7 +13,7 @@ to open it with a `:` already typed, write the command and press Enter.
 ```
 
 The GM gives you the code (it starts with `toh1-`); you can paste it with Ctrl + V. Your name can be up to
-24 characters, without spaces. After you join, your table is replaced by the GM's.
+24 characters, without spaces or quotes. After you join, your table is replaced by the GM's.
 
 ## 2. Move your character
 

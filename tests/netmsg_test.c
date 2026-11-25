@@ -420,6 +420,15 @@ static void test_decoder_refuses_bytes(void) {
     }
 }
 
+/* console arguments drop quotes, so :kick / :ban could not name a player called Eve" */
+static void test_hello_no_quotes(void) {
+    NetMsg m = sample_msg(NM_HELLO, 0);
+    uint8_t *buf;
+    size_t len;
+    strcpy(m.name, "Eve\"");
+    CHECK(!netmsg_encode(&m, &buf, &len));
+}
+
 static void test_create(void) {
     NetMsg m = sample_msg(NM_CREATE, 0), d;
     CHECK(round_trip(&m, &d) && d.seq == 7 && d.spec.type == SAVE_ENT_CHARACTER && d.spec.row == 3 &&
@@ -602,6 +611,7 @@ int main(int argc, char **argv) {
     test_encoder_refuses_invalid();
     test_decoder_refuses_bytes();
     test_create();
+    test_hello_no_quotes();
     test_image_hash();
     test_joincode_round_trip();
     test_joincode_rejects();

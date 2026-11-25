@@ -621,6 +621,9 @@ static void test_char_names(void) {
           !savefmt_char_name_valid("\xc2\x85") && !savefmt_char_name_valid("\xff"));
     CHECK(savefmt_char_name_valid("12345678901234567890123456789012"));   /* 32 bytes */
     CHECK(!savefmt_char_name_valid("123456789012345678901234567890123")); /* 33 */
+    CHECK(!savefmt_char_name_valid("   ") && !savefmt_char_name_valid("a\xe2\x80\x8b") && /* spaces only, U+200B */
+          !savefmt_char_name_valid("\xe2\x80\xae") && !savefmt_char_name_valid("\xef\xbb\xbf")); /* U+202E, U+FEFF */
+    CHECK(savefmt_char_name_valid(" Mao ") && !savefmt_owner_valid("Mao C")); /* players' names have no spaces */
 
     Sample s;
     sample_init(&s);

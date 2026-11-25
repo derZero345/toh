@@ -451,15 +451,21 @@ static void cmd_character(Args *a) {
         if (!strcmp(key, "hp") || !strcmp(key, "damage") || !strcmp(key, "dmg") || !strcmp(key, "heal")) {
             int v;
             bool change = strcmp(key, "hp") != 0;
-            if (!parse_int_arg(val, &v) || (change && v < 0) || v > SAVEFMT_MAX_HP || v < -SAVEFMT_MAX_HP) {
+            if (!parse_int_arg(val, &v) || (change && v < 0)) {
                 console_log("Expected a number after \"%s\"", a->argv[i]);
                 return;
             }
-            if (nhp < 8) {
-                hp[nhp].mode = change ? HEALTH_CHANGE : HEALTH_SET;
-                hp[nhp].value = !strcmp(key, "damage") || !strcmp(key, "dmg") ? -v : v;
-                nhp++;
+            if (v > SAVEFMT_MAX_HP || v < -SAVEFMT_MAX_HP) {
+                console_log("HP values go from -%d to %d", SAVEFMT_MAX_HP, SAVEFMT_MAX_HP);
+                return;
             }
+            if (nhp == 8) {
+                console_log("At most 8 HP changes per command");
+                return;
+            }
+            hp[nhp].mode = change ? HEALTH_CHANGE : HEALTH_SET;
+            hp[nhp].value = !strcmp(key, "damage") || !strcmp(key, "dmg") ? -v : v;
+            nhp++;
             i += 2;
             continue;
         }
@@ -503,6 +509,7 @@ static void cmd_character(Args *a) {
         icon_targets++;
     }
     if (stats.statMask && stats.ids.count > 0) ops_submit(&stats);
+    if ((has_name || nhp > 0) && stats.ids.count == 0) console_log("Select the characters first");
     if (has_name && stats.ids.count > 0) {
         Op nm = { .type = OP_SET_NAME };
         snprintf(nm.charName, sizeof(nm.charName), "%s", name);
@@ -844,7 +851,12 @@ static const char *rest_of_line(const char *input, char *out, size_t cap) {
     while (*p && !isspace((unsigned char)*p)) p++;
     while (isspace((unsigned char)*p)) p++;
     snprintf(out, cap, "%s", p);
-    for (size_t n = strlen(out); n > 0 && isspace((unsigned char)out[n - 1]); n--) out[n - 1] = '\0';
+    size_t n = strlen(out);
+    for (; n > 0 && isspace((unsigned char)out[n - 1]); n--) out[n - 1] = '\0';
+    if (n >= 2 && out[0] == '"' && out[n - 1] == '"') { /* "my map" -> my map */
+        memmove(out, out + 1, n - 2);
+        out[n - 2] = '\0';
+    }
     return out;
 }
 
