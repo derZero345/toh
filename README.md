@@ -53,8 +53,8 @@ in the Java version.
 | Alt + X / S / A / C / V | drag / measure / area / cone / line tool |
 
 Console commands: `:q` quit, `:b [file.png]` background, `:d` debug, `:c` character
-(`delete`, `size n`, `maxhealth n`, `speed n`, `initiative n`, `icon`, `owner <player|none>`, `name <name>`,
-`hp n`, `damage n`, `heal n`; the HP panel in the top right corner shows your characters' HP),
+(`delete`, `size n`, `maxhealth n`, `maxstamina n`, `stamina n`, `spend n`, `recover n`, `speed n`, `initiative n`, `icon`, `owner <player|none>`, `name <name>`,
+`hp n`, `damage n`, `heal n`; the panel in the top right corner shows your characters' HP and stamina),
 `:w [delete]` wall, `:e delete`, `:r 2d6+3` roll, `:g` grid orientation, `:gm` gamemaster,
 `:i [add|remove|clear|show|next]` initiative, `:cl` clear, `:t [name]` theme, `:h [command]` help,
 `:save [file]` / `:load[!] [file]` save files (see below), `:q!` quit without saving,
@@ -78,7 +78,7 @@ along and cannot read the game.
    on an empty tile and a picture; the GM sees the stats and a faint preview and answers y/n.
 
 Players can move their own characters (Shift + click inside the green range; while initiative runs only on their
-turn), change the HP and name of their own characters, end their turn with `:i next`, roll dice (`:r`, rolled by the host and shown to everyone) and save a copy of
+turn), change the HP, stamina and name of their own characters, end their turn with `:i next`, roll dice (`:r`, rolled by the host and shown to everyone) and save a copy of
 the table. Everything else is the GM's. `:players` lists who is at the table, `:kick <name>` removes someone,
 `:leave` / `:unhost` end it; players keep the last table as an unsaved offline table.
 A kicked player can rejoin with the same code; `:ban <name>` removes them and turns away both that name and their
@@ -105,11 +105,11 @@ Like nvim, `:q` and `:load` refuse to throw away unsaved changes: `No write sinc
 Use `:q!` / `:load!` to discard them. Camera, zoom and theme are saved but don't count as changes. The window's
 close button always quits.
 
-A save contains the background, characters (image, stats, current HP, name and owner), walls, the initiative order, waypoints, grid
+A save contains the background, characters (image, stats, current HP and stamina, name and owner), walls, the initiative order, waypoints, grid
 orientation, camera and theme; not the console, selections, clipboard or measurements. `:c owner <player>` gives the
 selected characters to a player; pasted copies have no owner.
 
-The format (`src/savefmt.h`, version 5; files from older versions still load) is binary and compact: the game state is packed with varints and zstd-compressed, and
+The format (`src/savefmt.h`, version 6; files from older versions still load) is binary and compact: the game state is packed with varints and zstd-compressed, and
 every image is stored once as WebP (lossless for characters and walls, quality 90 for the background; images over
 16383 px are scaled down). Saves are written to `file.tmp` first and then renamed, and a load only replaces the
 table once the whole file has been checked.

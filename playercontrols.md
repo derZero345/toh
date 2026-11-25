@@ -29,12 +29,16 @@ While initiative is running, you can only move on your character's turn.
 Characters can share a tile when there is room: a tile holds 5 bulk, and a Wee character takes 0, Tiny 1, Small 2,
 Normal 3, Big 4. So a Small character can step onto a Normal one's tile, but two Normal ones can't share.
 
-## 3. Your HP
+## 3. Your HP and stamina
 
 The top right corner shows a panel for each of your characters: its name and a red HP bar with
 `current/max` inside it. The line in the middle marks where your character becomes injured. Below 0 HP your
 character is dying: the bar grows to the left out of its frame, and a second line shows where it becomes
 critical.
+
+If your character has stamina, a green bar under the HP bar shows it (`current/max`). Type `:c spend <n>` to use
+stamina (refused with "Not enough stamina" if you don't have enough) and `:c recover <n>` to get it back, up to the
+maximum. At 0 your character is exhausted. `:c stamina <n>` sets it directly.
 
 Select your character and type `:c damage <n>`, `:c heal <n>` or `:c hp <n>` to change its HP, and
 `:c name <name>` to name it (quotes for spaces: `:c name "Mao Clausewitz"`).
@@ -74,7 +78,7 @@ no.
 
 **Create your own:**
 1. Click an empty tile, so that nothing else is selected.
-2. Type `:c` with your stats, for example `:c name Mao speed 6 maxhealth 20 initiative 2`. Without `speed` your
+2. Type `:c` with your stats, for example `:c name Mao speed 6 maxhealth 20 maxstamina 9 initiative 2`. Without `speed` your
    character can't move.
 3. Pick a picture (PNG). Large pictures are shrunk to 512×512.
 

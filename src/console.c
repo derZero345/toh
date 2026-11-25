@@ -552,7 +552,7 @@ static void cmd_help(Args *a) {
         console_log("  initiative <n> | icon | owner <player|none>");
         console_log("  name <name> (quotes for spaces) | hp <n> | damage <n> | heal <n>");
         console_log("  maxstamina <n> | stamina <n> | spend <n> | recover <n>");
-        console_log("  players: name and HP of your own characters; with nothing selected,");
+        console_log("  players: name, HP and stamina of your own characters; with nothing selected,");
         console_log("  asks the GM for a new character of your own");
     } else if (!strcmp(arg, "wall") || !strcmp(arg, ":w")) {
         console_log(":w  or wall # Place walls on the selected tiles - delete: remove walls");

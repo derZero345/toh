@@ -79,7 +79,7 @@ Many commands act on the selection: `:c` (edit characters), `:w` (walls on the s
 - every selected tile, if several are selected (the console asks first);
 - otherwise the tile under the mouse.
 
-Stats can be given right away, e.g. `:c name Mao size 3 maxhealth 30 speed 6 initiative 2`. Without `size` a character is
+Stats can be given right away, e.g. `:c name Mao size 3 maxhealth 30 maxstamina 9 speed 6 initiative 2`. Without `size` a character is
 Normal (1).
 **Set a speed:** a new character's speed is 0 unless you give one, so it cannot move.
 
@@ -91,6 +91,7 @@ Select one or more characters, then:
 |---|---|---|
 | `:c size <n>` | `sz` | Size class of Tales of Honor, see the table below |
 | `:c maxhealth <n>` | `h` | Maximum health |
+| `:c maxstamina <n>` | `ms` | Maximum stamina; 0 (the default) means the character has no stamina |
 | `:c speed <n>` | `s` | Movement range in tiles (5 ft each), at most 1000 |
 | `:c initiative <n>` | `in` | Initiative stat |
 | `:c icon` | `ic` | Choose a new image |
@@ -118,7 +119,7 @@ a shared tile are drawn side by side inside it; the selected one gets a blue cir
 Saves from older versions used other sizes; they are converted when loaded so every character keeps its
 footprint (old large → Huge, old huge and gargantuan → Gigantic).
 
-### Names and current HP
+### Names, current HP and stamina
 
 | Command | Short | Action |
 |---|---|---|
@@ -126,8 +127,11 @@ footprint (old large → Huge, old huge and gargantuan → Gigantic).
 | `:c hp <n>` | | Set current HP |
 | `:c damage <n>` | `dmg` | Lower current HP by n |
 | `:c heal <n>` | | Raise current HP by n |
+| `:c stamina <n>` | `st` | Set current stamina (can go below 0, down to −max) |
+| `:c spend <n>` | | Lower current stamina by n; refused if it would go below 0 |
+| `:c recover <n>` | | Raise current stamina by n, up to the maximum |
 
-- You can change the name and HP of any character. Players can change them for their own characters.
+- You can change the name, HP and stamina of any character. Players can change them for their own characters.
 - HP goes from max HP down to −max HP, as in Tales of Honor:
   - Healthy at ½ max HP or more;
   - Injured at 1 or more;
@@ -136,13 +140,23 @@ footprint (old large → Huge, old huge and gargantuan → Gigantic).
   - dead at −max HP.
 - After each change your log shows the result, e.g. `Mao: 14/20 -> 10/20 (Injured)`.
 - `damage` and `heal` add to the current HP, so changes from several people at once add up. HP values go up to
-  1,000,000 either way, and one command takes at most 8 HP changes.
-- `hp`, `damage`, `heal` and `name` on a selection without characters say "Select the characters first".
+  1,000,000 either way, and one command takes at most 8 HP or stamina changes. Values go from -1000000 to 1000000.
+- `hp`, `damage`, `heal`, `stamina`, `spend`, `recover` and `name` on a selection without characters say "Select the characters first".
 - A character at full HP stays at full HP when you change its max HP.
+- **Stamina:** a character with max stamina above 0 has a stamina stat, as in Tales of Honor.
+  - `spend` is refused with "Not enough stamina" if the result would be below 0. If several characters are selected
+    and any of them can't pay, nothing is spent. The host checks it, so two people spending at once can't get past 0.
+  - `recover` stops at the maximum.
+  - Only `:c stamina <n>` can set it below 0.
+  - At 0 or below the character is exhausted: its name shows "(exhausted)" and the log line ends with " (exhausted)".
+  - The log shows e.g. `Mao: stamina 9/9 -> 6/9`.
+  - A character at full stamina stays full when you change its max stamina.
+  - Players can also give `maxstamina` in a request for a new character; the GM's question shows " ST n".
 - **HP panel** in the top right corner: you see one for each selected character, and players see one for each
   character they own. Each panel shows:
   - the name, with "(dead)" at −max HP;
   - a red bar with `current/max` inside it;
+  - under it, a green stamina bar with `current/max`, if the character has max stamina (below 0 it grows to the left out of its frame too);
   - a line in the middle where the character becomes injured.
 - While a character is dying, the bar grows to the left out of its frame, and a second line shows where it
   becomes critical. If the panels don't fit, the last line says `+N more`. Ctrl + `+` / `-` changes their size.
@@ -304,7 +318,7 @@ anything else asks again). Several requests wait in line; each player can have a
 
 Paths may contain spaces, with or without quotes around them; `~/` means your home folder. The window's close button always quits.
 
-A save holds the background, characters (image, stats, current HP, name and owner), walls, initiative, waypoints, grid orientation,
+A save holds the background, characters (image, stats, current HP and stamina, name and owner), walls, initiative, waypoints, grid orientation,
 camera and theme. It does not hold the console, selections, clipboard or measurements. Saves from older versions
 still load; an armor class stored in them is ignored.
 
@@ -357,7 +371,7 @@ Players can:
 - jump to waypoints and coordinates;
 - use the measure and attack tools;
 - save a copy of the table;
-- change the HP and name of their own characters (`:c hp`, `damage`, `heal`, `name`);
+- change the HP, stamina and name of their own characters (`:c hp`, `damage`, `heal`, `stamina`, `spend`, `recover`, `name`), and give max stamina in a request for a new character;
 - change their own camera, zoom and theme.
 
 Everything else is yours, including:
