@@ -838,9 +838,10 @@ static void ask_next_request(void) {
             entity_label(e, label, sizeof(label));
             snprintf(q, sizeof(q), "%s wants to claim %s. Allow? (y/n)", p->name, label);
         } else {
-            snprintf(q, sizeof(q), "%s wants to create a character at [%d|%d]: size %d, max health %d, AC %d, "
-                     "speed %d, initiative %d. Allow? (y/n)", p->name, c->spec.tile.row, c->spec.tile.col,
-                     c->spec.size, c->spec.maxHealth, c->spec.ac, c->spec.speed, c->spec.initiative);
+            /* short: the input line shows about 70 characters */
+            snprintf(q, sizeof(q), "%s: new character [%d|%d] size %d HP %d AC %d speed %d init %d. Allow? (y/n)",
+                     p->name, c->spec.tile.row, c->spec.tile.col, c->spec.size, c->spec.maxHealth, c->spec.ac,
+                     c->spec.speed, c->spec.initiative);
         }
         gfx_set_console_visibility(true);
         S.claimAsked = console_confirm(q, request_answer, NULL);

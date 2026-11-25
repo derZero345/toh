@@ -49,12 +49,28 @@ tint() {
     awk -v r="${rb% *}" -v b="${rb#* }" 'BEGIN { print (r - b > 0.1) ? "gold" : (b - r > 0.1) ? "blue" : "none" }'
 }
 
+# Is there an ownership ring in blue (Bob's color) right of the tile at pixel X Y? Scans a 60 px strip
+# starting 10 px right of the point for a clearly blue pixel.
+blue_ring() {
+    magick "$1" -crop 60x1+$(($2 + 10))+$3 +repage -depth 8 txt:- |
+        awk -F'[(),]' 'NR > 1 { if ($5 - $3 > 80) found = 1 } END { exit !found }'  # fields 3-5: R G B
+}
+
+# Mean grey of the tile at pixel X Y is between that of an empty tile and the icon: a faint preview.
+faint() {
+    local v
+    v=$(magick "$1" -crop 16x16+$(($2 - 8))+$(($3 - 8)) +repage -colorspace gray -format '%[fx:mean]' info:)
+    awk -v v="$v" 'BEGIN { exit !(v > 0.70 && v < 0.86) }'
+}
+
+# The dice of a roll land anywhere on screen; ":r 0d6" right after ":r 2d6" clears them before any check.
 # Tiles (pixel coordinates): A = Bob's character, B = the GM's, C = spawned after Bob joined.
 A="300 200"; A2="300 260"    # Bob moves A one tile down
 B="380 260"; B2="380 320"    # Bob tries to move B (refused); the GM moves B to B3
 B3="440 260"
 C="200 320"; C2="200 380"    # Bob claims C, the GM agrees, Bob moves it
 P="500 140"; Q="140 140"     # empty tiles: the GM selects P, Bob selects Q (presence)
+D="440 140"; D2="440 200"    # Bob asks for a new character on D, the GM agrees, Bob moves it to D2
 
 TOH_JOINCODE_FILE="$out/code" timeout 90 ./toh --size 600x400 --port "$port" --auto-file "$icon" \
     --exec "@click $A" --exec ":c speed 6" --exec "@click $A" --exec ":c owner Bob" --exec "@click $A" \
@@ -68,11 +84,14 @@ TOH_JOINCODE_FILE="$out/code" timeout 90 ./toh --size 600x400 --port "$port" --a
     --exec "@shot $out/host-moved.png" \
     --exec "@click $B" --exec "@down lshift" --exec "@click $B3" --exec "@up lshift" \
     --exec "@click $C" --exec ":c speed 6" \
-    --exec ":r 2d6" \
+    --exec ":r 2d6" --exec ":r 0d6" \
     --exec "@touch $out/host-changed" \
     --exec "@waitfile $out/claimed" --exec "@wait 30" --exec "y" --exec "@touch $out/granted" \
     --exec "@waitfile $out/client-checked" --exec "@wait 30" \
     --exec "@shot $out/host-claim.png" \
+    --exec "@waitfile $out/requested" --exec "@wait 30" --exec "@shot $out/host-request.png" --exec "y" \
+    --exec "@touch $out/created" --exec "@waitfile $out/client-moved2" --exec "@wait 30" \
+    --exec "@shot $out/host-created.png" \
     --exec ":unhost" --exec "@wait 10" --exec ":q!" \
     > "$out/host.log" 2>&1 &
 host=$!
@@ -84,7 +103,7 @@ code=$(cat "$out/code")
 
 # The client's final :q must be refused (after the session ended the table counts as modified);
 # :q! then quits.
-timeout 90 ./toh --size 600x400 \
+timeout 90 ./toh --size 600x400 --auto-file "$icon" \
     --exec ":join $code Bob" --exec "@waitnet 1" --exec "@wait 10" \
     --exec "@shot $out/client-joined.png" --exec "@touch $out/client-joined" \
     --exec "@waitfile $out/host-selected" --exec "@wait 30" --exec "@shot $out/client-presence.png" \
@@ -98,6 +117,11 @@ timeout 90 ./toh --size 600x400 \
     --exec "@waitfile $out/granted" --exec "@wait 30" \
     --exec "@down lshift" --exec "@click $C2" --exec "@up lshift" --exec "@wait 30" \
     --exec "@shot $out/client-claim.png" --exec "@touch $out/client-checked" \
+    --exec "@click $D" --exec ":c speed 6" --exec "@wait 20" --exec "@shot $out/client-requested.png" \
+    --exec "@touch $out/requested" --exec "@waitfile $out/created" --exec "@wait 30" \
+    --exec "@shot $out/client-created.png" \
+    --exec "@click $D" --exec "@down lshift" --exec "@click $D2" --exec "@up lshift" --exec "@wait 30" \
+    --exec "@touch $out/client-moved2" \
     --exec "@wait 60" \
     --exec ":q" --exec "@shot $out/client-quit-refused.png" --exec ":q!" \
     > "$out/client.log" 2>&1 || fail "the client exited with status $? (see $out/client.log)"
@@ -123,6 +147,14 @@ occupied "$out/client-changed.png" $C || fail "the character the GM spawned did 
 # the GM granted Bob's claim, so Bob could move the new character
 occupied "$out/host-claim.png" $C2 || fail "Bob could not move the character he claimed"
 ! occupied "$out/host-claim.png" $C || fail "the claimed character is still at its old tile"
+# ownership rings: Bob's character has his blue ring, the GM's has none
+blue_ring "$out/client-joined.png" $A || fail "Bob's character has no blue ring"
+! blue_ring "$out/client-joined.png" $B || fail "the GM's character has a blue ring"
+# Bob's own character: the party does not see the request, the GM sees a faint preview, then it is created
+! occupied "$out/client-requested.png" $D || fail "the requested character showed before the GM agreed"
+faint "$out/host-request.png" $D || fail "the GM does not see a preview of the requested character"
+occupied "$out/client-created.png" $D || fail "the accepted character does not show on the client"
+occupied "$out/host-created.png" $D2 || fail "Bob could not move the character he created"
 [ -f "$out/client-quit-refused.png" ] || fail ":q quit the client although the session ended"
 
 if [ "$mode" = relay ]; then
