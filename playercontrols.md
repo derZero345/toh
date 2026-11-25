@@ -52,10 +52,15 @@ game rolls, and everyone sees the result. You can roll at most 10 times in 10 se
 | `tp <waypoint>` | Jump to a waypoint the GM made (`tp waypoint` lists them) |
 | `tp <row> <col>` | Jump to a tile |
 
-## 6. Ask for a character
+## 6. Get a character
 
-Select a character that has no owner yet, then type `:claim`. The GM answers yes or no. You can have at most
-3 requests waiting at once.
+**Claim one that exists:** select a character that has no owner yet, then type `:claim`. The GM answers yes or
+no. You can have at most 3 requests waiting at once.
+
+**Create your own (coming soon, not in the game yet):** with nothing selected, click an empty tile and type
+`:c` with your stats, for example `:c speed 6 maxhealth 20 armorclass 12`. Then pick a picture. The GM sees
+your stats and the picture and accepts or declines. The rest of the table only sees your character once the GM
+says yes, so you can surprise the party. Until then, ask the GM to create the character for you.
 
 ## 7. Measure and aim
 

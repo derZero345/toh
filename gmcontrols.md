@@ -218,6 +218,14 @@ needed.
 "<player> wants to claim character #... Allow? (y/n)". Type `y` or `n` and press Enter. Several requests wait in
 line; each player can have at most 3 waiting.
 
+**Player-created characters and ownership rings (coming soon, not in the game yet):**
+- Players will be able to create their own character with `:c [stats]` and a picture. Your console asks
+  "<player> wants to create a character at [r|c]: size, max health, AC, speed, initiative. Allow? (y/n)", and only
+  your screen shows the picture faintly on that tile. On `y` the character is created and belongs to that player.
+  These requests count towards the same limit of 3.
+- During a session, every owned character will get a ring in its owner's color (grey if the owner isn't at the
+  table).
+
 ## 15. Saving and loading
 
 | Command | Action |
