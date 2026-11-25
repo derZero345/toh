@@ -152,6 +152,11 @@ static void write_state(Buf *b, const SaveData *d, bool fingerprint) {
     }
 }
 
+int32_t savefmt_size_from_v3(int32_t s) {
+    if (s <= 0) return s + 1 < SAVEFMT_MIN_SIZE ? SAVEFMT_MIN_SIZE : s + 1; /* tiny, small, normal: one tile */
+    return s == 1 ? 3 : 4; /* large (3 tiles) -> huge; huge (7) and gargantuan (12) -> gigantic */
+}
+
 static SaveError read_state(const uint8_t *p, size_t n, uint16_t version, SaveData *d) {
     Rd r = { p, n, 0, false };
     uint8_t flags = get_u8(&r);
@@ -182,6 +187,7 @@ static SaveError read_state(const uint8_t *p, size_t n, uint16_t version, SaveDa
         e->col = get_sv(&r);
         if (e->type == SAVE_ENT_CHARACTER) {
             e->size = get_sv(&r);
+            if (version < 4) e->size = savefmt_size_from_v3(e->size);
             e->max_health = get_sv(&r);
             e->health = get_sv(&r);
             e->attack = get_sv(&r);

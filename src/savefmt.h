@@ -2,9 +2,10 @@
 #define TOH_SAVEFMT_H
 
 /*
- * .tuhh file format, version 3: encoding, decoding and validation.
+ * .tuhh file format, version 4: encoding, decoding and validation.
  * Version 2 adds an owner name after each character's stats; version 1 files still load (no owners).
  * Version 3 drops the armor class (versions 1 and 2 store one after attack; it is skipped).
+ * Version 4 uses the size classes of Tales of Honor; older sizes are converted (savefmt_size_from_v3).
  *
  * Plain C11 on top of libzstd, libwebp and libsodium. It knows nothing about SDL,
  * Vulkan or the App struct, so tools or a server can reuse it to validate files.
@@ -19,7 +20,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SAVEFMT_VERSION     3
+#define SAVEFMT_VERSION     4
 #define SAVEFMT_TAG_SIZE    32
 #define SAVEFMT_HEADER_SIZE 12 /* magic, version, flags, state_len */
 
@@ -35,6 +36,8 @@
 #define SAVEFMT_NAME_MAX        32 /* waypoint names are shorter than this (= WAYPOINT_NAME_MAX) */
 #define SAVEFMT_OWNER_MAX       25 /* owner names are shorter than this (= PLAYER_NAME_MAX) */
 #define SAVEFMT_MAX_SPEED       1000 /* = MAX_SPEED */
+#define SAVEFMT_MIN_SIZE        (-2) /* = SIZE_MIN: Wee */
+#define SAVEFMT_MAX_SIZE        4    /* = SIZE_MAX_CLASS: Gigantic */
 #define SAVEFMT_MAX_COORD       1000000
 #define SAVEFMT_MAX_OFFSET      1000000000
 #define SAVEFMT_MIN_HEX         5
@@ -144,5 +147,9 @@ void savefmt_compute_tag(const uint8_t *buf, size_t len, uint8_t out[SAVEFMT_TAG
 bool savefmt_owner_valid(const char *name);
 
 const char *savefmt_strerror(SaveError e);
+
+/* A size of a version 1-3 save (D&D-like: -2 tiny .. 3 gargantuan) in Tales of Honor's classes, by footprint:
+ * one-tile sizes go one class up (tiny -> Tiny, normal -> Normal), large -> Huge, huge and gargantuan -> Gigantic. */
+int32_t savefmt_size_from_v3(int32_t size);
 
 #endif

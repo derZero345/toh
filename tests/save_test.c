@@ -589,12 +589,13 @@ static void test_owner_versions(void) {
     }
     SaveData d;
     size_t len;
-    const char *want[3] = { "", "Alice", "Bob" };
-    for (int v = 1; v <= 3; v++) { /* every version loads; the old armor class is skipped */
-        uint8_t *f = wrap_v(&st[v - 1], &im, &len, 1, (uint8_t)v);
+    const char *want[4] = { "", "Alice", "Bob", "Bob" };
+    for (int v = 1; v <= 4; v++) { /* every version loads; the old armor class is skipped */
+        uint8_t *f = wrap_v(&st[v < 3 ? v - 1 : 2], &im, &len, 1, (uint8_t)v); /* v4 has v3's layout */
         CHECK_ERR(savefmt_decode(f, len, &d), SAVE_OK);
         const SaveEntity *e = d.nentities == 1 ? &d.entities[0] : NULL;
-        CHECK(e && strcmp(e->owner, want[v - 1]) == 0 && e->size == 1 && e->max_health == 2 && e->health == 3 &&
+        int size = v < 4 ? 3 : 1; /* before v4, size 1 was large (3 tiles): now Huge */
+        CHECK(e && strcmp(e->owner, want[v - 1]) == 0 && e->size == size && e->max_health == 2 && e->health == 3 &&
               e->attack == 4 && e->speed == 6 && e->initiative == 7);
         savefmt_free(&d);
         free(f);
@@ -611,6 +612,12 @@ static void test_owner_versions(void) {
     CHECK_ERR(savefmt_decode(f, len, &d), SAVE_ERR_CORRUPT);
     savefmt_free(&d);
     free(f);
+}
+
+/* sizes of version 1-3 saves map to Tales of Honor's classes by footprint */
+static void test_size_conversion(void) {
+    const int32_t from[] = { -5, -2, -1, 0, 1, 2, 3, 9 }, to[] = { -2, -1, 0, 1, 3, 4, 4, 4 };
+    for (int i = 0; i < 8; i++) CHECK(savefmt_size_from_v3(from[i]) == to[i]);
 }
 
 static int write_sample(const char *path) {
@@ -663,6 +670,7 @@ int main(int argc, char **argv) {
     test_fingerprint();
     test_owner_names();
     test_owner_versions();
+    test_size_conversion();
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
 }

@@ -22,6 +22,7 @@ _Static_assert((int)NOP_MOVE == (int)OP_MOVE && (int)NOP_SPAWN == (int)OP_SPAWN 
                "NetOpType must match OpType");
 _Static_assert((int)NSTAT_SIZE == (int)STAT_SIZE && (int)NSTAT_MAXHEALTH == (int)STAT_MAXHEALTH &&
                (int)NSTAT_SPEED == (int)STAT_SPEED && (int)NSTAT_INITIATIVE == (int)STAT_INITIATIVE, "stat bits must match");
+_Static_assert(SIZE_MIN == SAVEFMT_MIN_SIZE && SIZE_MAX_CLASS == SAVEFMT_MAX_SIZE, "size limits must match");
 _Static_assert((int)OPR_INVALID <= (int)NETMSG_MAX_REASON, "OpResult must fit OP_REJECTED");
 _Static_assert(PLAYER_NAME_MAX == SAVEFMT_OWNER_MAX && WAYPOINT_NAME_MAX == SAVEFMT_NAME_MAX, "name sizes");
 
@@ -602,6 +603,17 @@ static void test_create_helpers(void) {
     image_free(&src);
 }
 
+/* Tales of Honor footprints: Wee to Big one tile, Huge a triangle of 3, Gigantic a tile and its 6 neighbours */
+static void test_size_footprints(void) {
+    const int want[] = { 1, 1, 1, 1, 1, 3, 7 };
+    for (int size = SIZE_MIN; size <= SIZE_MAX_CLASS; size++) {
+        Hex t[MAX_OCCUPIED];
+        int n = character_occupied_tiles((Hex){ 4, 4 }, size, t);
+        CHECK(n == want[size - SIZE_MIN] && hex_eq(t[0], (Hex){ 4, 4 }));
+        for (int i = 1; i < n; i++) CHECK(hex_distance(t[i], (Hex){ 4, 4 }) == 1);
+    }
+}
+
 int main(void) {
     test_entity_ids();
     test_initiative_values();
@@ -616,6 +628,7 @@ int main(void) {
     test_remote_view_state();
     test_client_submit();
     test_create_helpers();
+    test_size_footprints();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;

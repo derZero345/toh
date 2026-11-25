@@ -122,24 +122,14 @@ int character_occupied_tiles(Hex h, int size, Hex out[MAX_OCCUPIED]) {
     int n = 0;
     out[n++] = h;
     switch (size) {
-    case SIZE_LARGE: /* centre + 2 adjacent tiles */
+    case SIZE_HUGE: /* a triangle: centre + 2 adjacent tiles */
         out[n++] = hex_neighbor_raw(h, 1);
         out[n++] = hex_neighbor_raw(h, 2);
         break;
-    case SIZE_HUGE: /* centre + all adjacent tiles */
+    case SIZE_GIGANTIC: /* centre + all adjacent tiles */
         for (int i = 0; i < 6; i++) out[n++] = hex_neighbor_raw(h, i);
         break;
-    case SIZE_GARGANTUAN: { /* centre + all adjacent + 5 outer tiles */
-        for (int i = 0; i < 6; i++) out[n++] = hex_neighbor_raw(h, i);
-        Hex n1 = hex_neighbor_raw(h, 1), n2 = hex_neighbor_raw(h, 2);
-        out[n++] = hex_neighbor_raw(n1, 0);
-        out[n++] = hex_neighbor_raw(n1, 1);
-        out[n++] = hex_neighbor_raw(n1, 2);
-        out[n++] = hex_neighbor_raw(n2, 2);
-        out[n++] = hex_neighbor_raw(n2, 3);
-        break;
-    }
-    default: /* tiny, small, normal: only the centre tile */
+    default: /* wee to big: only the centre tile */
         break;
     }
     return n;
@@ -164,13 +154,14 @@ bool entity_occupies(const Entity *e, Hex h) {
 double entity_draw_size(const Entity *e) {
     if (e->type != ENTITY_CHARACTER) return SQRT3;
     switch (e->size) {
-    case SIZE_TINY:       return 1;
-    case SIZE_SMALL:      return 1.5;
-    case SIZE_NORMAL:     return SQRT3;
-    case SIZE_LARGE:      return 2;
-    case SIZE_HUGE:       return 4;
-    case SIZE_GARGANTUAN: return SQRT3 * 5 / 2 + 1;
-    default:              return SQRT3;
+    case SIZE_WEE:      return 0.8;
+    case SIZE_TINY:     return 1;
+    case SIZE_SMALL:    return 1.4;
+    case SIZE_NORMAL:   return SQRT3;
+    case SIZE_BIG:      return 2;
+    case SIZE_HUGE:     return 2;
+    case SIZE_GIGANTIC: return 4;
+    default:            return SQRT3;
     }
 }
 

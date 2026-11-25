@@ -129,7 +129,7 @@ static bool msg_ok(const NetMsg *m) {
     case NM_LOG:           return text_ok(m->text, sizeof(m->text));
     case NM_PRESENCE:      return presence_ok(&m->presence);
     case NM_CREATE:
-        return m->spec.type == SAVE_ENT_CHARACTER && spec_ok(&m->spec) && m->spec.size >= -2 && m->spec.size <= 3 &&
+        return m->spec.type == SAVE_ENT_CHARACTER && spec_ok(&m->spec) && m->spec.size >= SAVEFMT_MIN_SIZE && m->spec.size <= SAVEFMT_MAX_SIZE &&
                m->spec.health == m->spec.max_health && m->data && m->data_len >= 1 &&
                m->data_len <= NET_CREATE_MAX_BLOB;
     case NM_SESSION:

@@ -21,7 +21,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define NET_PROTOCOL_VERSION 3
+#define NET_PROTOCOL_VERSION 4
 #define NET_DEFAULT_PORT     41234
 #define NET_MAX_FRAME        (64u << 20)            /* one encrypted frame */
 #define NETMSG_MAX_BLOB      (NET_MAX_FRAME - 1024) /* SNAPSHOT / IMAGE payload */

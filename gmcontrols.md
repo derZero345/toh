@@ -77,7 +77,8 @@ Many commands act on the selection: `:c` (edit characters), `:w` (walls on the s
 - every selected tile, if several are selected (the console asks first);
 - otherwise the tile under the mouse.
 
-Stats can be given right away, e.g. `:c size 1 maxhealth 30 speed 6 initiative 2`.
+Stats can be given right away, e.g. `:c size 3 maxhealth 30 speed 6 initiative 2`. Without `size` a character is
+Normal (1).
 **Set a speed:** a new character's speed is 0 unless you give one, so it cannot move.
 
 ### Edit
@@ -86,7 +87,7 @@ Select one or more characters, then:
 
 | Command | Short | Action |
 |---|---|---|
-| `:c size <n>` | `sz` | Size from -2 to 3 (bigger sizes cover more tiles) |
+| `:c size <n>` | `sz` | Size class of Tales of Honor, see the table below |
 | `:c maxhealth <n>` | `h` | Maximum health |
 | `:c speed <n>` | `s` | Movement range in tiles (5 ft each), at most 1000 |
 | `:c initiative <n>` | `in` | Initiative stat |
@@ -95,6 +96,21 @@ Select one or more characters, then:
 | `:c owner none` | | Take them back: only the GM controls them |
 
 Several can be combined: `:c speed 6 owner Bob`.
+
+Sizes:
+
+| Size | Name | Tiles |
+|---|---|---|
+| -2 | Wee | 1 |
+| -1 | Tiny | 1 |
+| 0 | Small | 1 |
+| 1 | Normal (the default) | 1 |
+| 2 | Big | 1 |
+| 3 | Huge | 3, a triangle |
+| 4 | Gigantic | 7, a tile and its six neighbours |
+
+Saves from older versions used other sizes; they are converted when loaded so every character keeps its
+footprint (old large → Huge, old huge and gargantuan → Gigantic).
 
 ### Delete
 
@@ -221,7 +237,7 @@ line; each player can have at most 3 waiting.
 **Player-created characters:**
 - Players can create their own character with `:c [stats]` on an empty tile and a picture (at most 512×512).
 - Your log says "<player> asks for a new character", and the console asks, for example,
-  `Bob: new character [2|7] size 0 HP 20 speed 6 init 1. Allow? (y/n)`.
+  `Bob: new character [2|7] size 1 HP 20 speed 6 init 1. Allow? (y/n)`.
 - While the question is open, only your screen shows the picture faintly on that tile, so you can check it.
 - On `y` the character is created for everyone and belongs to that player; on `n` the player is told you
   declined.

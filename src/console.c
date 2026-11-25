@@ -401,7 +401,7 @@ static void cmd_entity(Args *a) {
 }
 
 static void cmd_character(Args *a) {
-    int size = 0, max_health = 0, speed = 0, initiative = 0;
+    int size = SIZE_NORMAL, max_health = 0, speed = 0, initiative = 0;
     bool has[5] = { 0 }; /* size, maxhealth, speed, initiative (= STAT_* bit order), icon */
     bool has_owner = false;
     char owner[PLAYER_NAME_MAX] = "";
@@ -442,6 +442,10 @@ static void cmd_character(Args *a) {
         else if (!strcmp(key, "in") || !strcmp(key, "initiative")) { target = &initiative; slot = 3; }
         if (target && parse_int_arg(val, target)) has[slot] = true;
         else if (target) console_log("Expected a number after \"%s\"", a->argv[i]);
+        if (slot == 0 && has[0] && (size < SIZE_MIN || size > SIZE_MAX_CLASS)) {
+            console_log("Sizes go from -2 (Wee) to 4 (Gigantic)");
+            return;
+        }
         if (slot == 2 && has[2] && speed > MAX_SPEED) {
             console_log("Speed is capped at %d", MAX_SPEED);
             speed = MAX_SPEED;
@@ -490,7 +494,8 @@ static void cmd_help(Args *a) {
         console_log(":d  or debug # Toggle debug mode - No Arguments");
     } else if (!strcmp(arg, "character") || !strcmp(arg, ":c")) {
         console_log(":c  or character # Create a character, or edit the selected ones");
-        console_log("  delete | size <-2..3> | maxhealth <n> | speed <n>");
+        console_log("  delete | size <-2..4> | maxhealth <n> | speed <n>");
+        console_log("  sizes: -2 wee, -1 tiny, 0 small, 1 normal, 2 big, 3 huge, 4 gigantic");
         console_log("  initiative <n> | icon | owner <player|none>");
         console_log("  players: with nothing selected, asks the GM for a new character of your own");
     } else if (!strcmp(arg, "wall") || !strcmp(arg, ":w")) {

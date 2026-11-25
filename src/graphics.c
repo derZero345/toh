@@ -424,9 +424,8 @@ void gfx_character_rect(Hex tile, int size, float *x, float *y, float *d) {
     Vec2 c = hex_center(tile);
     double left;
     switch (size) {
-    case SIZE_LARGE:      left = c.x; break;
-    case SIZE_GARGANTUAN: left = c.x - ((ds - 2) * hs / 2); break;
-    default:              left = c.x - (ds * hs / 2); break;
+    case SIZE_HUGE: left = c.x; break; /* centred on the triangle, right of the centre tile */
+    default:        left = c.x - (ds * hs / 2); break;
     }
     *x = (float)left;
     *y = (float)(c.y - ds * hs / 2);

@@ -76,9 +76,13 @@ bool hex_find_closest_any(Vec2 p, Hex *out);
 #define PLAYER_NAME_MAX 25
 typedef enum { ENTITY_CHARACTER, ENTITY_WALL } EntityType;
 
-enum { SIZE_TINY = -2, SIZE_SMALL = -1, SIZE_NORMAL = 0, SIZE_LARGE = 1, SIZE_HUGE = 2, SIZE_GARGANTUAN = 3 };
+/* Size classes of Tales of Honor. Wee to Big take one tile, Huge a triangle of three, Gigantic a tile and its six
+ * neighbours. Bulk is how much of a tile's capacity (TILE_BULK) a character uses on each of its tiles. */
+enum { SIZE_WEE = -2, SIZE_TINY = -1, SIZE_SMALL = 0, SIZE_NORMAL = 1, SIZE_BIG = 2, SIZE_HUGE = 3, SIZE_GIGANTIC = 4 };
+#define SIZE_MIN SIZE_WEE
+#define SIZE_MAX_CLASS SIZE_GIGANTIC
 
-#define MAX_OCCUPIED 12
+#define MAX_OCCUPIED 7
 
 struct Marker;
 

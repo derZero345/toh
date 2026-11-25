@@ -406,7 +406,7 @@ static void test_create(void) {
     uint8_t *buf;
     size_t len;
     NetMsg bad = m; bad.spec.type = SAVE_ENT_WALL;        CHECK(!netmsg_encode(&bad, &buf, &len));
-    bad = m; bad.spec.size = 4;                            CHECK(!netmsg_encode(&bad, &buf, &len));
+    bad = m; bad.spec.size = SAVEFMT_MAX_SIZE + 1;          CHECK(!netmsg_encode(&bad, &buf, &len));
     bad = m; bad.spec.speed = SAVEFMT_MAX_SPEED + 1;       CHECK(!netmsg_encode(&bad, &buf, &len));
     bad = m; bad.data_len = 0;                             CHECK(!netmsg_encode(&bad, &buf, &len));
     bad = m; bad.data_len = NET_CREATE_MAX_BLOB + 1;       CHECK(!netmsg_encode(&bad, &buf, &len));
