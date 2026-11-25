@@ -145,6 +145,8 @@ static void write_state(Buf *b, const SaveData *d, bool fingerprint) {
             put_sv(b, e->initiative);
             put_str(b, e->owner);
             put_str(b, e->name);
+            put_sv(b, e->max_stamina);
+            put_sv(b, e->stamina);
         }
     }
 
@@ -207,6 +209,10 @@ static SaveError read_state(const uint8_t *p, size_t n, uint16_t version, SaveDa
             e->initiative = get_sv(&r);
             if (version >= 2) get_str(&r, e->owner, sizeof(e->owner));
             if (version >= 5) get_str(&r, e->name, sizeof(e->name));
+            if (version >= 6) {
+                e->max_stamina = get_sv(&r);
+                e->stamina = get_sv(&r);
+            }
         } else if (e->type != SAVE_ENT_WALL) {
             return SAVE_ERR_CORRUPT;
         }

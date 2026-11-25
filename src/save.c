@@ -92,6 +92,8 @@ static void gather(Gathered *g) {
         if (e->type == ENTITY_CHARACTER) {
             snprintf(s->owner, sizeof(s->owner), "%s", e->owner);
             snprintf(s->name, sizeof(s->name), "%s", e->name);
+            s->max_stamina = e->maxStamina;
+            s->stamina = e->stamina;
         }
     }
 
@@ -331,6 +333,8 @@ static void apply(SaveData *d, bool keep_view) {
             e->attack = s->attack;
             snprintf(e->owner, sizeof(e->owner), "%s", s->owner);
             snprintf(e->name, sizeof(e->name), "%s", s->name);
+            e->maxStamina = s->max_stamina;
+            e->stamina = hp_clamp(s->stamina, s->max_stamina);
         }
         entity_register(e);
     }

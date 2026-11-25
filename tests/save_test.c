@@ -661,6 +661,39 @@ static void test_char_names(void) {
     free(f);
 }
 
+/* version 6 stores max and current stamina after the name */
+static void test_stamina_versions(void) {
+    Sample s;
+    sample_init(&s);
+    s.entities[0].max_stamina = 9;
+    s.entities[0].stamina = -2;
+    size_t len;
+    uint8_t *file = encode_sample(&s, &len);
+    SaveData d;
+    CHECK_ERR(savefmt_decode(file, len, &d), SAVE_OK);
+    CHECK(d.nentities == 3 && d.entities[0].max_stamina == 9 && d.entities[0].stamina == -2 &&
+          d.entities[1].max_stamina == 0);
+    savefmt_free(&d);
+    free(file);
+    sample_free(&s);
+
+    /* a version 5 body (v3 layout + name) loads with no stamina */
+    W st = { .n = 0 }, im = { .n = 0 };
+    wimage(&im, 8, 8);
+    wworld(&st, 0);
+    wuv(&st, 1);
+    wcharacter(&st, 3, "Bob");
+    wstr(&st, "Mao");
+    wuv(&st, 0); wuv(&st, 0);
+    wuv(&st, 0);
+    uint8_t *f = wrap_v(&st, &im, &len, 1, 5);
+    CHECK_ERR(savefmt_decode(f, len, &d), SAVE_OK);
+    CHECK(d.nentities == 1 && strcmp(d.entities[0].name, "Mao") == 0 && d.entities[0].max_stamina == 0 &&
+          d.entities[0].stamina == 0);
+    savefmt_free(&d);
+    free(f);
+}
+
 /* sizes of version 1-3 saves map to Tales of Honor's classes by footprint */
 static void test_size_conversion(void) {
     const int32_t from[] = { -5, -2, -1, 0, 1, 2, 3, 9 }, to[] = { -2, -1, 0, 1, 3, 4, 4, 4 };
@@ -718,6 +751,7 @@ int main(int argc, char **argv) {
     test_owner_names();
     test_owner_versions();
     test_char_names();
+    test_stamina_versions();
     test_size_conversion();
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
