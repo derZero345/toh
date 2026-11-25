@@ -414,6 +414,9 @@ void ops_apply(Op *op) {
 OpResult ops_submit(Op *op) {
     OpAuthor me = ops_local_author();
     OpResult r = ops_check(op, &me);
+    /* A client checks against a table without its own unanswered ops (":c recover 3 spend 3"): the host
+     * applies them in order and refuses the spend itself if there really isn't enough stamina. */
+    if (r == OPR_NO_STAMINA && session_is_client()) r = OPR_OK;
     if (r != OPR_OK) {
         console_log("%s", ops_result_text(r));
         return r;

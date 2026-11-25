@@ -590,6 +590,14 @@ static void test_client_submit(void) {
     Op other = { .type = OP_MOVE, .id = b->id, .tile = { 4, 5 } };
     CHECK_R(ops_submit(&other), OPR_NOT_YOURS);
     CHECK(stub_sent_ops == sent + 1);
+    /* spending is left to the host: an earlier "recover" in the same command may not be applied here yet */
+    a->maxStamina = 9;
+    a->stamina = 0;
+    Op spend = { .type = OP_SET_STAMINA, .healthMode = STAMINA_SPEND, .value = 3 };
+    da_push(&spend.ids, a->id);
+    CHECK_R(ops_submit(&spend), OPR_OK);
+    CHECK(stub_sent_ops == sent + 2 && a->stamina == 0);
+    op_free(&spend);
     stub_client = false;
     CHECK(strcmp(ops_result_text(OPR_ALREADY_OWNED), "That character already has an owner") == 0);
 }
