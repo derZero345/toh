@@ -16,6 +16,7 @@
 
 #include <SDL3/SDL.h>
 
+#include "baranim.h"
 #include "util.h"
 #include "vk_renderer.h"
 
@@ -101,6 +102,8 @@ typedef struct Entity {
     int slot, slots; /* entity_layout: characters sharing a tile are drawn side by side in `slots` places */
     int size, maxHealth, health, attack, speed, initiative;
     int maxStamina, stamina; /* Tales of Honor stamina; max 0 = no stamina stat */
+    BarAnim hpAnim, staminaAnim; /* HP panel animation; memory only */
+    unsigned panelFrame;         /* the last frame the HP panel showed this entity (0 = never) */
     struct Marker *debugMarker;
 } Entity;
 
@@ -424,7 +427,8 @@ extern App *gh;
 /* graphics.c */
 bool gfx_init(App *app, const char *resource_dir);
 void gfx_shutdown(void);
-void gfx_draw_frame(const char *screenshot_path);
+bool gfx_draw_frame(const char *screenshot_path); /* true while something (the HP panel bars) is still moving */
+bool gfx_bars_moving(void);
 void gfx_change_theme(const char *name);
 const Theme *gfx_theme(void);
 void gfx_toggle_console(void);

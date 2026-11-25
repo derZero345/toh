@@ -837,7 +837,28 @@ static void hp_label(const char *text, float right_x, float y, float h, float fs
     dr_text(FONT_PLAIN, fs, right_x - w - 3, y + (h + ascent - descent) / 2, COLOR_WHITE, text);
 }
 
+static unsigned panel_frame = 1; /* counts drawn frames; 0 means "never shown" on entities */
+static Uint64 panel_last_ms;     /* time of the previous frame */
+static bool bars_moving;         /* some bar moved in the previous frame */
+
+bool gfx_bars_moving(void) { return bars_moving; }
+
+/* draws one bar's fill: a light "just lost" part and the solid part */
+static void draw_bar_fill(const BarAnim *a, float frame_x, float frame_w, float y, float h, Color solid,
+                          Color light) {
+    float sl, sh, ll, lh;
+    bar_anim_spans(a, &sl, &sh, &ll, &lh);
+    if (lh > ll) dr_fill_rect(frame_x + ll * frame_w, y, (lh - ll) * frame_w, h, light);
+    if (sh > sl) dr_fill_rect(frame_x + sl * frame_w, y, (sh - sl) * frame_w, h, solid);
+}
+
 static void draw_hp_panels(void) {
+    Uint64 now = SDL_GetTicks();
+    float dt = bars_moving ? (float)(now - panel_last_ms) / 1000.0f : 0; /* idle: start at this frame */
+    if (dt > 0.1f) dt = 0.1f;
+    panel_last_ms = now;
+    unsigned frame = ++panel_frame;
+    bars_moving = false;
     EntityList list = { 0 };
     hp_panel_characters(&list);
     if (list.count == 0) {
@@ -862,10 +883,19 @@ static void draw_hp_panels(void) {
         shown++;
     }
     const Color bg = { 20, 20, 20, 200 }, red = { 200, 30, 30, 255 }, green = { 40, 160, 60, 255 };
+    const Color light_red = { 235, 130, 130, 255 }, light_green = { 150, 215, 150, 255 };
     const Color white = COLOR_WHITE;
     float y = HP_MARGIN;
     for (int i = 0; i < shown; i++) {
-        const Entity *e = list.items[i];
+        Entity *e = list.items[i];
+        float hpf = bar_fraction(e->health, e->maxHealth), stf = bar_fraction(e->stamina, e->maxStamina);
+        if (e->panelFrame != frame - 1) { /* not shown in the previous frame: no animation */
+            bar_anim_reset(&e->hpAnim, hpf);
+            bar_anim_reset(&e->staminaAnim, stf);
+        }
+        e->panelFrame = frame;
+        if (bar_anim_step(&e->hpAnim, hpf, dt)) bars_moving = true;
+        if (e->maxStamina > 0 && bar_anim_step(&e->staminaAnim, stf, dt)) bars_moving = true;
         char name[CHAR_NAME_MAX + 16], label[CHAR_NAME_MAX + 32], hp[32], st[32];
         entity_display_name(e, name, sizeof(name));
         bool dead = hp_stage(e->health, e->maxHealth) == HP_DEAD;
@@ -876,7 +906,7 @@ static void draw_hp_panels(void) {
         float by = y + name_h;
         HpBar b = hp_bar_layout(e->health, e->maxHealth, frame_x, frame_w);
         dr_fill_rect(frame_x, by, frame_w, bar_h, bg);
-        if (b.fill_w > 0) dr_fill_rect(b.fill_x, by, b.fill_w, bar_h, red);
+        draw_bar_fill(&e->hpAnim, frame_x, frame_w, by, bar_h, red, light_red);
         if (b.lines) dr_line(b.injured_x, by, b.injured_x, by + bar_h, 2, white);
         if (b.critical) {
             float tick = fminf(3, fs * 0.25f - 1); /* stays clear of the stamina bar */
@@ -888,9 +918,8 @@ static void draw_hp_panels(void) {
         dr_text(FONT_PLAIN, fs, frame_x + (frame_w - hw) / 2, by + (bar_h + ascent - descent) / 2, white, hp);
         if (e->maxStamina > 0) {
             float sy = by + bar_h + fs * 0.25f, sh = fs * 0.9f;
-            HpBar s = hp_bar_layout(e->stamina, e->maxStamina, frame_x, frame_w);
             dr_fill_rect(frame_x, sy, frame_w, sh, bg);
-            if (s.fill_w > 0) dr_fill_rect(s.fill_x, sy, s.fill_w, sh, green);
+            draw_bar_fill(&e->staminaAnim, frame_x, frame_w, sy, sh, green, light_green);
             dr_stroke_rect(frame_x, sy, frame_w, sh, 1.5f, white);
             snprintf(st, sizeof(st), "%d/%d", e->stamina, e->maxStamina);
             float sw = dr_text_width(FONT_PLAIN, fs * 0.8f, st);
@@ -908,7 +937,7 @@ static void draw_hp_panels(void) {
     da_free(&list);
 }
 
-void gfx_draw_frame(const char *screenshot_path) {
+bool gfx_draw_frame(const char *screenshot_path) {
     const Theme *t = gfx_theme();
     dr_begin((float)gh->winW, (float)gh->winH, gh->pixelScale);
 
@@ -927,4 +956,5 @@ void gfx_draw_frame(const char *screenshot_path) {
     draw_console();
 
     dr_end_and_render(t->primary, screenshot_path);
+    return bars_moving;
 }

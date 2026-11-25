@@ -14,6 +14,7 @@
  *   @wait N          idle N frames       @quit
  *   @waitnet N       wait (at most 20 s) until N players joined (host) or the client joined
  *   @waitfile FILE   wait (at most 20 s) until FILE exists   @touch FILE  create FILE
+ *   @waitbars        wait (at most 20 s) until the HP panel bars stopped moving
  * A wait that times out ends the program with exit status 3.
  * --auto-file makes every file dialog (images, :save, :load) return the given file.
  * --port sets the port :host listens on (default 41234). TOH_NO_PORTMAP=1 skips the router.
@@ -33,7 +34,7 @@ static int exit_status;
 
 /* @waitnet / @waitfile: the script pauses until the condition holds */
 static struct {
-    enum { WAIT_NONE, WAIT_NET, WAIT_FILE } kind;
+    enum { WAIT_NONE, WAIT_NET, WAIT_FILE, WAIT_BARS } kind;
     int players;
     char file[256];
     Uint64 deadline;
@@ -42,8 +43,9 @@ static struct {
 /* True when the script may go on. */
 static bool script_cond_met(void) {
     if (script_cond.kind == WAIT_NONE) return true;
-    bool met = script_cond.kind == WAIT_NET ? session_ready(script_cond.players)
-                                            : access(script_cond.file, F_OK) == 0;
+    bool met = script_cond.kind == WAIT_NET    ? session_ready(script_cond.players)
+               : script_cond.kind == WAIT_BARS ? !gfx_bars_moving()
+                                               : access(script_cond.file, F_OK) == 0;
     if (met) {
         script_cond.kind = WAIT_NONE;
         return true;
@@ -159,6 +161,9 @@ static int run_script_line(const char *line, const char **screenshot) {
         script_cond.players = (int)x;
         snprintf(script_cond.file, sizeof(script_cond.file), "%s", arg);
         script_cond.deadline = SDL_GetTicks() + 20000;
+    } else if (!strcmp(cmd, "waitbars")) {
+        script_cond.kind = WAIT_BARS;
+        script_cond.deadline = SDL_GetTicks() + 20000;
     } else if (!strcmp(cmd, "touch")) {
         FILE *f = fopen(arg, "w");
         if (f) fclose(f);
@@ -240,13 +245,13 @@ int main(int argc, char **argv) {
     /* Frames are only drawn when something may have changed: after input, while the
      * camera scrolls, while a script runs and when the console caret blinks.
      * Otherwise the loop sleeps until the next event. */
-    bool redraw = true;
+    bool redraw = true, animating = false;
     while (app.running) {
         bool scrolling = app.ADown || app.DDown || app.SDown || app.WDown;
         bool scripted = script_pos < nscript;
         SDL_Event e;
         bool have_event = false;
-        if (!redraw && !scrolling && !scripted) {
+        if (!redraw && !scrolling && !scripted && !animating) {
             /* idle: wake for the next event, or for the next caret blink phase */
             Sint32 timeout = app.console.active ? (Sint32)(500 - SDL_GetTicks() % 500) + 1 : 1000;
             int pending = session_tick(); /* presence waiting for its send slot */
@@ -291,6 +296,7 @@ int main(int argc, char **argv) {
             if (ox != app.gridOffsetX || oy != app.gridOffsetY) redraw = true;
             tick_acc -= 16;
         }
+        if (animating) redraw = true;
 
         const char *screenshot = NULL;
         if (script_pos < nscript) {
@@ -309,7 +315,7 @@ int main(int argc, char **argv) {
             continue;
         }
         gfx_update_tools();
-        gfx_draw_frame(screenshot);
+        animating = gfx_draw_frame(screenshot);
         redraw = false;
         session_presence_changed();
         session_tick();
