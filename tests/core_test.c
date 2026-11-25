@@ -976,7 +976,6 @@ static void test_bar_anim(void) {
     CHECK(bar_fraction(10, 20) == 0.5f && bar_fraction(-30, 20) == -1.0f && bar_fraction(5, 0) == 0.0f);
 }
 
-
 int main(void) {
     test_split_args();
     test_entity_ids();

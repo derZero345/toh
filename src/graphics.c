@@ -895,7 +895,8 @@ static void draw_hp_panels(void) {
         }
         e->panelFrame = frame;
         if (bar_anim_step(&e->hpAnim, hpf, dt)) bars_moving = true;
-        if (e->maxStamina > 0 && bar_anim_step(&e->staminaAnim, stf, dt)) bars_moving = true;
+        if (e->maxStamina <= 0) bar_anim_reset(&e->staminaAnim, stf); /* no bar: a new one appears at its value */
+        else if (bar_anim_step(&e->staminaAnim, stf, dt)) bars_moving = true;
         char name[CHAR_NAME_MAX + 16], label[CHAR_NAME_MAX + 32], hp[32], st[32];
         entity_display_name(e, name, sizeof(name));
         bool dead = hp_stage(e->health, e->maxHealth) == HP_DEAD;

@@ -34,7 +34,7 @@ Normal 3, Big 4. So a Small character can step onto a Normal one's tile, but two
 The top right corner shows a panel for each of your characters: its name and a red HP bar with
 `current/max` inside it. The line in the middle marks where your character becomes injured. Below 0 HP your
 character is dying: the bar grows to the left out of its frame, and a second line shows where it becomes
-critical.
+critical. When HP changes, the bar slides to the new value and briefly shows what was lost in a lighter red.
 
 If your character has stamina, a green bar under the HP bar shows it (`current/max`). Type `:c spend <n>` to use
 stamina (refused with "Not enough stamina" if you don't have enough) and `:c recover <n>` to get it back, up to the

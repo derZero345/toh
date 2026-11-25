@@ -14,7 +14,8 @@
  *   @wait N          idle N frames       @quit
  *   @waitnet N       wait (at most 20 s) until N players joined (host) or the client joined
  *   @waitfile FILE   wait (at most 20 s) until FILE exists   @touch FILE  create FILE
- *   @waitbars        wait (at most 20 s) until the HP panel bars stopped moving
+ *   @waitbars        wait (at most 20 s) until the HP panel bars stopped moving; it only sees changes
+ *                    already drawn, so wait a few frames first (e.g. @wait 2)
  * A wait that times out ends the program with exit status 3.
  * --auto-file makes every file dialog (images, :save, :load) return the given file.
  * --port sets the port :host listens on (default 41234). TOH_NO_PORTMAP=1 skips the router.
@@ -32,7 +33,7 @@ App *gh;
 static App app;
 static int exit_status;
 
-/* @waitnet / @waitfile: the script pauses until the condition holds */
+/* @waitnet / @waitfile / @waitbars: the script pauses until the condition holds */
 static struct {
     enum { WAIT_NONE, WAIT_NET, WAIT_FILE, WAIT_BARS } kind;
     int players;
@@ -243,7 +244,7 @@ int main(int argc, char **argv) {
     int script_pos = 0, script_wait = 1;
 
     /* Frames are only drawn when something may have changed: after input, while the
-     * camera scrolls, while a script runs and when the console caret blinks.
+     * camera scrolls, while a script runs, while an HP panel bar moves and when the console caret blinks.
      * Otherwise the loop sleeps until the next event. */
     bool redraw = true, animating = false;
     while (app.running) {

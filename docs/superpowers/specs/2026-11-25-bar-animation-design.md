@@ -26,7 +26,7 @@ jumping. A loss also leaves a lighter trail that shows how much was lost.
   frame, is drawn light first and the solid fill then grows over it.
 - **Max changes** animate too, because the bars show current ÷ max (e.g. raising max HP of an injured character
   slides its fill shorter).
-- **No animation when a panel appears.** A panel that was not shown in the previous frame starts at the current
+- **No animation when a panel or a stamina bar appears.** A panel that was not shown in the previous frame starts at the current
   value: selecting a character, joining a table, loading a save, or the GM selecting a character again.
 - **Both bars** use the same animation.
 
@@ -81,12 +81,13 @@ jumping. A loss also leaves a lighter trail that shows how much was lost.
   - `bar_anim_spans`: shown 0.4 / trail 0.7 gives solid [0, 0.4] and light [0.4, 0.7]; shown −0.75 /
     trail −0.25 gives solid [−0.25, 0] and light [−0.75, −0.25]; shown −0.2 / trail 0.3 gives no solid part and
     light [−0.2, 0.3].
-- e2e: the existing pixel checks wait until the animations have finished (they wait well over 1 s after the
-  last change), so they stay as strict as now.
+- e2e: the screenshots whose panel pixels are checked first wait with a new script action, `@waitbars`, until
+  the bars have stopped moving, so the pixel checks stay as strict as now.
 - A screenshot taken mid-animation (a few frames after `:c damage`), checked by eye: the light trail is visible.
 
 ## Docs
 
 - `gmcontrols.md`: one sentence in the HP panel description saying the bars slide to new values and a loss leaves
   a short lighter trail.
-- `playercontrols.md` and the README: no change, nothing new to do.
+- `playercontrols.md`: half a sentence in the HP section about the slide and the lighter part.
+- `README.md`: the test hook paragraph mentions `@waitbars`.
