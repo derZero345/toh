@@ -2,6 +2,7 @@
 #include "session.h"
 #include "net.h"
 #include "portmap.h"
+#include "draw.h"
 #include "presence.h"
 #include "relaymsg.h"
 #include "savefmt.h"
@@ -17,7 +18,7 @@
 
 #define MAX_PLAYERS (NET_MAX_CONNS + 1) /* the GM and every connection */
 #define ROLL_LIST_MAX 20                /* longer rolls only show the total in the log */
-#define CLAIMS_PER_PLAYER 3             /* host: a player's claims waiting for the GM */
+#define CLAIMS_PER_PLAYER 3             /* host: a player's requests (claims, new characters) waiting for the GM */
 #define ROLL_WINDOW_MS 10000            /* host: a player rolls at most ROLLS_PER_WINDOW times in this */
 #define ROLLS_PER_WINDOW 10
 #define BAN_KEY_MAX 64
@@ -44,10 +45,14 @@ typedef struct {
     uint64_t presenceSent; /* host: when it was last forwarded */
 } Player;
 
+/* host: something a player asked the GM for, answered y/n in the console one at a time */
+typedef enum { REQ_CLAIM, REQ_CREATE } RequestKind;
 typedef struct {
+    RequestKind kind;
     uint8_t player;
-    uint32_t entity;
-} Claim;
+    uint32_t entity; /* REQ_CLAIM: the character */
+    EntitySpec spec; /* REQ_CREATE: the new character; spec.image holds one texture reference */
+} Request;
 
 /* host: someone the GM banned. A join is turned away when its name or its address matches. */
 typedef struct {
@@ -75,7 +80,7 @@ static struct {
     Player players[MAX_PLAYERS]; /* host: [0] is the GM; client: the list from SESSION */
     DA(CachedImage) images;
     /* host */
-    DA(Claim) claims;
+    DA(Request) requests; /* [0] is the one asked about while claimAsked */
     bool claimAsked;
     DA(Ban) bans; /* for as long as we host */
     Portmap *pm;
@@ -544,7 +549,63 @@ static void drop(Player *p, const char *why) {
     p->leaving = true;
 }
 
-static void ask_next_claim(void);
+static void ask_next_request(void);
+
+static void request_free(Request *r) {
+    if (r->kind == REQ_CREATE) vkr_texture_release(r->spec.image);
+    r->spec.image = NULL;
+}
+
+/* Removes request i and releases its texture. */
+static void request_remove(int i) {
+    request_free(&S.requests.items[i]);
+    da_remove_at(&S.requests, i);
+}
+
+static int requests_of(uint8_t player) {
+    int n = 0;
+    for (int i = 0; i < S.requests.count; i++) n += S.requests.items[i].player == player;
+    return n;
+}
+
+/* No entity on any tile a character of this size on tile would cover. */
+static bool tiles_free(Hex tile, int size) {
+    Hex t[MAX_OCCUPIED];
+    int n = character_occupied_tiles(tile, size, t);
+    for (int i = 0; i < n; i++)
+        if (entity_at(t[i])) return false;
+    return true;
+}
+
+/* NM_CREATE: a player asks for a new character of their own. */
+static void host_create(Player *p, const NetMsg *m) {
+    NetMsg rej = { .type = NM_OP_REJECTED, .seq = m->seq };
+    Hex tile = { m->spec.row, m->spec.col };
+    int w = 0, h = 0;
+    uint8_t *rgba = NULL;
+    if (requests_of(p->id) >= CLAIMS_PER_PLAYER) rej.reason = OPR_CLAIM_PENDING;
+    else if (!tiles_free(tile, m->spec.size)) rej.reason = OPR_TILE_TAKEN;
+    else if (!savefmt_decode_image(m->data, m->data_len, &w, &h, &rgba) || w > NET_CREATE_MAX_DIM ||
+             h > NET_CREATE_MAX_DIM)
+        rej.reason = OPR_INVALID;
+    if (rej.reason) {
+        free(rgba);
+        net_send(S.net, p->conn, &rej);
+        return;
+    }
+    Texture *t = vkr_texture_create_kept(w, h, rgba); /* takes rgba */
+    uint8_t *blob = malloc(m->data_len);
+    if (!blob) abort();
+    memcpy(blob, m->data, m->data_len);
+    vkr_texture_set_blob(t, blob, m->data_len, SAVE_IMG_LOSSLESS, w, h);
+    Request r = { .kind = REQ_CREATE, .player = p->id };
+    r.spec = (EntitySpec){ .type = ENTITY_CHARACTER, .image = t, .tile = tile, .size = m->spec.size,
+                           .maxHealth = m->spec.max_health, .health = m->spec.max_health, .ac = m->spec.ac,
+                           .speed = m->spec.speed, .initiative = m->spec.initiative };
+    da_push(&S.requests, r);
+    console_log("%s asks for a new character.", p->name);
+    ask_next_request();
+}
 
 static void host_op(Player *p, const NetOp *o, uint32_t seq) {
     NetMsg rej = { .type = NM_OP_REJECTED, .seq = seq };
@@ -563,22 +624,20 @@ static void host_op(Player *p, const NetOp *o, uint32_t seq) {
     }
     if (o->type == NOP_CLAIM) {
         Entity *e = entity_by_id(o->id);
-        int pending = 0;
         bool again = false;
-        for (int i = 0; i < S.claims.count; i++) {
-            if (S.claims.items[i].player != p->id) continue;
-            pending++;
-            if (S.claims.items[i].entity == o->id) again = true;
+        for (int i = 0; i < S.requests.count; i++) {
+            const Request *r = &S.requests.items[i];
+            if (r->player == p->id && r->kind == REQ_CLAIM && r->entity == o->id) again = true;
         }
         if (!e || e->type != ENTITY_CHARACTER) rej.reason = OPR_NO_ENTITY;
         else if (e->owner[0]) rej.reason = OPR_ALREADY_OWNED;
-        else if (again || pending >= CLAIMS_PER_PLAYER) rej.reason = OPR_CLAIM_PENDING;
+        else if (again || requests_of(p->id) >= CLAIMS_PER_PLAYER) rej.reason = OPR_CLAIM_PENDING;
         if (rej.reason) {
             net_send(S.net, p->conn, &rej);
             return;
         }
-        da_push(&S.claims, ((Claim){ .player = p->id, .entity = o->id }));
-        ask_next_claim();
+        da_push(&S.requests, ((Request){ .kind = REQ_CLAIM, .player = p->id, .entity = o->id }));
+        ask_next_request();
         return;
     }
     Op op;
@@ -626,6 +685,8 @@ static void host_message(Player *p, const NetMsg *m) {
     }
     if (m->type == NM_OP) {
         host_op(p, &m->op, m->seq);
+    } else if (m->type == NM_CREATE) {
+        host_create(p, m);
     } else if (m->type == NM_PRESENCE) {
         netpresence_free(&p->presence);
         netpresence_copy(&p->presence, &m->presence);
@@ -687,8 +748,8 @@ static void host_event(NetEvent *ev) {
             NetMsg left = { .type = NM_PLAYER_LEFT, .info = net_player(p) };
             p->welcomed = false;
             broadcast(&left, p);
-            for (int i = S.claims.count - 1; i >= 0; i--)
-                if (S.claims.items[i].player == p->id && !(i == 0 && S.claimAsked)) da_remove_at(&S.claims, i);
+            for (int i = S.requests.count - 1; i >= 0; i--)
+                if (S.requests.items[i].player == p->id && !(i == 0 && S.claimAsked)) request_remove(i);
         }
         player_clear(p);
         break;
@@ -698,16 +759,10 @@ static void host_event(NetEvent *ev) {
     }
 }
 
-/* ---- claims -------------------------------------------------------------------------------------- */
+/* ---- requests (claims, new characters) ----------------------------------------------------------- */
 
-static void claim_answer(bool yes, void *ctx) {
-    (void)ctx;
-    S.claimAsked = false;
-    if (S.claims.count == 0) return;
-    Claim c = S.claims.items[0];
-    da_remove_at(&S.claims, 0);
-    Player *p = player_by_id(c.player);
-    Entity *e = entity_by_id(c.entity);
+static void answer_claim(const Request *r, Player *p, bool yes) {
+    Entity *e = entity_by_id(r->entity);
     if (!p || !p->welcomed || p->leaving || !e) return;
     char label[64];
     entity_label(e, label, sizeof(label));
@@ -729,25 +784,103 @@ static void claim_answer(bool yes, void *ctx) {
     op_free(&op);
 }
 
-static void ask_next_claim(void) {
-    while (S.role == ROLE_HOST && !S.claimAsked && S.claims.count > 0 && !console_confirm_busy()) {
-        Claim *c = &S.claims.items[0];
+static void answer_create(const Request *r, Player *p, bool yes) {
+    if (!p || !p->welcomed || p->leaving) return;
+    if (!yes) {
+        send_log(p, "The GM declined your character.");
+        return;
+    }
+    if (!tiles_free(r->spec.tile, r->spec.size)) {
+        console_log("The tile [%d|%d] is taken now; %s's character was not created.", r->spec.tile.row,
+                    r->spec.tile.col, p->name);
+        NetMsg rej = { .type = NM_OP_REJECTED, .reason = OPR_TILE_TAKEN };
+        net_send(S.net, p->conn, &rej);
+        return;
+    }
+    Op spawn = { .type = OP_SPAWN };
+    da_push(&spawn.specs, r->spec);
+    if (ops_submit(&spawn) == OPR_OK && spawn.ids.count == 1) {
+        Op own = { .type = OP_SET_OWNER };
+        da_push(&own.ids, spawn.ids.items[0]);
+        snprintf(own.name, sizeof(own.name), "%s", p->name);
+        ops_submit(&own);
+        op_free(&own);
+        send_log(p, "The GM accepted your character.");
+        console_log("Created %s's character.", p->name);
+    }
+    op_free(&spawn);
+}
+
+static void request_answer(bool yes, void *ctx) {
+    (void)ctx;
+    S.claimAsked = false;
+    if (S.requests.count == 0) return;
+    Request r = S.requests.items[0];
+    da_remove_at(&S.requests, 0);
+    Player *p = player_by_id(r.player);
+    if (r.kind == REQ_CLAIM) answer_claim(&r, p, yes);
+    else answer_create(&r, p, yes);
+    request_free(&r);
+}
+
+static void ask_next_request(void) {
+    while (S.role == ROLE_HOST && !S.claimAsked && S.requests.count > 0 && !console_confirm_busy()) {
+        Request *c = &S.requests.items[0];
         Player *p = player_by_id(c->player);
-        Entity *e = entity_by_id(c->entity);
-        if (!p || !p->welcomed || !e || e->owner[0]) { /* outdated */
-            da_remove_at(&S.claims, 0);
+        Entity *e = c->kind == REQ_CLAIM ? entity_by_id(c->entity) : NULL;
+        if (!p || !p->welcomed || (c->kind == REQ_CLAIM && (!e || e->owner[0]))) { /* outdated */
+            request_remove(0);
             continue;
         }
-        char label[64], q[160];
-        entity_label(e, label, sizeof(label));
-        snprintf(q, sizeof(q), "%s wants to claim %s. Allow? (y/n)", p->name, label);
+        char q[256];
+        if (c->kind == REQ_CLAIM) {
+            char label[64];
+            entity_label(e, label, sizeof(label));
+            snprintf(q, sizeof(q), "%s wants to claim %s. Allow? (y/n)", p->name, label);
+        } else {
+            snprintf(q, sizeof(q), "%s wants to create a character at [%d|%d]: size %d, max health %d, AC %d, "
+                     "speed %d, initiative %d. Allow? (y/n)", p->name, c->spec.tile.row, c->spec.tile.col,
+                     c->spec.size, c->spec.maxHealth, c->spec.ac, c->spec.speed, c->spec.initiative);
+        }
         gfx_set_console_visibility(true);
-        S.claimAsked = console_confirm(q, claim_answer, NULL);
+        S.claimAsked = console_confirm(q, request_answer, NULL);
         return;
     }
 }
 
-void session_prompt_free(void) { ask_next_claim(); }
+void session_draw_request_preview(void) {
+    if (S.role != ROLE_HOST || !S.claimAsked || S.requests.count == 0) return;
+    const Request *r = &S.requests.items[0];
+    if (r->kind != REQ_CREATE) return;
+    float x, y, d;
+    gfx_character_rect(r->spec.tile, r->spec.size, &x, &y, &d);
+    dr_set_alpha(0.5f);
+    dr_image(r->spec.image, x, y, d, d);
+    dr_set_alpha(1.0f);
+}
+
+void session_request_character(const Image *pic, Hex tile, int size, int maxHealth, int ac, int speed,
+                               int initiative) {
+    if (S.role != ROLE_CLIENT) {
+        console_log("Wait until you have joined the table");
+        return;
+    }
+    SaveBlob b;
+    if (!savefmt_encode_image(pic->px, pic->w, pic->h, SAVE_IMG_LOSSLESS, &b)) {
+        console_log("Could not encode the picture");
+        return;
+    }
+    NetMsg m = { .type = NM_CREATE, .seq = ++S.seq, .data = b.webp, .data_len = b.len };
+    m.spec = (NetSpec){ .type = SAVE_ENT_CHARACTER, .row = tile.row, .col = tile.col, .size = size,
+                        .max_health = maxHealth, .health = maxHealth, .ac = ac,
+                        .speed = speed > MAX_SPEED ? MAX_SPEED : speed, .initiative = initiative };
+    if (b.len > NET_CREATE_MAX_BLOB) console_log("The picture is too large");
+    else if (!net_send(S.net, 1, &m)) console_log("Could not send that to the host");
+    else console_log("Asked the GM to create your character.");
+    free(b.webp);
+}
+
+void session_prompt_free(void) { ask_next_request(); }
 
 /* ---- client -------------------------------------------------------------------------------------- */
 
@@ -1092,7 +1225,8 @@ static void end_host(void) {
     S.net = NULL;
     portmap_stop(S.pm); /* removes the router mapping */
     S.pm = NULL;
-    da_free(&S.claims);
+    for (int i = S.requests.count - 1; i >= 0; i--) request_remove(i);
+    da_free(&S.requests);
     S.claimAsked = false;
     da_free(&S.bans);
     players_clear();

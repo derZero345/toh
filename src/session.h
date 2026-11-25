@@ -9,6 +9,7 @@
  * Design: docs/superpowers/specs/2026-11-21-multiplayer-design.md, sections 1-3 and 5.
  */
 
+#include "image.h"
 #include "ops.h"
 
 /* The GM is player 0 and always gold; players get the first free palette color. */
@@ -46,8 +47,12 @@ void session_cmd_ban(const char *name);   /* NULL: list the bans */
 void session_cmd_unban(const char *name);
 void session_cmd_claim(void);
 
-/* The console's yes/no prompt became free: asks the next queued claim. */
+/* The console's yes/no prompt became free: asks the next queued request. */
 void session_prompt_free(void);
+/* Client: asks the GM for a new character of ours with this picture (at most NET_CREATE_MAX_DIM per side). */
+void session_request_character(const Image *pic, Hex tile, int size, int maxHealth, int ac, int speed, int initiative);
+/* Host: while a new character is being asked about, draws its picture faintly on its tile (only for the GM). */
+void session_draw_request_preview(void);
 
 /* Presence (spec section 4). After a frame was drawn the local presence may have changed; session_tick
  * sends it (at most every SESSION_PRESENCE_MS) and, on the host, forwards the players'. It returns the

@@ -3,6 +3,7 @@
 #include "draw.h"
 #include "image.h"
 #include "ops.h"
+#include "netmsg.h"
 #include "session.h"
 
 #include <math.h>
@@ -280,6 +281,15 @@ void gfx_handle_file_result(const char *path) {
     case ACTION_SPAWN_CHARACTERS: {
         Image cut = image_cut_circle(&img);
         image_free(&img);
+        if (session_is_client()) { /* players ask the GM */
+            Image small = image_scale_to_fit(&cut, NET_CREATE_MAX_DIM);
+            image_free(&cut);
+            if (a->tiles.count == 1)
+                session_request_character(&small, a->tiles.items[0], a->size, a->maxHealth, a->ac, a->speed,
+                                          a->initiative);
+            image_free(&small);
+            break;
+        }
         Texture *t = texture_from_image(&cut);
         Op op = { .type = OP_SPAWN };
         for (int i = 0; i < a->tiles.count; i++)
@@ -341,6 +351,10 @@ static void spawn_confirmed(bool yes, void *ctx) {
 }
 
 void gfx_spawn_character(int size, int maxhealth, int ac, int speed, int initiative) {
+    if (session_is_client() && gh->selectedTiles.count > 1) { /* players ask for one character at a time */
+        console_log("Select one tile");
+        return;
+    }
     HexList tiles = { 0 };
     if (gh->selectedTiles.count == 1) {
         da_push(&tiles, gh->selectedTiles.items[0]);
@@ -769,6 +783,7 @@ void gfx_draw_frame(const char *screenshot_path) {
     }
     draw_entities();
     draw_owner_rings();
+    session_draw_request_preview();
     draw_grid();
     draw_fx();
     draw_toolbox();
