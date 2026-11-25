@@ -1,6 +1,7 @@
 /* Entities (entities package) and markers (fx/Marker). */
 #include "app.h"
 
+#include <math.h>
 #include <stdio.h>
 
 /* ---- markers ------------------------------------------------------------------ */
@@ -279,4 +280,52 @@ void entities_delete_type(int type) {
         deleted = true;
     }
     if (deleted) entities_clear_highlights(); /* drop highlights that referred to the deleted entities */
+}
+
+/* ---- HP (Tales of Honor) ------------------------------------------------------------------------ */
+
+int hp_clamp(long long hp, int max) {
+    if (max < 0) max = 0;
+    if (hp > max) return max;
+    if (hp < -max) return -max;
+    return (int)hp;
+}
+
+HpStage hp_stage(int hp, int max) {
+    if (max <= 0) return HP_HEALTHY;
+    long long h2 = 2LL * hp;
+    if (hp <= -max) return HP_DEAD;
+    if (h2 < -(long long)max) return HP_CRITICAL;
+    if (hp <= 0) return HP_DYING;
+    if (h2 < max) return HP_INJURED;
+    return HP_HEALTHY;
+}
+
+const char *hp_stage_name(HpStage s) {
+    static const char *const names[] = { "Healthy", "Injured", "Dying", "Critical", "Dead" };
+    return (unsigned)s < 5 ? names[s] : "?";
+}
+
+int hp_after_max_change(int hp, int old_max, int new_max) {
+    return hp >= old_max ? hp_clamp(new_max, new_max) : hp_clamp(hp, new_max);
+}
+
+HpBar hp_bar_layout(int hp, int max, float frame_x, float frame_w) {
+    HpBar b = { .fill_x = frame_x };
+    if (max <= 0) return b;
+    double ratio = (double)hp / max;
+    if (ratio > 1) ratio = 1;
+    if (ratio < -1) ratio = -1;
+    b.fill_w = (float)(frame_w * fabs(ratio));
+    if (hp < 0) b.fill_x = frame_x - b.fill_w;
+    b.lines = true;
+    b.injured_x = frame_x + frame_w / 2;
+    b.critical = hp <= 0;
+    b.critical_x = frame_x - frame_w / 2;
+    return b;
+}
+
+void entity_display_name(const Entity *e, char *out, size_t cap) {
+    if (e->name[0]) snprintf(out, cap, "%s", e->name);
+    else snprintf(out, cap, "Character #%u", e->id);
 }

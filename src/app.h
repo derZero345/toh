@@ -87,9 +87,12 @@ enum { SIZE_WEE = -2, SIZE_TINY = -1, SIZE_SMALL = 0, SIZE_NORMAL = 1, SIZE_BIG 
 
 struct Marker;
 
+#define CHAR_NAME_MAX 33 /* character names: 1..32 bytes (savefmt_char_name_valid) */
+
 typedef struct Entity {
     uint32_t id;                 /* unique while the program runs (entity_register), never 0 */
     char owner[PLAYER_NAME_MAX]; /* characters: player who controls it, "" = nobody (only the GM) */
+    char name[CHAR_NAME_MAX];    /* characters: "" = no name, shown as "Character #<id>" */
     EntityType type;
     Texture *image;
     Hex tile;
@@ -118,6 +121,27 @@ double  entity_draw_size(const Entity *e);
 bool    entity_occupies(const Entity *e, Hex h);
 /* GraphicsHandler.selectEntity: entity whose *main* tile is h. */
 Entity *entity_at(Hex h);
+
+/* ---- HP (Tales of Honor): from max HP down to -max HP ---- */
+typedef enum { HP_HEALTHY, HP_INJURED, HP_DYING, HP_CRITICAL, HP_DEAD } HpStage;
+/* hp limited to [-max, max]; a max below 0 counts as 0. */
+int         hp_clamp(long long hp, int max);
+/* Healthy >= max/2 > Injured >= 1 > Dying >= -max/2 >= Critical > -max >= Dead. max <= 0: Healthy. */
+HpStage     hp_stage(int hp, int max);
+const char *hp_stage_name(HpStage s);
+/* Current HP after max HP changes: full HP stays full, otherwise it is clamped. */
+int         hp_after_max_change(int hp, int old_max, int new_max);
+/* The HP panel's bar. The frame stands for 0..max; below 0 the fill grows left out of it. */
+typedef struct {
+    float fill_x, fill_w; /* red part */
+    bool lines;           /* max > 0: draw the injured line */
+    float injured_x;      /* max/2, the middle of the frame */
+    bool critical;        /* dying (hp <= 0): draw the critical line */
+    float critical_x;     /* -max/2, left of the frame */
+} HpBar;
+HpBar       hp_bar_layout(int hp, int max, float frame_x, float frame_w);
+/* The character's name, or "Character #<id>". */
+void        entity_display_name(const Entity *e, char *out, size_t cap);
 /* Gives e the next id and appends it to gh->entities. Every entity on the table goes through this. */
 void    entity_register(Entity *e);
 /* Like entity_register, with an id chosen by the session host. */

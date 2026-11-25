@@ -688,6 +688,48 @@ static void test_confirm_answer(void) {
     CHECK(confirm_answer(b, "Bob wants to claim") == ANSWER_UNCLEAR); /* an edited question */
 }
 
+/* ---- HP rules (Tales of Honor) -------------------------------------------------------------- */
+
+static void test_hp_rules(void) {
+    CHECK(hp_clamp(25, 20) == 20 && hp_clamp(-25, 20) == -20 && hp_clamp(-3, 20) == -3);
+    CHECK(hp_clamp(5, 0) == 0 && hp_clamp(5, -4) == 0); /* no max HP: nothing to track */
+    CHECK(hp_clamp(-3000000000LL, 20) == -20);
+    CHECK(hp_stage(20, 20) == HP_HEALTHY && hp_stage(10, 20) == HP_HEALTHY && hp_stage(9, 20) == HP_INJURED);
+    CHECK(hp_stage(1, 20) == HP_INJURED && hp_stage(0, 20) == HP_DYING && hp_stage(-10, 20) == HP_DYING);
+    CHECK(hp_stage(-11, 20) == HP_CRITICAL && hp_stage(-19, 20) == HP_CRITICAL && hp_stage(-20, 20) == HP_DEAD);
+    CHECK(hp_stage(5, 11) == HP_INJURED && hp_stage(6, 11) == HP_HEALTHY);   /* odd max: half is 5.5 */
+    CHECK(hp_stage(-5, 11) == HP_DYING && hp_stage(-6, 11) == HP_CRITICAL);
+    CHECK(hp_stage(0, 0) == HP_HEALTHY);
+    CHECK(strcmp(hp_stage_name(HP_CRITICAL), "Critical") == 0 && strcmp(hp_stage_name(HP_DEAD), "Dead") == 0);
+
+    CHECK(hp_after_max_change(10, 10, 20) == 20); /* full HP stays full */
+    CHECK(hp_after_max_change(0, 0, 20) == 20);   /* a new character without max HP */
+    CHECK(hp_after_max_change(5, 10, 20) == 5);
+    CHECK(hp_after_max_change(15, 20, 10) == 10);
+    CHECK(hp_after_max_change(-15, 20, 10) == -10);
+
+    HpBar b = hp_bar_layout(15, 20, 100, 80);
+    CHECK(b.fill_x == 100 && b.fill_w == 60 && b.lines && b.injured_x == 140 && !b.critical);
+    b = hp_bar_layout(-5, 20, 100, 80); /* dying: grows to the left out of the frame */
+    CHECK(b.fill_x == 80 && b.fill_w == 20 && b.lines && b.critical && b.critical_x == 60);
+    b = hp_bar_layout(-20, 20, 100, 80);
+    CHECK(b.fill_x == 20 && b.fill_w == 80);
+    b = hp_bar_layout(0, 20, 100, 80);
+    CHECK(b.fill_w == 0 && b.critical);
+    b = hp_bar_layout(3, 0, 100, 80);
+    CHECK(b.fill_w == 0 && !b.lines && !b.critical);
+
+    reset_table();
+    Entity *e = add_character((Hex){ 0, 0 }, 3, "");
+    char name[CHAR_NAME_MAX + 16], want[32];
+    entity_display_name(e, name, sizeof(name));
+    snprintf(want, sizeof(want), "Character #%u", e->id);
+    CHECK(strcmp(name, want) == 0);
+    snprintf(e->name, sizeof(e->name), "Mao");
+    entity_display_name(e, name, sizeof(name));
+    CHECK(strcmp(name, "Mao") == 0);
+}
+
 int main(void) {
     test_entity_ids();
     test_initiative_values();
@@ -705,6 +747,7 @@ int main(void) {
     test_size_footprints();
     test_tile_sharing();
     test_confirm_answer();
+    test_hp_rules();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
