@@ -405,6 +405,22 @@ static void draw_border(float x, float y, float w, float h, Color c) {
     dr_fill_rect(x + w - 1, y, 1, h, c);
 }
 
+void gfx_character_rect(Hex tile, int size, float *x, float *y, float *d) {
+    double hs = gh->hexSize;
+    Entity tmp = { .type = ENTITY_CHARACTER, .size = size };
+    double ds = entity_draw_size(&tmp);
+    Vec2 c = hex_center(tile);
+    double left;
+    switch (size) {
+    case SIZE_LARGE:      left = c.x; break;
+    case SIZE_GARGANTUAN: left = c.x - ((ds - 2) * hs / 2); break;
+    default:              left = c.x - (ds * hs / 2); break;
+    }
+    *x = (float)left;
+    *y = (float)(c.y - ds * hs / 2);
+    *d = (float)(ds * hs);
+}
+
 static void draw_entities(void) {
     double hs = gh->hexSize;
     for (int i = 0; i < gh->entities.count; i++) {
@@ -412,14 +428,10 @@ static void draw_entities(void) {
         Vec2 c = hex_center(e->tile);
         double ds = entity_draw_size(e);
         if (e->type == ENTITY_CHARACTER) {
-            double x;
-            switch (e->size) {
-            case SIZE_LARGE:      x = c.x; break;
-            case SIZE_GARGANTUAN: x = c.x - ((ds - 2) * hs / 2); break;
-            default:              x = c.x - (ds * hs / 2); break;
-            }
-            e->location = (Vec2){ x, c.y - (ds * hs / 2) };
-            dr_image(e->image, (int)e->location.x, (int)e->location.y, (int)(ds * hs), (int)(ds * hs));
+            float x, y, d;
+            gfx_character_rect(e->tile, e->size, &x, &y, &d);
+            e->location = (Vec2){ x, y };
+            dr_image(e->image, (int)e->location.x, (int)e->location.y, (int)d, (int)d);
         } else {
             e->location = (Vec2){ c.x - hs, c.y - (SQRT3 * hs / 2) };
             dr_image(e->image, (int)e->location.x, (int)e->location.y, (int)(ds * hs * 2 / SQRT3), (int)(ds * hs));
@@ -428,6 +440,20 @@ static void draw_entities(void) {
             e->debugMarker->coords = e->location;
             e->debugMarker->displayCoords = (Vec2){ e->tile.row, e->tile.col };
         }
+    }
+}
+
+/* During a session: a ring in the owner's color around every owned character (thicker around ours). */
+static void draw_owner_rings(void) {
+    float th = gh->hexSize / 15.0f < 2 ? 2 : gh->hexSize / 15.0f;
+    for (int i = 0; i < gh->entities.count; i++) {
+        const Entity *e = gh->entities.items[i];
+        uint32_t color;
+        bool mine;
+        if (e->type != ENTITY_CHARACTER || !session_owner_color(e->owner, &color, &mine)) continue;
+        float x, y, d;
+        gfx_character_rect(e->tile, e->size, &x, &y, &d);
+        dr_stroke_oval(x, y, d, d, mine ? th * 2 : th, rgb_hex(color));
     }
 }
 
@@ -742,6 +768,7 @@ void gfx_draw_frame(const char *screenshot_path) {
         dr_image(gh->backgroundImage, gh->gridOffsetX, gh->gridOffsetY, gh->drawWidth, gh->drawHeight);
     }
     draw_entities();
+    draw_owner_rings();
     draw_grid();
     draw_fx();
     draw_toolbox();

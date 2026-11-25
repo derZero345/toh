@@ -24,6 +24,9 @@ bool        session_is_client(void); /* joining or joined */
 const char *session_my_name(void);
 /* @waitnet: host: at least n players joined; client: joined. */
 bool        session_ready(int n);
+/* Ring color of a character owned by owner: true when a ring is drawn (in a session, owner not empty).
+ * mine: we are that owner. Owners who are not at the table are grey. */
+bool        session_owner_color(const char *owner, uint32_t *color, bool *mine);
 
 /* Called by ops_submit. */
 void session_send_op(const Op *op);      /* client: send to the host */

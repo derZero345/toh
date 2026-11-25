@@ -21,6 +21,7 @@
 #define ROLL_WINDOW_MS 10000            /* host: a player rolls at most ROLLS_PER_WINDOW times in this */
 #define ROLLS_PER_WINDOW 10
 #define BAN_KEY_MAX 64
+#define OWNER_ABSENT_COLOR 0x9AA0A6u    /* ring of a character whose owner is not at the table */
 
 typedef struct {
     uint8_t h[NET_HASH_SIZE];
@@ -132,6 +133,15 @@ bool session_ready(int n) {
     for (int i = 1; i < MAX_PLAYERS; i++)
         if (S.players[i].welcomed) count++;
     return count >= n;
+}
+
+bool session_owner_color(const char *owner, uint32_t *color, bool *mine) {
+    if ((S.role != ROLE_HOST && S.role != ROLE_CLIENT) || !owner[0]) return false;
+    *mine = strcasecmp(owner, S.myName) == 0;
+    *color = OWNER_ABSENT_COLOR;
+    for (int i = 0; i < MAX_PLAYERS; i++)
+        if (S.players[i].welcomed && strcasecmp(S.players[i].name, owner) == 0) *color = S.players[i].color;
+    return true;
 }
 
 static const char *color_name(uint32_t c) {

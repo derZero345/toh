@@ -398,6 +398,8 @@ void gfx_add_entity_preview_tiles(void);
 void gfx_request_file(ActionKind kind, const HexList *tiles, int size, int maxHealth, int ac, int speed, int initiative);
 void gfx_handle_file_result(const char *path); /* path NULL = cancelled */
 void gfx_spawn_character(int size, int maxhealth, int ac, int speed, int initiative);
+/* Where a character of this size on tile is drawn: its picture's top left corner and diameter. */
+void gfx_character_rect(Hex tile, int size, float *x, float *y, float *d);
 void gfx_summon_wall(void);
 void gfx_set_background_image(const char *path_or_null);
 /* NULL = no background; takes its own reference. Background and entity textures must keep their
