@@ -30,7 +30,9 @@ Set `TOH_VK_VALIDATION=1` to enable the Khronos validation layer when it is inst
 
 ## Controls
 
-These are the same as in the Java version.
+Full guides: [gmcontrols.md](gmcontrols.md) (every control and command) and
+[playercontrols.md](playercontrols.md) (the basics for players). The mouse and keyboard controls are the same as
+in the Java version.
 
 | Input | Action |
 |---|---|
