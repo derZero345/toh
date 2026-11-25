@@ -128,6 +128,10 @@ static bool msg_ok(const NetMsg *m) {
     case NM_OP_APPLIED:    return op_ok(&m->op);
     case NM_LOG:           return text_ok(m->text, sizeof(m->text));
     case NM_PRESENCE:      return presence_ok(&m->presence);
+    case NM_CREATE:
+        return m->spec.type == SAVE_ENT_CHARACTER && spec_ok(&m->spec) && m->spec.size >= -2 && m->spec.size <= 3 &&
+               m->spec.health == m->spec.max_health && m->data && m->data_len >= 1 &&
+               m->data_len <= NET_CREATE_MAX_BLOB;
     case NM_SESSION:
         if (!ids_ok(m->entity_ids, m->nentity_ids)) return false;
         if (m->nplayers < 1 || m->nplayers > NETMSG_MAX_PLAYERS || !m->players) return false;
@@ -322,6 +326,17 @@ bool netmsg_encode(const NetMsg *m, uint8_t **out, size_t *out_len) {
     case NM_PRESENCE:
         put_u8(&b, m->player);
         put_presence(&b, &m->presence);
+        break;
+    case NM_CREATE:
+        put_uv(&b, m->seq);
+        put_sv(&b, m->spec.row);
+        put_sv(&b, m->spec.col);
+        put_sv(&b, m->spec.size);
+        put_sv(&b, m->spec.max_health);
+        put_sv(&b, m->spec.ac);
+        put_sv(&b, m->spec.speed);
+        put_sv(&b, m->spec.initiative);
+        put_bytes(&b, m->data, m->data_len);
         break;
     }
     if (b.oom) {
@@ -593,6 +608,19 @@ bool netmsg_decode(const uint8_t *buf, size_t len, NetMsg *out) {
     case NM_PRESENCE:
         out->player = get_u8(&r);
         get_presence(&r, &out->presence);
+        break;
+    case NM_CREATE:
+        out->seq = get_uv(&r);
+        out->spec.type = SAVE_ENT_CHARACTER;
+        out->spec.row = get_sv(&r);
+        out->spec.col = get_sv(&r);
+        out->spec.size = get_sv(&r);
+        out->spec.max_health = get_sv(&r);
+        out->spec.ac = get_sv(&r);
+        out->spec.speed = get_sv(&r);
+        out->spec.initiative = get_sv(&r);
+        out->spec.health = out->spec.max_health;
+        get_blob(&r, out);
         break;
     default:
         r.bad = true;

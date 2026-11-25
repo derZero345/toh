@@ -126,6 +126,12 @@ static NetMsg sample_msg(int t, int op_type) {
     case NM_LOG: strcpy(m.text, "Alice rolled 2d6+3: 4 + 2 + 3 = 9"); break;
     case NM_CLOSE: m.reason = NET_CLOSE_KICKED; break;
     case NM_PRESENCE: m.player = 3; m.presence = sample_presence(); break;
+    case NM_CREATE:
+        m.seq = 7;
+        m.spec = (NetSpec){ .type = SAVE_ENT_CHARACTER, .row = 3, .col = -4, .size = -2, .max_health = 20,
+                            .health = 20, .ac = 12, .speed = 6, .initiative = 1 };
+        m.data = blob; m.data_len = sizeof(blob);
+        break;
     }
     return m;
 }
@@ -279,10 +285,11 @@ static void test_truncated_and_trailing(void) {
     for (int t = NM_HELLO; t < NM_COUNT; t++) {
         for (int o = 0; o < ((t == NM_OP || t == NM_OP_APPLIED) ? NOP_COUNT : 1); o++) {
             NetMsg m = sample_msg(t, o);
-            /* SNAPSHOT and IMAGE data run to the end of the message, so extra bytes are data */
-            if (t != NM_SNAPSHOT && t != NM_IMAGE) CHECK(!decodes_after(&m, append_zero));
+            /* SNAPSHOT, IMAGE and CREATE data run to the end of the message, so extra bytes are data */
+            bool blob_end = t == NM_SNAPSHOT || t == NM_IMAGE || t == NM_CREATE;
+            if (!blob_end) CHECK(!decodes_after(&m, append_zero));
             /* every message without its last byte is invalid, except a longer-than-1-byte blob */
-            if (t != NM_SNAPSHOT && t != NM_IMAGE) CHECK(!decodes_after(&m, drop_last));
+            if (!blob_end) CHECK(!decodes_after(&m, drop_last));
 
             uint8_t *buf;
             size_t len;
@@ -291,7 +298,7 @@ static void test_truncated_and_trailing(void) {
                 NetMsg d;
                 bool ok = netmsg_decode(buf, cut, &d);
                 netmsg_free(&d);
-                if (ok && t != NM_SNAPSHOT && t != NM_IMAGE) {
+                if (ok && !blob_end) {
                     fprintf(stderr, "message %d (op %d) cut to %zu bytes decodes\n", t, o, cut);
                     CHECK(!ok);
                 }
@@ -388,6 +395,21 @@ static void test_decoder_refuses_bytes(void) {
         CHECK(!ok);
         netmsg_free(&d);
     }
+}
+
+static void test_create(void) {
+    NetMsg m = sample_msg(NM_CREATE, 0), d;
+    CHECK(round_trip(&m, &d) && d.seq == 7 && d.spec.type == SAVE_ENT_CHARACTER && d.spec.row == 3 &&
+          d.spec.col == -4 && d.spec.size == -2 && d.spec.max_health == 20 && d.spec.health == 20 &&
+          d.spec.ac == 12 && d.spec.speed == 6 && d.spec.initiative == 1 && d.data_len == sizeof(blob));
+    netmsg_free(&d);
+    uint8_t *buf;
+    size_t len;
+    NetMsg bad = m; bad.spec.type = SAVE_ENT_WALL;        CHECK(!netmsg_encode(&bad, &buf, &len));
+    bad = m; bad.spec.size = 4;                            CHECK(!netmsg_encode(&bad, &buf, &len));
+    bad = m; bad.spec.speed = SAVEFMT_MAX_SPEED + 1;       CHECK(!netmsg_encode(&bad, &buf, &len));
+    bad = m; bad.data_len = 0;                             CHECK(!netmsg_encode(&bad, &buf, &len));
+    bad = m; bad.data_len = NET_CREATE_MAX_BLOB + 1;       CHECK(!netmsg_encode(&bad, &buf, &len));
 }
 
 static void test_image_hash(void) {
@@ -554,6 +576,7 @@ int main(int argc, char **argv) {
     test_truncated_and_trailing();
     test_encoder_refuses_invalid();
     test_decoder_refuses_bytes();
+    test_create();
     test_image_hash();
     test_joincode_round_trip();
     test_joincode_rejects();

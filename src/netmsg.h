@@ -21,7 +21,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define NET_PROTOCOL_VERSION 1
+#define NET_PROTOCOL_VERSION 2
 #define NET_DEFAULT_PORT     41234
 #define NET_MAX_FRAME        (64u << 20)            /* one encrypted frame */
 #define NETMSG_MAX_BLOB      (NET_MAX_FRAME - 1024) /* SNAPSHOT / IMAGE payload */
@@ -30,6 +30,8 @@
 #define NETMSG_MAX_DICE      64                     /* ROLL spec, bytes incl. the terminating NUL */
 #define NETMSG_MAX_REASON    31                     /* OP_REJECTED reason codes are 1..31 */
 #define NETMSG_MAX_ROLLS     1001                   /* NOP_ROLL values: up to 1000 dice and the total */
+#define NET_CREATE_MAX_BLOB  (1u << 20)          /* CREATE: the picture's WebP bytes */
+#define NET_CREATE_MAX_DIM   512                    /* CREATE: the picture's width and height */
 #define NET_HASH_SIZE        32                     /* BLAKE2b-256 of an image's WebP bytes */
 #define NET_SECRET_SIZE      16
 #define NET_MAX_ADDRS        8
@@ -58,6 +60,7 @@ typedef enum {
     NM_IMAGE,         /* H->C hash, image_kind (SAVE_IMG_*), data: WebP bytes */
     NM_LOG,           /* H->C text */
     NM_CLOSE,         /* H->C reason (NET_CLOSE_*) */
+    NM_CREATE,        /* C->H seq, spec (a character; no image hash), data: WebP bytes of its picture */
     NM_COUNT
 } NetMsgType;
 
@@ -184,6 +187,7 @@ typedef struct {
     size_t data_len;
     char text[NETMSG_MAX_TEXT];        /* LOG */
     NetPresence presence;              /* PRESENCE (with player) */
+    NetSpec spec;                      /* CREATE: type character, health = max_health */
 } NetMsg;
 
 /* Encodes m into a new buffer (*out, free with free()). Returns false when m breaks a rule
