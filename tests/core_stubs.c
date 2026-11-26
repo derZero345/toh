@@ -1,9 +1,11 @@
 /* Stand-ins for the renderer, console and graphics functions that the game core calls,
  * so entity.c, game.c, hex.c, astar.c and ops.c can be tested without a window. */
 #include "app.h"
+#include "draw.h"
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 
 App *gh;
 
@@ -87,3 +89,32 @@ void session_send_op(const Op *op) {
     stub_sent_ops++;
 }
 void session_broadcast_op(const Op *op) { (void)op; }
+/* Drawing: the HUD draws through these; the tests check layout and input only. Text is 0.5 em per byte. */
+void dr_set_alpha(float a) { (void)a; }
+void dr_fill_rect(float x, float y, float w, float h, Color c) { (void)x, (void)y, (void)w, (void)h, (void)c; }
+void dr_stroke_rect(float x, float y, float w, float h, float th, Color c) {
+    (void)x, (void)y, (void)w, (void)h, (void)th, (void)c;
+}
+void dr_fill_round_rect(float x, float y, float w, float h, float aw, float ah, Color c) {
+    (void)x, (void)y, (void)w, (void)h, (void)aw, (void)ah, (void)c;
+}
+void dr_fill_oval(float x, float y, float w, float h, Color c) { (void)x, (void)y, (void)w, (void)h, (void)c; }
+void dr_stroke_arc(float x, float y, float w, float h, float start, float extent, float th, Color c) {
+    (void)x, (void)y, (void)w, (void)h, (void)start, (void)extent, (void)th, (void)c;
+}
+void dr_line(float x1, float y1, float x2, float y2, float th, Color c) {
+    (void)x1, (void)y1, (void)x2, (void)y2, (void)th, (void)c;
+}
+void dr_image(Texture *t, float x, float y, float w, float h) { (void)t, (void)x, (void)y, (void)w, (void)h; }
+void dr_text(FontStyle style, float size, float x, float y, Color c, const char *text) {
+    (void)style, (void)size, (void)x, (void)y, (void)c, (void)text;
+}
+float dr_text_width(FontStyle style, float size, const char *text) {
+    (void)style;
+    return 0.5f * size * (float)strlen(text);
+}
+void dr_font_metrics(FontStyle style, float size, float *ascent, float *descent) {
+    (void)style;
+    *ascent = 0.8f * size;
+    *descent = 0.2f * size;
+}

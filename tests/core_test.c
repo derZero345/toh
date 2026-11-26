@@ -987,6 +987,96 @@ static void test_hud_icons(void) {
     CHECK(hud_icon("placeholder") == NULL && stub_refs(t) == 0);
 }
 
+static void test_hud_widgets(void) {
+    const HudTheme *t = &HUD_THEME;
+    const HudComponent *hc = HUD_COMPONENTS[HUD_HOTBAR], *sc = HUD_COMPONENTS[HUD_SLIDER];
+    const HudComponent *bc = HUD_COMPONENTS[HUD_BAR], *pc = HUD_COMPONENTS[HUD_PILL];
+    HudElement hb = { .type = HUD_HOTBAR, .key = "hb", .slots = 10 };
+    HudElement thin = { .type = HUD_BAR, .key = "b", .thin = true }, thick = { .type = HUD_BAR, .key = "c" };
+    HudElement pill = { .type = HUD_PILL, .key = "p" };
+    HudElement sl = { .type = HUD_SLIDER, .key = "s", .label = "Value" };
+
+    /* sizes come from the tokens and scale linearly */
+    float hw = 10 * t->slot + 9 * t->slotGap;
+    CHECK(near(hc->min_width(&hb, 1), hw, 0.01f) && near(hc->min_width(&hb, 2), 2 * hw, 0.01f));
+    CHECK(near(hc->height(&hb, 1), t->slot, 0.01f));
+    CHECK(near(bc->height(&thin, 1), t->thinBarH, 0.01f) && near(bc->height(&thick, 1), t->barH, 0.01f));
+    CHECK(near(pc->min_width(&pill, 1), t->pillW, 0.01f) && near(pc->height(&pill, 1), t->pillH, 0.01f));
+    CHECK(near(sc->height(&sl, 1), fmaxf(t->sliderKnob, t->font + 4), 0.01f));
+    CHECK(bc->flex && sc->flex && !pc->flex && !hc->flex);
+    CHECK(!bc->mouse && !pc->mouse && sc->mouse && hc->mouse);
+
+    /* hotbar slots: geometry and hit-testing */
+    HudRect r = { 100, 50, hw, t->slot };
+    HudRect s3 = hud_slot_rect(r, 2, 1), s4 = hud_slot_rect(r, 3, 1);
+    CHECK(near(s3.x, 100 + 2 * (t->slot + t->slotGap), 0.01f) && near(s3.w, t->slot, 0.01f));
+    CHECK(hud_slot_at(&hb, r, s3.x + 1, s3.y + 1, 1) == 2);
+    CHECK(hud_slot_at(&hb, r, s3.x + t->slot + 1, s3.y + 1, 1) == -1); /* in the gap */
+    CHECK(hud_slot_at(&hb, r, 99, 60, 1) == -1);
+    HudSlot ok = { HUD_SLOT_AVAILABLE, "placeholder", 0, 0 }, cd = ok, off = ok, empty = { 0 };
+    cd.cooldown = 2;
+    off.state = HUD_SLOT_UNAVAILABLE;
+    CHECK(hud_slot_usable(&ok) && !hud_slot_usable(&cd) && !hud_slot_usable(&off) && !hud_slot_usable(&empty));
+
+    /* hotbar mouse: press and release on the same usable slot uses it */
+    HudValue hv = { .type = HUD_HOTBAR };
+    hv.slots[2] = ok;
+    hv.slots[3] = off;
+    HudUiState ui = { -1, -1, -1, -1, false, false };
+    HudEvent ev = { 0 };
+    ui.press = 7;
+    CHECK(!hc->mouse(&hb, r, &hv, (HudMouse){ HUD_MOUSE_DOWN, s3.x + 5, s3.y + 5 }, &ui, 7, 1, &ev));
+    CHECK(ui.pressSub == 2);
+    CHECK(hc->mouse(&hb, r, &hv, (HudMouse){ HUD_MOUSE_UP, s3.x + 6, s3.y + 6 }, &ui, 7, 1, &ev));
+    CHECK(ev.type == HUD_EV_SLOT_USED && ev.slot == 2);
+    hc->mouse(&hb, r, &hv, (HudMouse){ HUD_MOUSE_DOWN, s3.x + 5, s3.y + 5 }, &ui, 7, 1, &ev);
+    CHECK(!hc->mouse(&hb, r, &hv, (HudMouse){ HUD_MOUSE_UP, s4.x + 5, s4.y + 5 }, &ui, 7, 1, &ev)); /* elsewhere */
+    hc->mouse(&hb, r, &hv, (HudMouse){ HUD_MOUSE_DOWN, s4.x + 5, s4.y + 5 }, &ui, 7, 1, &ev);
+    CHECK(!hc->mouse(&hb, r, &hv, (HudMouse){ HUD_MOUSE_UP, s4.x + 5, s4.y + 5 }, &ui, 7, 1, &ev)); /* unavailable */
+    ui.press = -1;
+    hc->mouse(&hb, r, &hv, (HudMouse){ HUD_MOUSE_MOVE, s4.x + 5, s4.y + 5 }, &ui, 7, 1, &ev);
+    CHECK(ui.hoverSub == 3);
+
+    /* slider: follows the pointer within its range while pressed, one event per new value */
+    HudRect sr = { 0, 0, sc->min_width(&sl, 1) + 100, sc->height(&sl, 1) };
+    HudValue sv = { .type = HUD_SLIDER, .slider = { "Value", 50, 0, 100 } };
+    ui.press = 3;
+    CHECK(sc->mouse(&sl, sr, &sv, (HudMouse){ HUD_MOUSE_DOWN, sr.w + 50, 5 }, &ui, 3, 1, &ev));
+    CHECK(ev.type == HUD_EV_SLIDER_CHANGED && ev.value == 100 && sv.slider.value == 100);
+    CHECK(!sc->mouse(&sl, sr, &sv, (HudMouse){ HUD_MOUSE_MOVE, sr.w + 80, 5 }, &ui, 3, 1, &ev)); /* still 100 */
+    CHECK(sc->mouse(&sl, sr, &sv, (HudMouse){ HUD_MOUSE_MOVE, -500, 5 }, &ui, 3, 1, &ev) && ev.value == 0);
+    ui.press = -1;
+    CHECK(!sc->mouse(&sl, sr, &sv, (HudMouse){ HUD_MOUSE_MOVE, sr.w, 5 }, &ui, 3, 1, &ev)); /* only hovering */
+    CHECK(!sc->mouse(&sl, sr, NULL, (HudMouse){ HUD_MOUSE_DOWN, sr.w, 5 }, &ui, 3, 1, &ev)); /* no value */
+
+    /* tab width: padding, icon, text (stub: 0.5 em per byte), close button */
+    HudTarget tg = { .shown = true, .name = "Mao" };
+    float w0 = 3 * t->tabPad + t->tabIcon + 0.5f * t->font * 3;
+    CHECK(near(hud_tab_width(&tg, 1), w0, 0.01f));
+    tg.canClose = true;
+    CHECK(near(hud_tab_width(&tg, 1), w0 + t->closeSize + t->tabPad, 0.01f));
+    snprintf(tg.extra, sizeof(tg.extra), "+2"); /* "Mao +2": 3 more bytes */
+    CHECK(near(hud_tab_width(&tg, 2), 2 * (w0 + t->closeSize + t->tabPad + 0.5f * t->font * 3), 0.01f));
+
+    /* drawing runs with and without values (the stubs draw nothing) */
+    HudValue bv = { .type = HUD_BAR };
+    bv.bar = (HudBar){ .solidLo = -0.3f, .solidHi = 0, .lightLo = -0.3f, .lightHi = 0.2f, .nmarkers = 2,
+                       .markers = { { 0.5f, HUD_MARK_LINE }, { -0.5f, HUD_MARK_TICK } }, .text = "-3/10" };
+    HudElement two = { .type = HUD_BAR, .key = "hp", .two_sided = true };
+    bc->draw(&two, r, &bv, &ui, 0, 1);
+    bc->draw(&thick, r, &bv, &ui, 0, 1);
+    bc->draw(&thin, r, NULL, &ui, 0, 1);
+    HudValue pv = { .type = HUD_PILL, .pill = { "STR", "3" } };
+    pc->draw(&pill, r, &pv, &ui, 1, 1);
+    pc->draw(&pill, r, NULL, &ui, 1, 1);
+    sc->draw(&sl, sr, &sv, &ui, 3, 1);
+    sc->draw(&sl, sr, NULL, &ui, 3, 1);
+    hc->draw(&hb, r, &hv, &ui, 7, 1);
+    hc->draw(&hb, r, NULL, &ui, 7, 1);
+    hud_draw_panel(r, 1);
+    hud_draw_tab(r, r, &tg, &ui, 1);
+}
+
 int main(void) {
     test_split_args();
     test_entity_ids();
@@ -1010,6 +1100,7 @@ int main(void) {
     test_stamina();
     test_bar_anim();
     test_hud_icons();
+    test_hud_widgets();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
