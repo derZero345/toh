@@ -124,3 +124,4 @@ void dr_font_metrics(FontStyle style, float size, float *ascent, float *descent)
     *ascent = 0.8f * size;
     *descent = 0.2f * size;
 }
+Rect console_panel_rect(void) { return (Rect){ 0, gh->winH, gh->winW, 0 }; }

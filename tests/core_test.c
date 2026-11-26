@@ -3,6 +3,7 @@
 #include "app.h"
 #include "baranim.h"
 #include "hud.h"
+#include "hud_game.h"
 #include "image.h"
 #include "netmsg.h"
 #include "ops.h"
@@ -33,6 +34,7 @@ _Static_assert(PLAYER_NAME_MAX == SAVEFMT_OWNER_MAX && WAYPOINT_NAME_MAX == SAVE
 _Static_assert(CHAR_NAME_MAX == SAVEFMT_CHAR_NAME_MAX, "character name sizes");
 
 extern char stub_last_log[1024];
+extern int stub_log_count;
 extern Texture *stub_background;
 extern int stub_bad_releases;
 int stub_refs(Texture *t);
@@ -1404,6 +1406,115 @@ static void test_hud_review(void) {
     hud_begin_frame();
 }
 
+static void test_hud_game(void) {
+    reset_table();
+    app.winW = 1000;
+    app.winH = 700;
+    app.console.fontSize = 16;
+    app.console.active = false;
+    app.toolbox.size = 32;
+    stub_client = false;
+    hud_use_config(NULL, 0);
+    hud_set_visible(true);
+    hud_game_init("resources");
+    da_clear(&app.selectedEntities);
+    Entity *a = add_character((Hex){ 2, 2 }, 3, "bob"); /* oldest */
+    Entity *b = add_character((Hex){ 2, 4 }, 3, "alice");
+    Entity *c = add_character((Hex){ 2, 6 }, 3, "");
+    int others;
+    bool sel;
+
+    /* the GM with nothing selected: no character, but the placeholders */
+    CHECK(hud_pick_character(&others, &sel) == NULL);
+    hud_game_update(0);
+    CHECK(!hud_target()->shown && hud_value("hp") == NULL && hud_value("value") && hud_value("hotbar"));
+    CHECK(hud_value("pill.left") == NULL);
+
+    /* selected: the oldest visible one (duplicates count once), "+N" for the others */
+    da_push(&app.selectedEntities, c->id);
+    da_push(&app.selectedEntities, a->id);
+    da_push(&app.selectedEntities, a->id);
+    CHECK(hud_pick_character(&others, &sel) == a && others == 1 && sel);
+    a->maxHealth = 20;
+    a->health = -5;
+    a->maxStamina = 9;
+    a->stamina = 0;
+    snprintf(a->name, sizeof(a->name), "Mao");
+    hud_game_update(0);
+    const HudTarget *tg = hud_target();
+    CHECK(tg->shown && !strcmp(tg->name, "Mao") && !strcmp(tg->extra, "+1 (exhausted)") && tg->canClose);
+    const HudValue *hp = hud_value("hp");
+    CHECK(hp && !strcmp(hp->bar.text, "-5/20") && near(hp->bar.solidLo, -0.25f, 0.001f) &&
+          near(hp->bar.solidHi, 0, 0.001f));
+    CHECK(hp->bar.nmarkers == 2 && hp->bar.markers[0].style == HUD_MARK_LINE && near(hp->bar.markers[0].at, 0.5f, 0.001f));
+    CHECK(hp->bar.markers[1].style == HUD_MARK_TICK && near(hp->bar.markers[1].at, -0.5f, 0.001f));
+    CHECK(hud_value("stamina") && !strcmp(hud_value("stamina")->bar.text, "0/9"));
+    a->health = -20;
+    hud_game_update(0);
+    CHECK(!strcmp(hud_target()->extra, "+1 (dead)"));
+    /* no stamina stat: no stamina value */
+    a->health = -5;
+    a->maxStamina = 0;
+    hud_game_update(0);
+    CHECK(hud_value("stamina") == NULL && !strcmp(hud_target()->extra, "+1"));
+
+    /* a change animates; the update reports it until the bar is still */
+    a->health = 10;
+    CHECK(hud_game_update(0.016f));
+    bool moving = true;
+    for (int i = 0; i < 200 && moving; i++) moving = hud_game_update(0.016f);
+    CHECK(!moving && near(hud_value("hp")->bar.solidHi, 0.5f, 0.001f));
+
+    /* the close button clears the selection */
+    HudRect close;
+    CHECK(hud_part_rect("tab.close", &close));
+    Vec2 p = { close.x + 2, close.y + 2 };
+    CHECK(hud_game_mouse_down(p) && hud_game_mouse_up(p) && app.selectedEntities.count == 0);
+    CHECK(hud_game_contains(p) && !hud_game_contains((Vec2){ 5, 5 }));
+
+    /* players see their own characters only; with nothing selected the oldest own one, without close button */
+    stub_client = true; /* the stub's name is "alice" */
+    CHECK(!hud_can_see(a) && hud_can_see(b) && !hud_can_see(c));
+    CHECK(hud_pick_character(&others, &sel) == b && !sel && others == 0);
+    hud_game_update(0);
+    CHECK(hud_target()->shown && !hud_target()->canClose);
+    da_push(&app.selectedEntities, a->id); /* bob's: not hers, so she still sees her own */
+    CHECK(hud_pick_character(&others, &sel) == b && !sel);
+    stub_client = false;
+    CHECK(hud_can_see(a) && hud_can_see(c));
+    da_clear(&app.selectedEntities);
+
+    /* number keys: only with the console closed and without Ctrl / Alt; debug mode logs */
+    hud_game_update(0);
+    app.debugMode = true;
+    int logs = stub_log_count;
+    CHECK(hud_game_key(SDLK_1) && stub_log_count == logs + 1 && strstr(stub_last_log, "slot 1"));
+    CHECK(hud_game_key(SDLK_KP_2));
+    CHECK(!hud_game_key(SDLK_3) && !hud_game_key(SDLK_4) && !hud_game_key(SDLK_0)); /* cooldown, unavailable, empty */
+    app.console.active = true;
+    CHECK(!hud_game_key(SDLK_1));
+    app.console.active = false;
+    app.isCtrlDown = true;
+    CHECK(!hud_game_key(SDLK_1));
+    app.isCtrlDown = false;
+    app.debugMode = false;
+
+    /* the slider's value is kept for the next frames */
+    HudRect sl;
+    CHECK(hud_part_rect("value", &sl));
+    Vec2 q = { sl.x + sl.w - 1, sl.y + sl.h / 2 };
+    CHECK(hud_game_mouse_down(q) && hud_game_mouse_up(q));
+    hud_game_update(0);
+    CHECK(hud_value("value")->slider.value == 100);
+
+    /* hidden: nothing published, nothing moving */
+    hud_set_visible(false);
+    CHECK(!hud_game_update(0.016f) && hud_value("value") == NULL);
+    hud_set_visible(true);
+    hud_game_shutdown();
+    reset_table();
+}
+
 int main(void) {
     test_split_args();
     test_entity_ids();
@@ -1432,6 +1543,7 @@ int main(void) {
     test_hud_layout();
     test_hud_input();
     test_hud_review();
+    test_hud_game();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
