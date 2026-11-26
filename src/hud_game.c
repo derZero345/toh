@@ -102,7 +102,7 @@ void hud_game_refresh_screen(void) {
 bool hud_game_update(float dt) {
     frame++;
     hud_game_refresh_screen();
-    if (gh->nthemes > 0) hud_set_border(gh->themes[gh->currentTheme].secondary); /* like the console's border */
+    if (gh->nthemes > 0) hud_set_border(gfx_theme()->secondary); /* like the console's border, also while fading */
     hud_begin_frame();
     if (!hud_visible()) return false;
     bool moving = false;

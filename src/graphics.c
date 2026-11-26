@@ -96,12 +96,43 @@ void gfx_shutdown(void) {
 
 /* ---- themes & console visibility ------------------------------------------------------------ */
 
-const Theme *gfx_theme(void) { return &gh->themes[gh->currentTheme]; }
+/* A theme change fades the colours from the old theme to the new one over THEME_FADE_MS. */
+#define THEME_FADE_MS 250
+static Theme fade_from, fade_shown; /* fade_shown: this frame's colours while fading */
+static Uint64 fade_start;
+static bool fading, theme_set;
+
+static Color mix(Color a, Color b, float f) {
+    return (Color){ (uint8_t)lroundf(a.r + (b.r - a.r) * f), (uint8_t)lroundf(a.g + (b.g - a.g) * f),
+                    (uint8_t)lroundf(a.b + (b.b - a.b) * f), (uint8_t)lroundf(a.a + (b.a - a.a) * f) };
+}
+
+/* Updates fade_shown for this frame; false once the fade is over. */
+static bool theme_fade_step(void) {
+    if (!fading) return false;
+    float f = (float)(SDL_GetTicks() - fade_start) / THEME_FADE_MS;
+    if (f >= 1) return fading = false;
+    f = f * f * (3 - 2 * f); /* smoothstep */
+    const Theme *to = &gh->themes[gh->currentTheme];
+    fade_shown = *to;
+    fade_shown.primary = mix(fade_from.primary, to->primary, f);
+    fade_shown.secondary = mix(fade_from.secondary, to->secondary, f);
+    return true;
+}
+
+const Theme *gfx_theme(void) { return fading ? &fade_shown : &gh->themes[gh->currentTheme]; }
 
 void gfx_change_theme(const char *name) {
     for (int i = 0; i < gh->nthemes; i++) {
         if (strcasecmp(gh->themes[i].name, name) == 0) {
+            if (theme_set && i != gh->currentTheme) { /* the first theme (at start) appears without a fade */
+                fade_from = *gfx_theme(); /* from what is on screen, also in the middle of a fade */
+                fade_shown = fade_from;
+                fade_start = SDL_GetTicks();
+                fading = true;
+            }
             gh->currentTheme = i;
+            theme_set = true;
             return;
         }
     }
@@ -824,6 +855,7 @@ static void draw_hud(void) {
 }
 
 bool gfx_draw_frame(const char *screenshot_path) {
+    bool theme_fading = theme_fade_step();
     const Theme *t = gfx_theme();
     dr_begin((float)gh->winW, (float)gh->winH, gh->pixelScale);
 
@@ -842,5 +874,5 @@ bool gfx_draw_frame(const char *screenshot_path) {
     draw_console();
 
     dr_end_and_render(t->primary, screenshot_path);
-    return bars_moving;
+    return bars_moving || theme_fading;
 }

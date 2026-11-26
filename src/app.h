@@ -427,7 +427,7 @@ extern App *gh;
 /* graphics.c */
 bool gfx_init(App *app, const char *resource_dir);
 void gfx_shutdown(void);
-bool gfx_draw_frame(const char *screenshot_path); /* true while a HUD bar is still moving */
+bool gfx_draw_frame(const char *screenshot_path); /* true while a HUD bar moves or the theme fades */
 bool gfx_bars_moving(void);
 void gfx_change_theme(const char *name);
 const Theme *gfx_theme(void);

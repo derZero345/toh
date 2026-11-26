@@ -125,3 +125,4 @@ void dr_font_metrics(FontStyle style, float size, float *ascent, float *descent)
     *descent = 0.2f * size;
 }
 Rect console_panel_rect(void) { return (Rect){ 0, gh->winH, gh->winW, 0 }; }
+const Theme *gfx_theme(void) { return &gh->themes[gh->currentTheme]; } /* no fade in tests */
