@@ -8,6 +8,8 @@
 
 typedef enum {
     HUD_ACCENT_RED, HUD_ACCENT_GREEN, HUD_ACCENT_BLUE, HUD_ACCENT_GOLD, HUD_ACCENT_VIOLET, HUD_ACCENT_GREY,
+    /* the action types of Tales of Honor (the character's action menu) */
+    HUD_ACCENT_MINOR, HUD_ACCENT_INFO, HUD_ACCENT_MENTAL, HUD_ACCENT_MAJOR,
     HUD_ACCENT_COUNT
 } HudAccent;
 

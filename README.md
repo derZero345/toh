@@ -42,7 +42,8 @@ in the Java version.
 | Left click (or Enter in keyboard mode) | select tile / entity |
 | Right click (or Right-Shift + Enter) | tool action (drag start, measure point, place attack) |
 | Right click without moving (Drag tool) | tile menu: a ring of entries around the tile; Esc / click outside closes |
-| Shift + left click | move the selected character inside its (green) range |
+| Right click your character (Drag tool) | action menu: Minor / Info / Mental / Major; during initiative its move actions (Walk, Run, Crawl, Step, Sprint) move it on its turn |
+| Shift + left click | move the selected character inside its (green) range (players: outside initiative) |
 | Hold Left Shift | preview footprint and path of the selected character |
 | Ctrl + click / drag | multi-select |
 | Mouse wheel | zoom (scrolls the log when over the console) |
@@ -116,7 +117,7 @@ orientation, camera and theme (loading shows it, but the theme remembered for th
 not the console, selections, clipboard or measurements. `:c owner <player>` gives the
 selected characters to a player; pasted copies have no owner (but keep their party).
 
-The format (`src/savefmt.h`, version 7; files from older versions still load) is binary and compact: the game state is packed with varints and zstd-compressed, and
+The format (`src/savefmt.h`, version 8; files from older versions still load) is binary and compact: the game state is packed with varints and zstd-compressed, and
 every image is stored once as WebP (lossless for characters and walls, quality 90 for the background; images over
 16383 px are scaled down). Saves are written to `file.tmp` first and then renamed, and a load only replaces the
 table once the whole file has been checked.

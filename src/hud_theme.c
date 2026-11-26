@@ -44,10 +44,14 @@ const HudTheme HUD_THEME = {
         [HUD_ACCENT_RED] = { 200, 30, 30, 255 },    [HUD_ACCENT_GREEN] = { 40, 160, 60, 255 },
         [HUD_ACCENT_BLUE] = { 60, 120, 210, 255 },  [HUD_ACCENT_GOLD] = { 200, 160, 70, 255 },
         [HUD_ACCENT_VIOLET] = { 150, 90, 200, 255 }, [HUD_ACCENT_GREY] = { 130, 130, 140, 255 },
+        [HUD_ACCENT_MINOR] = { 0x84, 0x67, 0x2B, 255 }, [HUD_ACCENT_INFO] = { 0x5E, 0x5E, 0x5E, 255 },
+        [HUD_ACCENT_MENTAL] = { 0x80, 0x53, 0x7E, 255 }, [HUD_ACCENT_MAJOR] = { 0x35, 0x5C, 0x85, 255 },
     },
     .accentLight = {
         [HUD_ACCENT_RED] = { 235, 130, 130, 255 },   [HUD_ACCENT_GREEN] = { 150, 215, 150, 255 },
         [HUD_ACCENT_BLUE] = { 150, 185, 240, 255 },  [HUD_ACCENT_GOLD] = { 235, 210, 150, 255 },
         [HUD_ACCENT_VIOLET] = { 200, 165, 230, 255 }, [HUD_ACCENT_GREY] = { 190, 190, 198, 255 },
+        [HUD_ACCENT_MINOR] = { 187, 171, 138, 255 },  [HUD_ACCENT_INFO] = { 166, 166, 166, 255 },
+        [HUD_ACCENT_MENTAL] = { 185, 160, 184, 255 }, [HUD_ACCENT_MAJOR] = { 144, 165, 188, 255 },
     },
 };

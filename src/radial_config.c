@@ -1,7 +1,8 @@
 /* The radial menus: one tree of entries per menu. Edit these tables to change the menus; radial_game.c chooses
  * which menu a hex gets and handles the actions by id (see radial.h).
  *
- * Placeholders only, so the framework can be tried out: neutral ids and labels, the placeholder icon, a submenu
+ * "actions" is the menu of a character you control. "tile" and "character" (other hexes) are still placeholders, so
+ * the framework can be tried out: neutral ids and labels, the placeholder icon, a submenu
  * with a nested submenu, a second submenu to switch to, an entry that needs something on the tile (disabled on an
  * empty one) and one only the GM sees. */
 #include "radial.h"
@@ -57,8 +58,35 @@ static const RadialEntry CHARACTER[] = {
     ACTION("action.gm", "GM action", HUD_ACCENT_GREY, .visible_if = "gm"),
 };
 
+/* ---- a character you control (radial_game.c): its actions by type, the Tales of Honor action colours ---- */
+
+/* Move actions (moves.h): the ids are MOVE_ACTIONS' ids, each entry's rule of the same key says whether the
+ * character can use it now. */
+#define MOVE(id_, label_, accent_) ACTION(id_, label_, accent_, .enabled_if = id_)
+
+static const RadialEntry MINOR[] = {
+    MOVE("move.step", "Step: 1 tile, 1 stamina", HUD_ACCENT_MINOR),
+    MOVE("move.sprint", "Sprint: your speed, 3 stamina, after another move action", HUD_ACCENT_MINOR),
+};
+
+static const RadialEntry MAJOR[] = {
+    MOVE("move.walk", "Walk: half your speed", HUD_ACCENT_MAJOR),
+    MOVE("move.run", "Run: your speed, 2 stamina", HUD_ACCENT_MAJOR),
+    MOVE("move.crawl", "Crawl: half your speed, 2 stamina", HUD_ACCENT_MAJOR),
+};
+
+/* clockwise from the top */
+static const RadialEntry ACTIONS[] = {
+    SUBMENU("minor", "Minor action", HUD_ACCENT_MINOR, MINOR),
+    ACTION("info", "Info", HUD_ACCENT_INFO),
+    { .id = "mental", .icon = "placeholder", .label = "Mental action", .accent = HUD_ACCENT_MENTAL,
+      .kind = RADIAL_SUBMENU }, /* no mental actions yet */
+    SUBMENU("major", "Major action", HUD_ACCENT_MAJOR, MAJOR),
+};
+
 const RadialMenu RADIAL_MENUS[] = {
     MENU("tile", &CENTER, TILE),
     MENU("character", &CENTER, CHARACTER),
+    MENU("actions", NULL, ACTIONS),
 };
 const int RADIAL_NMENUS = (int)(sizeof(RADIAL_MENUS) / sizeof(RADIAL_MENUS[0]));

@@ -2,6 +2,9 @@
 #include "app.h"
 #include "draw.h"
 #include "hud_game.h"
+#include "hud_theme.h"
+#include "move_ui.h"
+#include "moves.h"
 #include "radial_game.h"
 #include "settings.h"
 #include "image.h"
@@ -95,6 +98,8 @@ void gfx_shutdown(void) {
     da_free(&gh->entityPreviewTiles);
     da_free(&gh->attackTiles);
     da_free(&gh->path);
+    move_ui_cancel();
+    da_free(&gh->moveMode.path);
     da_free(&gh->init);
     da_free(&gh->initMarkers);
     da_free(&gh->waypoints);
@@ -679,6 +684,24 @@ static void draw_grid(void) {
         if (!hl_contains(&gh->entityPreviewTiles, gh->attackTiles.items[i]))
             draw_hex(gh->attackTiles.items[i], th + 2, COLOR_MAGENTA);
 
+    /* choosing where a move action goes: its range in the colour of the action's slot */
+    move_ui_update();
+    if (gh->moveMode.active) {
+        Entity *me = entity_by_id(gh->moveMode.id);
+        HudAccent acc = me && move_slot(me, (MoveAction)gh->moveMode.action) == SLOT_MINOR ? HUD_ACCENT_MINOR
+                                                                                           : HUD_ACCENT_MAJOR;
+        dr_set_alpha(0.9f);
+        for (int r = r0; r <= r1; r++)
+            for (int c = c0; c <= c1; c++) {
+                Hex h = { r, c };
+                if (ts_has(&gh->moveMode.range, h) && (!me || !hex_eq(h, me->tile)))
+                    draw_hex(h, th + 2, HUD_THEME.accentLight[acc]);
+            }
+        if (gh->moveMode.path.count > 0)
+            draw_hex(gh->moveMode.path.items[gh->moveMode.path.count - 1], th + 4, HUD_THEME.accent[acc]);
+        dr_set_alpha(0.5f);
+    }
+
     bool in_range = gh->hasTileUnderMouse && ts_has(&gh->entityRangeTiles, gh->tileUnderMouse);
     Color preview = in_range ? rgb_hex(0x48CAE4) : rgb_hex(0xFB5607);
     for (int i = 0; i < gh->entityPreviewTiles.count; i++) draw_hex(gh->entityPreviewTiles.items[i], th + 2, preview);
@@ -790,6 +813,11 @@ static void draw_fx(void) {
     for (int i = 0; i + 1 < gh->path.count; i++) {
         Vec2 a = hex_center(gh->path.items[i]), b = hex_center(gh->path.items[i + 1]);
         dr_line((int)a.x, (int)a.y, (int)b.x, (int)b.y, th * 3, COLOR_RED);
+    }
+    /* the way a move action would take */
+    for (int i = 0; i + 1 < gh->moveMode.path.count; i++) {
+        Vec2 a = hex_center(gh->moveMode.path.items[i]), b = hex_center(gh->moveMode.path.items[i + 1]);
+        dr_line((int)a.x, (int)a.y, (int)b.x, (int)b.y, th * 3, rgb_hex(0xFFFFFF));
     }
 }
 

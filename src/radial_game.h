@@ -11,8 +11,13 @@ void radial_game_init(void); /* rules and the event handler */
 void radial_game_shutdown(void);
 /* The rules the menus may name (tests check the config against them). */
 const RadialRule *radial_game_rules(int *n);
-/* The menu id for a hex: "character" with a character on it, else "tile". */
+/* The menu id for a hex: "actions" with a character the local user controls on it (radial_game_controls),
+ * "character" with another character, else "tile". */
 const char *radial_game_menu_for(Hex h);
+/* Does the local user control e: the GM (and offline) every character, a player the ones they own. */
+bool radial_game_controls(const Entity *e);
+/* The character the open "actions" menu is for, 0 if none is open. */
+uint32_t radial_game_actor(void);
 
 /* A right click (press and release without dragging) at p: opens the menu for the hex there. */
 bool radial_game_open(Vec2 p);

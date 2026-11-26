@@ -31,6 +31,7 @@ typedef enum {
     OP_SET_NAME,         /* ids, charName (owners too) */
     OP_SET_STAMINA,      /* ids, healthMode (HEALTH_SET / HEALTH_CHANGE / STAMINA_SPEND), value (owners too) */
     OP_SET_PARTY,        /* ids, party ("" = no party); GM only */
+    OP_MOVE_ACTION,      /* id, action (MoveAction), tile: a move action on the character's turn (moves.h) */
     OP_COUNT
 } OpType;
 
@@ -61,6 +62,7 @@ typedef struct Op {
     int size, maxHealth, speed, initiative, maxStamina;
     char name[WAYPOINT_NAME_MAX]; /* OP_WAYPOINT_*: waypoint name, OP_SET_OWNER: player name */
     int healthMode, value;        /* OP_SET_HEALTH, OP_SET_STAMINA */
+    int action;                   /* OP_MOVE_ACTION: MoveAction */
     char charName[CHAR_NAME_MAX]; /* OP_SET_NAME */
     char party[CHAR_NAME_MAX];    /* OP_SET_PARTY: "" = no party */
     bool remote;  /* someone else's op: leave the local selection and path preview alone */
@@ -86,9 +88,14 @@ typedef enum {
     OPR_CLAIM_PENDING, /* session: the player's earlier claims are still waiting for the GM */
     OPR_TOO_FAST,      /* session: too many rolls in a short time */
     OPR_TILE_TAKEN,    /* session: a requested character doesn't fit on its tile(s) */
-    OPR_NO_STAMINA,    /* OP_SET_STAMINA: spending would go below 0 */
+    OPR_NO_STAMINA,    /* OP_SET_STAMINA, OP_MOVE_ACTION: spending would go below 0 */
+    OPR_NOT_IN_COMBAT, /* OP_MOVE_ACTION: no initiative is running */
+    OPR_ACTION_USED,   /* OP_MOVE_ACTION: the Major / Minor action is used this turn */
+    OPR_MOVE_FIRST,    /* OP_MOVE_ACTION: Sprint needs another move action first */
+    OPR_CANT_MOVE,     /* OP_MOVE_ACTION: speed 0 */
+    OPR_USE_ACTION,    /* OP_MOVE by a player during initiative: move with a move action */
 } OpResult;
-#define OPR_LAST OPR_NO_STAMINA
+#define OPR_LAST OPR_USE_ACTION
 
 /*
  * Notes for ops_check / ops_apply:

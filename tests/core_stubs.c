@@ -146,3 +146,10 @@ void dr_font_metrics(FontStyle style, float size, float *ascent, float *descent)
 }
 Rect console_panel_rect(void) { return (Rect){ 0, gh->winH, gh->winW, 0 }; }
 const Theme *gfx_theme(void) { return &gh->themes[gh->currentTheme]; } /* no fade in tests */
+
+/* input.c: selects e (the range is not needed by the tests) */
+void io_select_entity(const Entity *e) {
+    da_clear(&gh->selectedEntities);
+    da_push(&gh->selectedEntities, e->id);
+    gh->hasSelectedEntity = true;
+}

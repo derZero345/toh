@@ -23,12 +23,14 @@
  *                       and react to its id in radial_game.c's on_event (RADIAL_EV_ACTION brings the id, the menu's
  *                       id and the hex). Order in the array = clockwise order from the top.
  *   Add a submenu:      an entry with .kind = RADIAL_SUBMENU and .children / .nchildren pointing at another array
- *                       (RADIAL_CHILDREN(array) fills both). Submenus nest to RADIAL_MAX_DEPTH levels.
+ *                       (RADIAL_CHILDREN(array) fills both). Submenus nest to RADIAL_MAX_DEPTH levels. A submenu
+ *                       with no children (NULL, 0) is a placeholder: it shows, disabled, "Nothing to choose here".
  *   Add a condition:    .visible_if / .enabled_if name a rule ("occupied"; "!occupied" negates it). A hidden entry
  *                       is left out of its ring; a disabled one stays, greyed out, and its tooltip says why. Rules
  *                       live in radial_game.c's RULES table: a key, a function of the hex, and the reasons shown
- *                       when the rule fails ("unmet") and when its negation fails ("met"). Conditions are checked
- *                       when a ring opens (visibility) and every drawn frame (enabled).
+ *                       when the rule fails ("unmet") and when its negation fails ("met"); or a check function that
+ *                       returns the reason itself (NULL = holds). Conditions are checked when a ring opens
+ *                       (visibility) and every drawn frame (enabled).
  *   Menus per hex type: add a RadialMenu to RADIAL_MENUS with its own id, and return that id from radial_game.c's
  *                       menu_for(); a menu's .center is the centre button's action on the top level (NULL: the
  *                       centre closes the menu).
@@ -39,8 +41,8 @@
  *                       nothing in its place, so the label in the tooltip still tells it apart.
  *   Change the look:    the radial* tokens in hud_theme.c (sizes, gaps, alphas, durations, colours).
  *
- * radial_config_check (run by make test) catches empty or repeated ids, unknown kinds, accents and rules, empty or
- * too full rings and too deep trees.
+ * radial_config_check (run by make test) catches empty or repeated ids, unknown kinds, accents and rules, empty
+ * menus, too full rings and too deep trees.
  */
 #ifndef TOH_RADIAL_H
 #define TOH_RADIAL_H
@@ -91,6 +93,10 @@ typedef struct {
     bool (*fn)(const RadialTarget *t);
     const char *unmet; /* why an entry needing the rule is disabled */
     const char *met;   /* why an entry needing "!key" is disabled */
+    /* Instead of fn, for a rule whose reason changes: NULL if it holds, else why not (replaces unmet). arg is given
+     * back, so one function can serve several rules. */
+    const char *(*check)(const RadialTarget *t, int arg);
+    int arg;
 } RadialRule;
 
 void radial_set_rules(const RadialRule *rules, int n);

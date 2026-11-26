@@ -302,6 +302,7 @@ static bool net_from_op(const Op *op, NetOp *o) {
     o->value = op->value;
     snprintf(o->char_name, sizeof(o->char_name), "%s", op->charName);
     snprintf(o->party, sizeof(o->party), "%s", op->party);
+    o->action = (uint8_t)op->action;
     if (op->type == OP_SET_ICON || (op->type == OP_SET_BACKGROUND && op->image)) {
         o->has_image = true;
         uint8_t kind = op->type == OP_SET_BACKGROUND ? SAVE_IMG_LOSSY : SAVE_IMG_LOSSLESS;
@@ -348,6 +349,7 @@ static bool op_from_net(const NetOp *o, Op *op) {
     op->value = o->value;
     snprintf(op->charName, sizeof(op->charName), "%s", o->char_name);
     snprintf(op->party, sizeof(op->party), "%s", o->party);
+    op->action = o->action;
     if (o->has_image && !(op->image = cache_find(o->image))) return false;
     for (uint32_t i = 0; i < o->nspecs; i++) {
         const NetSpec *n = &o->specs[i];
@@ -966,8 +968,8 @@ static void client_applied(const NetMsg *m) {
     }
     op.remote = m->player != S.myId;
     ops_apply(&op);
-    /* our own move: input.c dropped the selection when it sent the move; select the character again */
-    if (op.type == OP_MOVE && !op.remote && gh->selectedEntities.count == 0) {
+    /* our own move: input.c / move_ui.c dropped the selection when it sent the move; select the character again */
+    if ((op.type == OP_MOVE || op.type == OP_MOVE_ACTION) && !op.remote && gh->selectedEntities.count == 0) {
         Entity *e = entity_by_id(op.id);
         if (e) io_select_entity(e);
     }

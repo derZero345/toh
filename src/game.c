@@ -97,6 +97,7 @@ void game_next_turn(void) {
     if (gh->currentTurn) gh->currentTurnIndex = (gh->currentTurnIndex + 1) % gh->init.count;
     else gh->currentTurnIndex %= gh->init.count;
     gh->currentTurn = gh->init.items[gh->currentTurnIndex].entity;
+    gh->currentTurn->turnUsed = 0; /* a new turn: its Major and Minor actions are free again (moves.h) */
     game_update_initiative_markers();
 }
 
@@ -121,6 +122,7 @@ void game_remove_from_initiative(Entity *e) {
         } else { /* the next one in order slid into the removed slot */
             gh->currentTurnIndex = idx % gh->init.count;
             gh->currentTurn = gh->init.items[gh->currentTurnIndex].entity;
+            gh->currentTurn->turnUsed = 0; /* its turn starts */
         }
     } else if (gh->currentTurnIndex > 0 && init_index(gh->currentTurn) < gh->currentTurnIndex) {
         gh->currentTurnIndex--;

@@ -43,6 +43,7 @@ static bool op_ok(const NetOp *o) {
     if (o->nvalues > SAVEFMT_MAX_ENTITIES || o->nspecs > SAVEFMT_MAX_ENTITIES) return false;
     switch (o->type) {
     case NOP_MOVE:
+    case NOP_MOVE_ACTION:
         return o->id != 0 && coord_ok(o->row) && coord_ok(o->col);
     case NOP_SPAWN:
         if (o->nspecs && !o->specs) return false;
@@ -298,6 +299,12 @@ static void put_op(Buf *b, const NetOp *o) {
     case NOP_SET_PARTY:
         put_ids(b, o->ids, o->nids);
         put_str(b, o->party);
+        break;
+    case NOP_MOVE_ACTION:
+        put_uv(b, o->id);
+        put_sv(b, o->row);
+        put_sv(b, o->col);
+        put_u8(b, o->action);
         break;
     case NOP_ROLL:
         put_str(b, o->dice);
@@ -585,6 +592,12 @@ static void get_op(Rd *r, NetOp *o) {
     case NOP_SET_PARTY:
         o->ids = get_ids(r, &o->nids);
         get_str(r, o->party, sizeof(o->party));
+        break;
+    case NOP_MOVE_ACTION:
+        o->id = get_uv(r);
+        o->row = get_sv(r);
+        o->col = get_sv(r);
+        o->action = get_u8(r);
         break;
     case NOP_ROLL: {
         get_str(r, o->dice, sizeof(o->dice));

@@ -21,7 +21,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define NET_PROTOCOL_VERSION 7
+#define NET_PROTOCOL_VERSION 8
 #define NET_DEFAULT_PORT     41234
 #define NET_MAX_FRAME        (64u << 20)            /* one encrypted frame */
 #define NETMSG_MAX_BLOB      (NET_MAX_FRAME - 1024) /* SNAPSHOT / IMAGE payload */
@@ -91,6 +91,7 @@ typedef enum {
     NOP_SET_NAME,         /* ids, char_name */
     NOP_SET_STAMINA,      /* ids, mode (0 set, 1 change, 2 spend), value */
     NOP_SET_PARTY,        /* ids, party ("" = no party) */
+    NOP_MOVE_ACTION,      /* id, row, col, action (MoveAction in moves.h; ops_check checks the range) */
     NOP_ROLL,             /* dice: "NdM[+K|-K]" (characters 0-9 d D + -); values: none (client) or
                            * the host's result, every die then the total (at most NETMSG_MAX_ROLLS) */
     NOP_CLAIM,            /* id */
@@ -131,6 +132,7 @@ typedef struct {
     int32_t value;       /* SET_HEALTH, at most SAVEFMT_MAX_HP either way */
     char char_name[SAVEFMT_CHAR_NAME_MAX]; /* SET_NAME */
     char party[SAVEFMT_CHAR_NAME_MAX]; /* SET_PARTY: "" = no party */
+    uint8_t action;                    /* MOVE_ACTION */
 } NetOp;
 
 typedef struct {

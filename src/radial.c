@@ -110,6 +110,7 @@ static int check_entry(Check *c, const char *menu, const RadialEntry *e, int lev
             snprintf(c->err, c->cap, "\"%s\": submenus nest deeper than %d levels", e->id, RADIAL_MAX_DEPTH);
             return -1;
         }
+        if (!e->children && e->nchildren == 0) return 0; /* a placeholder: shown disabled */
         return check_ring(c, menu, e->children, e->nchildren, level + 1);
     }
     if (e->children || e->nchildren) {
@@ -245,9 +246,15 @@ static bool rule_holds(const char *spec, const char **why) {
     if (!spec) return true;
     const RadialRule *r = find_rule(rules, nrules, spec);
     bool neg = spec[0] == '!';
-    bool ok = r && r->fn && r->fn(&target) != neg;
-    if (!ok && why) *why = !r ? "Unknown rule" : neg ? r->met : r->unmet;
-    return ok;
+    if (!r || (!r->check && !r->fn)) {
+        if (why) *why = "Unknown rule";
+        return false;
+    }
+    /* the reason it fails, NULL when it holds */
+    const char *reason = r->check ? r->check(&target, r->arg) : r->fn(&target) ? NULL : r->unmet;
+    bool holds = reason == NULL;
+    if (holds == neg && why) *why = neg ? r->met : reason;
+    return holds != neg;
 }
 
 static const RadialEntry *level_entries(const RadialEntry *parent, int *n) {

@@ -103,6 +103,7 @@ typedef struct Entity {
     int slot, slots; /* entity_layout: characters sharing a tile are drawn side by side in `slots` places */
     int size, maxHealth, health, attack, speed, initiative;
     int maxStamina, stamina; /* Tales of Honor stamina; max 0 = no stamina stat */
+    int turnUsed;            /* this turn (initiative): TURN_* bits; cleared when its turn starts (moves.h) */
     BarAnim hpAnim, staminaAnim; /* HUD bar animation; memory only */
     unsigned panelFrame;         /* the last frame the HUD showed this entity (0 = never) */
     struct Marker *debugMarker;
@@ -389,6 +390,14 @@ typedef struct App {
     DA(uint32_t) selectedEntities; /* ids, in the order they were selected */
     TileSet entityRangeTiles;
     DA(Waypoint) waypoints;
+    /* choosing where a move action goes (move_ui.c): the range of that action and the path to the pointer */
+    struct {
+        bool active;
+        uint32_t id; /* the character */
+        int action;  /* MoveAction */
+        TileSet range;
+        HexList path;
+    } moveMode;
 
     bool hasTileUnderMouse;
     Hex tileUnderMouse;

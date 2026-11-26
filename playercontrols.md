@@ -17,14 +17,38 @@ The GM gives you the code (it starts with `toh1-`); you can paste it with Ctrl +
 
 ## 2. Move your character
 
+You can only move your own characters: the ones with a **thick ring in your color**. Every owned character has
+a ring in its owner's color (grey if that player isn't at the table); characters without a ring belong to the GM.
+
+**While initiative is running**, you move with move actions, on your character's turn:
+
+1. **Right click** your character (with the Drag tool, selected at start). Its action menu opens: **Minor action**
+   at the top, **Info** on the right, **Mental action** at the bottom, **Major action** on the left. Info and
+   Mental action have nothing in them yet.
+2. Left click Major action or Minor action, then the move:
+
+   | Action | Type | Moves | Stamina |
+   |---|---|---|---|
+   | Walk | Major | half your speed, rounded up | 0 |
+   | Run | Major | your speed | 2 |
+   | Crawl | Major | half your speed, rounded up | 2 |
+   | Step | Minor | 1 tile | 1 |
+   | Sprint | Minor | your speed; only after another move action this turn | 3 |
+
+3. The tiles it can reach light up in the action's color, with the way to the tile under the mouse. **Left click**
+   one of them to move there. **Esc**, a right click or a click outside the lit tiles cancels.
+
+Each turn your character has one Major and one Minor action. When the Minor one is used, a Minor action (Step,
+Sprint) can take the Major one instead. An action that can't be used right now is greyed out; hover it to see
+why. When your character's stamina reaches 0 it is exhausted and its turn ends. A character without stamina pays
+nothing.
+
+**Outside initiative** you move freely:
+
 1. **Left click** your character to select it. A green area shows how far it can move. If several characters
    share a tile, they stand side by side in it: click the one you mean.
 2. **Hold Left Shift** to preview where it would end up and the path it would take.
 3. **Shift + left click** a tile inside the green area to move there.
-
-You can only move your own characters: the ones with a **thick ring in your color**. Every owned character has
-a ring in its owner's color (grey if that player isn't at the table); characters without a ring belong to the GM.
-While initiative is running, you can only move on your character's turn.
 
 Characters can share a tile when there is room: a tile holds 5 bulk, and a Wee character takes 0, Tiny 1, Small 2,
 Normal 3, Big 4. So a Small character can step onto a Normal one's tile, but two Normal ones can't share.
@@ -102,7 +126,7 @@ Pick a tool in the toolbox on the left, or with these shortcuts:
 | Alt + V | Line attack | Right click the start point; the line follows the mouse |
 | Alt + A | Area attack | Right click the centre; the circle grows with the mouse |
 | Alt + C | Cone attack | Right click the tip; Shift + mouse wheel changes the cone angle |
-| Alt + X | Drag | Hold the right mouse button to move the view; a right click opens the tile menu (section 9) |
+| Alt + X | Drag | Hold the right mouse button to move the view; a right click opens the tile menu (section 9), on your character its action menu (section 2) |
 
 Hold Ctrl while aiming to aim at the exact mouse position instead of the middle of a tile. Everyone at the
 table sees your selection, measurements and attacks in your color.
@@ -110,14 +134,14 @@ table sees your selection, measurements and attacks in your color.
 ## 9. The tile menu
 
 With the Drag tool (selected at start), **right click** a tile without moving the mouse: a ring menu opens
-around it.
+around it. On your own character it is the character's action menu (section 2).
 
 - **Left click** an entry to use it. An entry with a small triangle opens a second ring around the first; the
   centre button (or the highlighted entry) then goes back.
 - Hover an entry to see its name. A greyed-out entry can't be used right now; hovering it says why.
 - **Esc**, a click outside or another right click closes the menu. A right click on another tile opens it there.
 
-The entries are placeholders: choosing one writes `Menu: <entry> on [row|col]` to the log.
+On other tiles the entries are placeholders: choosing one writes `Menu: <entry> on [row|col]` to the log.
 
 ## 10. Other useful commands
 

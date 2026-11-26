@@ -2,6 +2,7 @@
 #include "app.h"
 #include "ops.h"
 #include "hud_game.h"
+#include "move_ui.h"
 #include "radial_game.h"
 
 #include <stdio.h>
@@ -366,7 +367,13 @@ static void key_pressed(const SDL_KeyboardEvent *k) {
 
     /* always active */
     switch (key) {
-    case SDLK_ESCAPE: radial_game_close(); break;
+    case SDLK_ESCAPE:
+        if (radial_is_open()) radial_game_close();
+        else if (move_ui_active()) {
+            move_ui_cancel();
+            console_log("Move cancelled");
+        }
+        break;
     case SDLK_LSHIFT:
         gh->isShiftDown = true;
         if (gh->selectedEntities.count > 0) refresh_preview();
@@ -473,10 +480,18 @@ void io_handle_event(const SDL_Event *e) {
         gh->mousePos = (Vec2){ e->button.x, e->button.y };
         if (e->button.button == SDL_BUTTON_LEFT) {
             if (radial_game_mouse_down(gh->mousePos)) break; /* the open menu takes every left press */
-            if (!hud_game_mouse_down(gh->mousePos)) lmb_pressed(); /* the HUD keeps its clicks from the map */
+            if (hud_game_mouse_down(gh->mousePos)) break;     /* the HUD keeps its clicks from the map */
+            Hex h;
+            if (move_ui_active() && hex_find_closest(gh->mousePos, &h) && move_ui_click(h)) break;
+            lmb_pressed();
         } else if (e->button.button == SDL_BUTTON_RIGHT) {
             rclick_pending = false;
             if (radial_game_right_down(gh->mousePos)) break; /* closed the menu */
+            if (move_ui_active()) { /* a right click cancels choosing a tile */
+                move_ui_cancel();
+                console_log("Move cancelled");
+                break;
+            }
             if (hud_game_contains(gh->mousePos)) break;
             gh->RMBDown = true;
             rmb_pressed();

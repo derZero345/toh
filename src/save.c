@@ -2,6 +2,7 @@
  * Converts between the game state and SaveData; the file format lives in savefmt.c. */
 #include "app.h"
 #include "savefmt.h"
+#include "moves.h"
 #include "session.h"
 
 #include <errno.h>
@@ -11,6 +12,7 @@
 
 _Static_assert(SAVEFMT_NAME_MAX == WAYPOINT_NAME_MAX, "waypoint name sizes differ");
 _Static_assert(SAVEFMT_MAX_SPEED == MAX_SPEED, "speed limits differ");
+_Static_assert(SAVEFMT_MAX_TURN_USED == TURN_ALL, "turn state bits differ");
 _Static_assert(SAVEFMT_OWNER_MAX == PLAYER_NAME_MAX, "owner name sizes differ");
 _Static_assert(SAVEFMT_CHAR_NAME_MAX == CHAR_NAME_MAX, "character name sizes differ");
 
@@ -95,6 +97,7 @@ static void gather(Gathered *g) {
             s->max_stamina = e->maxStamina;
             s->stamina = e->stamina;
             snprintf(s->party, sizeof(s->party), "%s", e->party);
+            s->turn_used = (uint8_t)(e->turnUsed & TURN_ALL);
         }
     }
 
@@ -337,6 +340,7 @@ static void apply(SaveData *d, bool keep_view) {
             e->maxStamina = s->max_stamina;
             e->stamina = hp_clamp(s->stamina, s->max_stamina);
             snprintf(e->party, sizeof(e->party), "%s", s->party);
+            e->turnUsed = s->turn_used;
         }
         entity_register(e);
     }

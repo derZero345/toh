@@ -213,7 +213,44 @@ The green range and the path only use tiles the character fits on (see **Sharing
 walk through and stop on tiles other characters leave room on. You can still put characters anywhere: with `:gm`,
 or by creating them on a tile, no bulk is checked.
 
-`:gm` only works for the GM (not for joined players).
+`:gm` only works for the GM (not for joined players). These free moves stay yours during initiative too; players
+then move with move actions (below).
+
+### Move actions (during initiative)
+
+While initiative runs, a character moves with the move actions of Tales of Honor, on its turn. **Right click** the
+character with the Drag tool: its action menu opens (see **The action menu** in section 10). Choose Major action
+or Minor action, then the move:
+
+| Action | Type | Moves | Stamina | Needs |
+|---|---|---|---|---|
+| Walk | Major | half its speed, rounded up | 0 | |
+| Run | Major | its speed | 2 | |
+| Crawl | Major | half its speed, rounded up | 2 | |
+| Step | Minor | 1 tile | 1 | |
+| Sprint | Minor | its speed | 3 | another move action earlier this turn |
+
+The tiles the action can reach light up in its color (Major blue, Minor gold) and the way to the tile under the
+mouse is drawn in white. Left click a lit tile to move there; Esc, a right click or a left click elsewhere cancels
+("Move cancelled"). The log shows e.g. `Mao: Walk up to 3 tiles; click where to go (Esc cancels)` and then
+`Mao: Run, stamina 6/8`.
+
+- Each turn a character has one Major and one Minor action; both are free again when its turn starts. When the
+  Minor one is used, a Minor action uses the Major one instead.
+- The move goes from tile to adjacent tile, only over tiles the character fits on, like the green range.
+- The stamina cost is paid when the character moves. It needs that much stamina ("Not enough stamina"). At 0 it is
+  exhausted, the log says `Mao is exhausted; the turn ends` and the turn goes to the next one in the order. A
+  character without max stamina pays nothing.
+- Speed 0: Walk, Run, Crawl and Sprint are greyed out ("This character can't move (speed 0)"); Step still moves 1 tile.
+- Outside initiative the move actions are greyed out ("Only during initiative"); characters move freely then.
+- Greyed-out actions say why when hovered: "Not this character's turn", "No action of that kind left this turn",
+  "Needs another move action first this turn", "Not enough stamina".
+- The rules hold for you too when you use a move action. Your Shift + click and `:gm` moves stay free and use no
+  action.
+- Players' Shift + click moves are refused during initiative with "During initiative, move with a move action:
+  right click your character".
+- Levels, terrain and conditions are not part of the map yet, so Jump, Long Jump, Climb, Swimming, Glide, Hang and
+  Turn Around are not in the menu, and nothing checks whether a character is prone or falling.
 
 ## 7. Copy and paste
 
@@ -238,8 +275,8 @@ Pasted characters keep their name, HP and party but have no owner.
 The order is random; the characters' initiative stat doesn't change it. A marker above each entity shows its
 place in the order (counting from 0): green = current turn, yellow = next, red = later.
 
-While initiative runs, players can only move their characters on their own turn, and only the owner of the
-current character (or the GM) can use `:i next`.
+While initiative runs, players move their characters only with move actions on their own turn (section 6), and
+only the owner of the current character (or the GM) can use `:i next`.
 
 ## 9. Dice
 
@@ -253,7 +290,7 @@ button.
 
 | Shortcut | Tool | Use |
 |---|---|---|
-| Alt + X | Drag | Hold the right mouse button and drag to move the view; a right click without moving opens the tile menu (below) |
+| Alt + X | Drag | Hold the right mouse button and drag to move the view; a right click without moving opens the tile menu, on a character the action menu (below) |
 | Alt + S | Measure | Right click to start, right click to finish; several measurements add up (5 ft per tile, total shown at the mouse). Finishing on the start point clears all measurements. |
 | Alt + V | Line attack | Right click the start; the line follows the mouse and highlights the tiles it hits |
 | Alt + A | Area attack | Right click the centre; the radius follows the mouse |
@@ -280,11 +317,26 @@ inside the window near the edges.
 | Esc, a left click outside, or a right click on the menu or its tile | Close the menu |
 | Right click another tile | Close the menu and open it on that tile |
 
-A tile with a character on it gets a slightly different menu than an empty one. The entries are placeholders:
-choosing one writes `Menu: <entry> on [row|col]` to the log. "Action 3" (and "Option A4" in Menu A) needs something
+On a character you control (you: every character; players: their own) the menu is the character's action menu
+(below). A tile with another character gets a slightly different menu than an empty one; their entries are
+placeholders: choosing one writes `Menu: <entry> on [row|col]` to the log. "Action 3" (and "Option A4" in Menu A) needs something
 on the tile, and "GM action" is only shown to you. While the menu is open, a left click never reaches the map (outside
 the menu it only closes it), and the mouse wheel and the pointer over the menu don't either. The menu needs a mouse:
 keyboard-only play can't open it.
+
+### The action menu
+
+Right click a character you control. If several share the tile, the menu is for the selected one, else the one
+whose turn it is, else the first. Its four entries, clockwise from the top:
+
+| Entry | Color | What it holds |
+|---|---|---|
+| Minor action | gold (#84672B) | Step, Sprint |
+| Info | grey (#5E5E5E) | nothing yet; choosing it only closes the menu |
+| Mental action | violet (#80537E) | nothing yet: greyed out, "Nothing to choose here" |
+| Major action | blue (#355C85) | Walk, Run, Crawl |
+
+The move actions and their rules are in section 6. The centre button closes the menu.
 
 ## 11. Waypoints and teleport
 
@@ -369,7 +421,8 @@ anything else asks again). Several requests wait in line; each player can have a
 
 Paths may contain spaces, with or without quotes around them; `~/` means your home folder. The window's close button always quits.
 
-A save holds the background, characters (image, stats, current HP and stamina, name, owner and party), walls, initiative, waypoints, grid orientation,
+A save holds the background, characters (image, stats, current HP and stamina, name, owner, party and the actions
+used this turn), walls, initiative, waypoints, grid orientation,
 camera and theme. It does not hold the console, selections, clipboard or measurements. Saves from older versions
 still load; an armor class stored in them is ignored. Loading a save shows its theme, but the game keeps remembering
 the theme you chose with `:t` for the next start.
@@ -434,12 +487,12 @@ file is in `.gitignore`, so it never ends up in the repository.
 ## 19. What players can and cannot do
 
 Players can:
-- move their own characters (on their turn while initiative runs);
+- move their own characters (freely outside initiative; while it runs, with move actions on their turn);
 - end their turn with `:i next`;
 - roll dice (at most 10 rolls in 10 seconds);
 - ask for existing characters with `:claim`, or for a new one of their own with `:c` (you answer y/n);
 - jump to waypoints and coordinates;
-- use the measure and attack tools, and the tile menu (without the entries only you see);
+- use the measure and attack tools, the tile menu (without the entries only you see) and their own characters' action menu;
 - save a copy of the table;
 - change the HP, stamina and name of their own characters (`:c hp`, `damage`, `heal`, `stamina`, `spend`, `recover`, `name`), and give max stamina in a request for a new character;
 - change their own camera, zoom, theme and HUD (`:hud`), and see the HP and stamina of their own characters and of the members of their parties (select them), and list their parties with `:party`.

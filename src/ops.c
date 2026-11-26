@@ -1,5 +1,6 @@
 /* The op layer: rules for who may change what (ops_check) and the changes themselves (ops_apply). */
 #include "ops.h"
+#include "moves.h"
 #include "savefmt.h"
 #include "session.h"
 
@@ -49,6 +50,11 @@ const char *ops_result_text(OpResult r) {
     case OPR_TOO_FAST:      return "Too many rolls; wait a moment";
     case OPR_TILE_TAKEN:    return "No room on that tile";
     case OPR_NO_STAMINA:    return "Not enough stamina";
+    case OPR_NOT_IN_COMBAT: return "Move actions are only for initiative";
+    case OPR_ACTION_USED:   return "That action is used up this turn";
+    case OPR_MOVE_FIRST:    return "Sprint needs another move action first";
+    case OPR_CANT_MOVE:     return "That character can't move";
+    case OPR_USE_ACTION:    return "During initiative, move with a move action: right click your character";
     }
     return "Unknown error";
 }
@@ -144,6 +150,9 @@ static OpResult check_structure(const Op *op) {
     case OP_INIT_NEXT:
         /* op->id names the entity whose turn it is now, so a stale op is not applied twice */
         return op->id == (gh->currentTurn ? gh->currentTurn->id : 0) ? OPR_OK : OPR_STALE;
+    case OP_MOVE_ACTION: /* the rules of the action hold for the GM too; only free moves (OP_MOVE) ignore them */
+        if (!tile_ok(op->tile) || op->action < 0 || op->action >= MOVE_COUNT) return OPR_INVALID;
+        return move_check_to(entity_by_id(op->id), (MoveAction)op->action, op->tile);
     case OP_SET_BACKGROUND:
     case OP_GRID_ORIENTATION:
     case OP_INIT_CLEAR:
@@ -155,14 +164,14 @@ static OpResult check_structure(const Op *op) {
     return OPR_INVALID;
 }
 
-/* Players may move their own character (in range, on its turn), pass their own turn and
-   change the HP and name of their own characters. */
+/* Players may move their own character (in range outside initiative, with move actions on its turn during it),
+   pass their own turn and change the HP, stamina and name of their own characters. */
 static OpResult check_player(const Op *op, const OpAuthor *a) {
     switch (op->type) {
     case OP_MOVE: {
         Entity *e = entity_by_id(op->id);
         if (!is_owner(e, a)) return OPR_NOT_YOURS;
-        if (gh->init.count > 0 && gh->currentTurn != e) return OPR_NOT_YOUR_TURN;
+        if (gh->init.count > 0) return OPR_USE_ACTION;
         if (hex_distance(e->tile, op->tile) > e->speed) return OPR_OUT_OF_RANGE;
         TileSet range = { 0 };
         astar_range(e->tile, e->speed, e, &range);
@@ -172,6 +181,8 @@ static OpResult check_player(const Op *op, const OpAuthor *a) {
     }
     case OP_INIT_NEXT:
         return is_owner(gh->currentTurn, a) ? OPR_OK : OPR_NOT_YOUR_TURN;
+    case OP_MOVE_ACTION:
+        return is_owner(entity_by_id(op->id), a) ? OPR_OK : OPR_NOT_YOURS;
     case OP_SET_HEALTH:
     case OP_SET_STAMINA:
     case OP_SET_NAME: /* only on their own characters */
@@ -186,7 +197,7 @@ static OpResult check_player(const Op *op, const OpAuthor *a) {
 OpResult ops_check(const Op *op, const OpAuthor *author) {
     if (!memchr(author->name, '\0', sizeof(author->name))) return OPR_INVALID;
     bool player_op = op->type == OP_MOVE || op->type == OP_INIT_NEXT || op->type == OP_SET_HEALTH ||
-                     op->type == OP_SET_NAME || op->type == OP_SET_STAMINA;
+                     op->type == OP_SET_NAME || op->type == OP_SET_STAMINA || op->type == OP_MOVE_ACTION;
     if (!author->gm && !player_op) return OPR_GM_ONLY;
     OpResult r = check_structure(op);
     if (r != OPR_OK || author->gm) return r;
@@ -431,6 +442,14 @@ void ops_apply(Op *op) {
     case OP_SET_PARTY:
         apply_party(op);
         break;
+    case OP_MOVE_ACTION: {
+        Entity *e = entity_by_id(op->id);
+        if (!e) break;
+        bool was_selected = e == selected_entity();
+        move_apply(e, (MoveAction)op->action, op->tile, op->remote ? NULL : &gh->path, !op->remote);
+        if (op->remote && was_selected) entities_clear_highlights(); /* the range shown belonged to the old tile */
+        break;
+    }
     case OP_COUNT:
         break;
     }

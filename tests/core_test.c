@@ -10,6 +10,8 @@
 #include "image.h"
 #include "netmsg.h"
 #include "ops.h"
+#include "moves.h"
+#include "move_ui.h"
 #include "party.h"
 #include "textwrap.h"
 #include "savefmt.h"
@@ -28,7 +30,7 @@ _Static_assert((int)NOP_MOVE == (int)OP_MOVE && (int)NOP_SPAWN == (int)OP_SPAWN 
                (int)NOP_INIT_CLEAR == (int)OP_INIT_CLEAR && (int)NOP_INIT_SHOW == (int)OP_INIT_SHOW &&
                (int)NOP_INIT_NEXT == (int)OP_INIT_NEXT && (int)NOP_SET_OWNER == (int)OP_SET_OWNER && (int)NOP_SET_HEALTH == (int)OP_SET_HEALTH &&
                (int)NOP_SET_NAME == (int)OP_SET_NAME && (int)NOP_SET_STAMINA == (int)OP_SET_STAMINA &&
-               (int)NOP_SET_PARTY == (int)OP_SET_PARTY &&
+               (int)NOP_SET_PARTY == (int)OP_SET_PARTY && (int)NOP_MOVE_ACTION == (int)OP_MOVE_ACTION &&
                (int)NOP_ROLL == (int)OP_COUNT,
                "NetOpType must match OpType");
 _Static_assert((int)NSTAT_SIZE == (int)STAT_SIZE && (int)NSTAT_MAXHEALTH == (int)STAT_MAXHEALTH &&
@@ -199,8 +201,9 @@ static void test_turns(void) {
     Entity *order[2] = { hero, orc };
     double values[2] = { 0.9, 0.1 };
     game_initiative_list(order, values, 2);
-    /* initiative is set up, but the first turn has not started */
-    CHECK_R(ops_check(&hero_move, &alice), OPR_NOT_YOUR_TURN);
+    /* during initiative players move with move actions only (test_move_actions); the GM still moves freely */
+    CHECK_R(ops_check(&hero_move, &alice), OPR_USE_ACTION);
+    CHECK_R(ops_check(&hero_move, &GM), OPR_OK);
     CHECK_R(ops_check(&next, &alice), OPR_NOT_YOUR_TURN);
     CHECK_R(ops_check(&next, &GM), OPR_OK);
 
@@ -211,8 +214,8 @@ static void test_turns(void) {
     OpAuthor cur_owner = cur == hero ? alice : bob, other_owner = cur == hero ? bob : alice;
     Op cur_move = move_op(cur, hex_neighbor_raw(cur->tile, 0));
     Op other_move = move_op(other, hex_neighbor_raw(other->tile, 0));
-    CHECK_R(ops_check(&cur_move, &cur_owner), OPR_OK);
-    CHECK_R(ops_check(&other_move, &other_owner), OPR_NOT_YOUR_TURN);
+    CHECK_R(ops_check(&cur_move, &cur_owner), OPR_USE_ACTION);
+    CHECK_R(ops_check(&other_move, &other_owner), OPR_USE_ACTION);
     CHECK_R(ops_check(&other_move, &GM), OPR_OK);
     next.id = gh->currentTurn ? gh->currentTurn->id : 0;
     CHECK_R(ops_check(&next, &cur_owner), OPR_OK);
@@ -1704,6 +1707,202 @@ static void rad_settle(void) {
     for (int i = 0; i < 200 && radial_update(0.05f); i++) {}
 }
 
+/* ---- move actions (moves.h) ---------------------------------------------------------------- */
+
+static Op action_op(const Entity *e, MoveAction a, Hex to) {
+    return (Op){ .type = OP_MOVE_ACTION, .id = e->id, .action = a, .tile = to };
+}
+
+/* the tile `n` steps away in direction dir */
+static Hex steps_dir(Hex h, int dir, int n) {
+    for (int i = 0; i < n; i++) h = hex_neighbor_raw(h, dir);
+    return h;
+}
+static Hex steps_from(Hex h, int n) { return steps_dir(h, 0, n); }
+
+static void test_move_actions(void) {
+    reset_table();
+    stub_client = false;
+    Entity *hero = add_character((Hex){ 10, 10 }, 6, "Alice");
+    Entity *orc = add_character((Hex){ 30, 30 }, 5, "Bob");
+    hero->maxStamina = hero->stamina = 8;
+    OpAuthor alice = player("Alice"), bob = player("Bob");
+
+    /* the table: ids, slots, distances */
+    for (int i = 0; i < MOVE_COUNT; i++) CHECK(move_action_by_id(MOVE_ACTIONS[i].id) == i);
+    CHECK(move_action_by_id("move.fly") == -1 && move_action_by_id(NULL) == -1);
+    CHECK(move_distance(hero, MOVE_STEP) == 1 && move_distance(hero, MOVE_WALK) == 3 && move_distance(hero, MOVE_RUN) == 6);
+    CHECK(move_distance(orc, MOVE_WALK) == 3 && move_distance(orc, MOVE_CRAWL) == 3 && move_distance(orc, MOVE_SPRINT) == 5);
+
+    /* no initiative: no move actions (free moves as before) */
+    Op walk = action_op(hero, MOVE_WALK, steps_from(hero->tile, 3));
+    CHECK_R(ops_check(&walk, &alice), OPR_NOT_IN_COMBAT);
+    CHECK_R(ops_check(&walk, &GM), OPR_NOT_IN_COMBAT);
+
+    Entity *order[2] = { hero, orc };
+    double values[2] = { 0.9, 0.1 };
+    game_initiative_list(order, values, 2);
+    CHECK_R(ops_check(&walk, &alice), OPR_NOT_YOUR_TURN); /* the first turn has not started */
+    hero->turnUsed = TURN_ALL;
+    game_next_turn();
+    CHECK(gh->currentTurn == hero && hero->turnUsed == 0); /* its turn starts with every action free */
+
+    /* who and where */
+    CHECK_R(ops_check(&walk, &bob), OPR_NOT_YOURS);
+    Op orc_walk = action_op(orc, MOVE_WALK, steps_from(orc->tile, 1));
+    CHECK_R(ops_check(&orc_walk, &bob), OPR_NOT_YOUR_TURN);
+    Op far = action_op(hero, MOVE_WALK, steps_from(hero->tile, 4)), still = action_op(hero, MOVE_WALK, hero->tile);
+    CHECK_R(ops_check(&far, &alice), OPR_OUT_OF_RANGE);
+    CHECK_R(ops_check(&still, &alice), OPR_OUT_OF_RANGE);
+    Op bad = action_op(hero, MOVE_COUNT, steps_from(hero->tile, 1));
+    CHECK_R(ops_check(&bad, &alice), OPR_INVALID);
+    Op sprint = action_op(hero, MOVE_SPRINT, steps_from(hero->tile, 2));
+    CHECK_R(ops_check(&sprint, &alice), OPR_MOVE_FIRST); /* needs another move action first */
+
+    /* Walk: the Major action, no stamina */
+    Hex to = walk.tile;
+    CHECK_R(ops_check(&walk, &alice), OPR_OK);
+    ops_apply(&walk);
+    CHECK(hex_eq(hero->tile, to) && hero->stamina == 8 && hero->turnUsed == (TURN_MAJOR | TURN_MOVED));
+    Op run = action_op(hero, MOVE_RUN, steps_from(hero->tile, 2));
+    CHECK_R(ops_check(&run, &alice), OPR_ACTION_USED);
+
+    /* Sprint after it: the Minor action, 3 stamina; then nothing is left */
+    sprint = action_op(hero, MOVE_SPRINT, steps_from(hero->tile, 5));
+    CHECK_R(ops_check(&sprint, &alice), OPR_OK);
+    ops_apply(&sprint);
+    CHECK(hero->stamina == 5 && hero->turnUsed == TURN_ALL && gh->currentTurn == hero);
+    Op step = action_op(hero, MOVE_STEP, steps_from(hero->tile, 1));
+    CHECK_R(ops_check(&step, &alice), OPR_ACTION_USED);
+
+    /* the next turn: a Minor action can use the Major slot (two Steps), then no Major action is left */
+    game_next_turn();
+    CHECK(gh->currentTurn == orc && orc->turnUsed == 0);
+    game_next_turn();
+    CHECK(gh->currentTurn == hero && hero->turnUsed == 0);
+    step = action_op(hero, MOVE_STEP, steps_from(hero->tile, 1));
+    ops_apply(&step);
+    CHECK(hero->turnUsed == (TURN_MINOR | TURN_MOVED) && move_slot(hero, MOVE_STEP) == SLOT_MAJOR);
+    step = action_op(hero, MOVE_STEP, steps_from(hero->tile, 1));
+    CHECK_R(ops_check(&step, &alice), OPR_OK);
+    ops_apply(&step);
+    CHECK(hero->turnUsed == TURN_ALL && hero->stamina == 3 && move_slot(hero, MOVE_WALK) < 0);
+
+    /* not enough stamina; reaching 0 makes it exhausted and ends the turn */
+    game_next_turn();
+    game_next_turn();
+    hero->stamina = 1;
+    run = action_op(hero, MOVE_RUN, steps_from(hero->tile, 6));
+    CHECK_R(ops_check(&run, &alice), OPR_NO_STAMINA);
+    hero->stamina = 2;
+    CHECK_R(ops_check(&run, &alice), OPR_OK);
+    ops_apply(&run);
+    CHECK(hero->stamina == 0 && gh->currentTurn == orc && strstr(stub_last_log, "exhausted"));
+
+    /* without a stamina stat (max 0) nothing is paid and nobody gets exhausted; speed 0 can't walk */
+    CHECK(orc->maxStamina == 0);
+    Op orc_run = action_op(orc, MOVE_RUN, steps_from(orc->tile, 5));
+    CHECK_R(ops_check(&orc_run, &bob), OPR_OK);
+    ops_apply(&orc_run);
+    CHECK(gh->currentTurn == orc && orc->stamina == 0 && orc->turnUsed == (TURN_MAJOR | TURN_MOVED));
+    orc->speed = 0;
+    CHECK(move_check(orc, MOVE_CRAWL) == OPR_ACTION_USED && move_check(orc, MOVE_STEP) == OPR_OK);
+    orc->turnUsed = 0;
+    CHECK(move_check(orc, MOVE_CRAWL) == OPR_CANT_MOVE);
+    orc->speed = 5;
+
+    /* a wall in the way: the range goes around it, a blocked tile is out of range */
+    Hex next = steps_from(orc->tile, 1);
+    Entity *wall = add_wall(next);
+    Op into_wall = action_op(orc, MOVE_STEP, next);
+    CHECK_R(ops_check(&into_wall, &bob), OPR_OUT_OF_RANGE);
+
+    /* choosing the tile (move_ui.c): the range, a click inside moves, outside cancels */
+    CHECK(move_ui_start(orc->id, MOVE_WALK) && move_ui_active() && ts_has(&gh->moveMode.range, steps_dir(orc->tile, 3, 3)));
+    CHECK(hex_distance(orc->tile, steps_dir(orc->tile, 3, 3)) == 3);
+    CHECK(!ts_has(&gh->moveMode.range, next) && !ts_has(&gh->moveMode.range, steps_dir(orc->tile, 3, 4)));
+    CHECK(!ts_has(&gh->moveMode.range, steps_from(orc->tile, 3))); /* behind the wall: 4 steps around it */
+    CHECK(move_ui_click(steps_from(orc->tile, 9)) && !move_ui_active()); /* outside: cancelled */
+    Hex dest = hex_neighbor_raw(orc->tile, 3);
+    CHECK(move_ui_start(orc->id, MOVE_WALK) && move_ui_click(dest) && !move_ui_active() && hex_eq(orc->tile, dest));
+    CHECK(orc->turnUsed == (TURN_MAJOR | TURN_MOVED) && gh->selectedEntities.count == 1);
+    CHECK(!move_ui_start(orc->id, MOVE_RUN) && !move_ui_active()); /* no Major action left */
+    CHECK(strstr(stub_last_log, "No action of that kind left"));
+    CHECK(move_ui_start(orc->id, MOVE_STEP));
+    game_next_turn(); /* the turn ends while choosing: the mode ends */
+    move_ui_update();
+    CHECK(!move_ui_active());
+
+    /* players: only their own characters' menu; the move entries say why they are disabled */
+    int nr;
+    const RadialRule *rules = radial_game_rules(&nr);
+    for (int i = 0; i < MOVE_COUNT; i++) {
+        bool found = false;
+        for (int k = 0; k < nr; k++) found |= rules[k].check && !strcmp(rules[k].key, MOVE_ACTIONS[i].id) && rules[k].arg == i;
+        CHECK(found);
+    }
+    CHECK(radial_game_controls(hero) && radial_game_controls(orc) && !radial_game_controls(NULL));
+    CHECK(!radial_game_controls(wall));
+    stub_client = true; /* "alice" */
+    CHECK(radial_game_controls(hero) && !radial_game_controls(orc));
+    stub_client = false;
+
+    /* a free move by a player is refused during initiative, and works again after it */
+    Op free_move = move_op(hero, hex_neighbor_raw(hero->tile, 0));
+    CHECK_R(ops_check(&free_move, &alice), OPR_USE_ACTION);
+    game_clear_initiative();
+    CHECK_R(ops_check(&free_move, &alice), OPR_OK);
+    CHECK(move_check(hero, MOVE_STEP) == OPR_NOT_IN_COMBAT);
+    CHECK(!strcmp(move_result_text(OPR_NOT_IN_COMBAT), "Only during initiative"));
+    radial_game_shutdown();
+}
+
+/* the action menu: opened on a character you control, the actions run through the real adapter */
+static void test_action_menu(void) {
+    reset_table();
+    stub_client = false;
+    gh->winW = 1000;
+    gh->winH = 800;
+    radial_game_init();
+    radial_use_config(NULL, 0);
+    Entity *hero = add_character((Hex){ 4, 4 }, 4, "Alice");
+    hero->maxStamina = hero->stamina = 8;
+    float x, y;
+
+    /* outside initiative the move entries are disabled */
+    CHECK(radial_game_open(hex_center(hero->tile)) && !strcmp(radial_menu_id(), "actions"));
+    CHECK(radial_game_actor() == hero->id);
+    CHECK(radial_part_point("ring.4", &x, &y) && !radial_part_point("ring.5", &x, &y)); /* four entries */
+    CHECK(rad_click("ring.4") && radial_depth() == 1 && !strcmp(radial_submenu_id(), "major"));
+    CHECK(rad_click("ring.1") && radial_is_open() && !move_ui_active()); /* Walk is disabled: nothing happens */
+    radial_close();
+    rad_settle();
+
+    Entity *order[1] = { hero };
+    double values[1] = { 1 };
+    game_initiative_list(order, values, 1);
+    game_next_turn();
+    /* the Mental action has nothing in it yet; Info does nothing */
+    CHECK(radial_game_open(hex_center(hero->tile)));
+    CHECK(rad_click("ring.3") && radial_depth() == 0 && radial_is_open());
+    int logs = stub_log_count;
+    CHECK(rad_click("ring.2") && !radial_is_open() && stub_log_count == logs && !move_ui_active());
+    rad_settle();
+    /* Major -> Walk: choosing a tile starts */
+    CHECK(radial_game_open(hex_center(hero->tile)));
+    CHECK(rad_click("ring.4") && rad_click("ring.1") && !radial_is_open());
+    CHECK(move_ui_active() && gh->moveMode.id == hero->id && gh->moveMode.action == MOVE_WALK);
+    rad_settle();
+    /* opening the menu again cancels it; Minor -> Step */
+    CHECK(radial_game_open(hex_center(hero->tile)) && !move_ui_active());
+    CHECK(rad_click("ring.1") && !strcmp(radial_submenu_id(), "minor") && rad_click("ring.1"));
+    CHECK(move_ui_active() && gh->moveMode.action == MOVE_STEP);
+    move_ui_cancel();
+    rad_settle();
+    game_clear_initiative();
+    radial_game_shutdown();
+}
+
 static void test_radial_config(void) {
     char err[160];
     int nr;
@@ -1717,7 +1916,8 @@ static void test_radial_config(void) {
     static const RadialEntry bad_rule[] = { { .id = "x", .icon = "i", .enabled_if = "!nope" } };
     static const RadialEntry bad_kind[] = { { .id = "x", .icon = "i", .kind = RADIAL_KIND_COUNT } };
     static const RadialEntry bad_accent[] = { { .id = "x", .icon = "i", .accent = HUD_ACCENT_COUNT } };
-    static const RadialEntry empty_sub[] = { { .id = "x", .icon = "i", .kind = RADIAL_SUBMENU } };
+    static const RadialEntry empty_sub[] = { { .id = "x", .icon = "i", .kind = RADIAL_SUBMENU } }; /* placeholder */
+    static const RadialEntry zero_kids[] = { { .id = "x", .icon = "i", .kind = RADIAL_SUBMENU, .children = one } };
     static const RadialEntry action_kids[] = { { .id = "x", .icon = "i", RADIAL_CHILDREN(one) } };
     static const RadialEntry nested_twice[] = { { .id = "x", .icon = "i", .kind = RADIAL_SUBMENU, RADIAL_CHILDREN(one) } };
     static const RadialEntry too_many[RADIAL_MAX_ENTRIES + 1];
@@ -1727,6 +1927,7 @@ static void test_radial_config(void) {
     const RadialMenu m_rule[] = M(bad_rule), m_kind[] = M(bad_kind), m_accent[] = M(bad_accent);
     const RadialMenu m_empty[] = M(empty_sub), m_kids[] = M(action_kids), m_many[] = M(too_many);
     const RadialMenu m_nested[] = M(nested_twice); /* "x" again inside its own submenu */
+    const RadialMenu m_zero_kids[] = M(zero_kids), m_no_entries[] = { { "m", NULL, one, 0 } };
 #undef M
     const RadialMenu m_center[] = { { "m", &center_sub, one, 1 } };
     const RadialMenu m_two[] = { { "m", NULL, one, 1 }, { "m", NULL, one, 1 } };
@@ -1738,7 +1939,9 @@ static void test_radial_config(void) {
     CHECK(radial_config_check(m_rule, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "rule"));
     CHECK(radial_config_check(m_kind, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "kind"));
     CHECK(radial_config_check(m_accent, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "accent"));
-    CHECK(radial_config_check(m_empty, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "entries"));
+    CHECK(radial_config_check(m_empty, 1, rules, nr, err, sizeof(err)) == 0);
+    CHECK(radial_config_check(m_zero_kids, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "entries"));
+    CHECK(radial_config_check(m_no_entries, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "entries"));
     CHECK(radial_config_check(m_kids, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "children"));
     CHECK(radial_config_check(m_many, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "entries"));
     CHECK(radial_config_check(m_center, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "centre"));
@@ -1852,7 +2055,12 @@ static void test_radial_menu(void) {
     CHECK(rad_click("ring.4") && rad_nevents == 2 && !strcmp(rad_events[0].id, "action.3"));
     CHECK(!strcmp(radial_game_menu_for((Hex){ 3, 4 }), "tile")); /* a wall is no character */
     add_character((Hex){ 5, 5 }, 3, "");
+    CHECK(!strcmp(radial_game_menu_for((Hex){ 5, 5 }), "actions")); /* the GM controls every character */
+    stub_client = true; /* a player ("alice"): only their own characters */
     CHECK(!strcmp(radial_game_menu_for((Hex){ 5, 5 }), "character"));
+    add_character((Hex){ 6, 6 }, 3, "Alice");
+    CHECK(!strcmp(radial_game_menu_for((Hex){ 6, 6 }), "actions"));
+    stub_client = false;
     CHECK(!strcmp(radial_game_menu_for((Hex){ 9, 9 }), "tile"));
 
     /* nothing visible: it doesn't open */
@@ -2012,6 +2220,8 @@ int main(void) {
     test_hud_game();
     test_radial_config();
     test_radial_menu();
+    test_move_actions();
+    test_action_menu();
     test_settings();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);

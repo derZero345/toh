@@ -646,6 +646,7 @@ static void cmd_help(Args *a) {
     } else if (!strcmp(arg, "init") || !strcmp(arg, ":i")) {
         console_log(":i  or init # Add all entities to the initiative order");
         console_log("  add | remove | clear | show | next");
+        console_log("  While it runs, right click your character on its turn to move with move actions");
     } else if (!strcmp(arg, "clear") || !strcmp(arg, ":cl")) {
         console_log(":cl or clear # Clear the command log and history");
     } else if (!strcmp(arg, "theme") || !strcmp(arg, ":t")) {

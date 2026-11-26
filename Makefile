@@ -72,7 +72,8 @@ FUZZ_CC     ?= clang
 # tests/core_stubs.c replaces the renderer, console and graphics functions they call.
 CORE_SRC    := src/ops.c src/entity.c src/game.c src/hex.c src/astar.c src/util.c src/savefmt.c src/image.c src/baranim.c src/party.c src/textwrap.c \
                src/hud_theme.c src/hud_icons.c src/hud_widgets.c src/hud_config.c src/hud.c src/hud_game.c \
-               src/radial.c src/radial_widgets.c src/radial_config.c src/radial_game.c src/settings.c
+               src/radial.c src/radial_widgets.c src/radial_config.c src/radial_game.c src/settings.c \
+               src/moves.c src/move_ui.c
 CORE_LIBS   := $(shell pkg-config --libs sdl3 $(SAVE_PKGS)) -lm
 
 build/save_test: tests/save_test.c src/savefmt.c src/savefmt.h src/wire.h | build
@@ -126,13 +127,14 @@ fuzz: build/fuzz_savefmt build/fuzz_netmsg build/save_test build/netmsg_test
 	./build/fuzz_savefmt -max_total_time=$(FUZZ_TIME) build/fuzz-corpus
 	./build/fuzz_netmsg -max_total_time=$(FUZZ_TIME) build/fuzz-corpus-net
 
-# end-to-end checks of :save / :load, the HUD, the radial menu, the settings file and a session (host + client on localhost);
+# end-to-end checks of :save / :load, the HUD, the radial menu, the settings file, move actions and a session (host + client on localhost);
 # they need a display and ImageMagick
 e2e: $(BIN) build/toh-relay
 	./tests/e2e_save.sh
 	./tests/e2e_hud.sh
 	./tests/e2e_radial.sh
 	./tests/e2e_settings.sh
+	./tests/e2e_moves.sh
 	./tests/e2e_net.sh
 	TOH_E2E_RELAY=1 ./tests/e2e_net.sh
 
