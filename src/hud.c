@@ -406,6 +406,11 @@ static void refresh_hover(float x, float y) {
     if (idx >= 0) element_mouse(idx, HUD_MOUSE_MOVE, x, y);
 }
 
+void hud_clear_hover(void) {
+    ui.hover = ui.hoverSub = -1;
+    ui.hoverClose = false;
+}
+
 void hud_cancel_press(void) {
     ui.press = ui.pressSub = -1;
     ui.pressClose = false;

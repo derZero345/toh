@@ -90,7 +90,7 @@ static void publish_placeholders(void) {
     for (int i = 0; i < (int)(sizeof(SLOTS) / sizeof(SLOTS[0])); i++) hud_set_slot("hotbar", i, &SLOTS[i]);
 }
 
-HudScreen hud_game_screen(void) {
+static HudScreen hud_game_screen(void) {
     Rect con = console_panel_rect(); /* y = window height while the console is closed */
     float scale = gh->console.fontSize > 0 ? (float)gh->console.fontSize / 16.0f : 1;
     return (HudScreen){ (float)gh->winW, (float)gh->winH, (float)con.y, (float)gh->toolbox.size, scale };

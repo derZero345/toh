@@ -518,7 +518,7 @@ void io_handle_event(const SDL_Event *e) {
         text_input(e->text.text);
         break;
     case SDL_EVENT_WINDOW_MOUSE_LEAVE:
-        hud_game_mouse_move((Vec2){ -1e6f, -1e6f }); /* clears the HUD hover */
+        hud_clear_hover(); /* a held slider press stays */
         break;
     case SDL_EVENT_WINDOW_FOCUS_LOST:
         /* avoid stuck keys (a known issue of the Java version) */

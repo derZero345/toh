@@ -10,7 +10,6 @@ void hud_game_shutdown(void);
 /* Publishes this frame's values (call once per drawn frame, before hud_draw). dt: seconds since the previous
  * frame while bars move, else 0. True while a bar is still moving. */
 bool hud_game_update(float dt);
-HudScreen hud_game_screen(void);
 void hud_game_refresh_screen(void); /* sets the HUD's screen now (scripts ask for part rectangles before a frame) */
 /* May the viewer see this character's HP? The GM (or playing alone): any character; a player: their own.
  * Parties will extend this. */

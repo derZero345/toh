@@ -169,6 +169,8 @@ bool hud_mouse_move(float x, float y);
 bool hud_mouse_up(float x, float y);
 /* Forgets a held press, e.g. when the window loses focus. Visibility is untouched. */
 void hud_cancel_press(void);
+/* Forgets the hover (the pointer left the window); a held press stays. */
+void hud_clear_hover(void);
 /* Number key for slot 0..9 (keys 1..9, 0). True if the slot was used. */
 bool hud_key(int slot);
 

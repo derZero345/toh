@@ -157,6 +157,7 @@ footprint (old large → Huge, old huge and gargantuan → Gigantic).
 - **HUD** at the bottom centre of the window (see [section 16](#16-display-and-comfort)). It shows one character:
   - the selected one; if several are selected, the oldest, and the tab says `+N` for the others;
   - with nothing selected, a player sees their own oldest character; you see none (the bars stay empty).
+  - A player's HUD only ever shows characters they own: if they select someone else's, it still shows their own.
   - The tab above the panel shows the name, with "(dead)" at −max HP or "(exhausted)" at 0 stamina or below.
     Its ✕ clears the selection.
   - A red HP bar with `current/max` and a line in the middle where the character becomes injured. Left of its
@@ -336,7 +337,7 @@ still load; an armor class stored in them is ignored.
 | `:t <name>` | Choose a theme: purple, red, green, yellow, light, dark, black |
 | Ctrl + `+` / Ctrl + `-` | Bigger / smaller console text, toolbox and HUD |
 | `:hud [on\|off]` | Show / hide the HUD (without an argument it toggles; Tab completes `on` / `off`) |
-| 1 … 9, 0 (console closed) | Use hotbar slot 1–10 (once per key press; holding does not repeat) |
+| 1 … 9, 0 (console closed; also on the keypad) | Use hotbar slot 1–10 (once per key press; holding does not repeat) |
 | `:cl` | Clear the log and command history |
 | `:d` | Debug mode on / off (tile coordinates at the mouse) |
 
@@ -387,7 +388,7 @@ Players can:
 - use the measure and attack tools;
 - save a copy of the table;
 - change the HP, stamina and name of their own characters (`:c hp`, `damage`, `heal`, `stamina`, `spend`, `recover`, `name`), and give max stamina in a request for a new character;
-- change their own camera, zoom and theme.
+- change their own camera, zoom, theme and HUD (`:hud`), and see the HP and stamina of their own characters only.
 
 Everything else is yours, including:
 - creating characters directly, editing characters' other stats, deleting characters, and walls;

@@ -17,7 +17,7 @@ elements (resources, a control, a hotbar) and a small floating tab above it for 
 
 | Topic | Decision |
 |---|---|
-| Visibility | On at every start. `:hud` hides / shows it. Not saved. |
+| Visibility | On at every start. `:hud` toggles it, `:hud on` / `:hud off` set it. Not saved. |
 | Console | Hidden at start. `:` and Ctrl + Enter open it as before. |
 | Hotkeys | 1–9, 0 (and the keypad) use hotbar slots 1–10 while the console is closed. |
 | Config | A C table in `src/hud_config.c`, checked by the compiler, no runtime parser. |
@@ -227,7 +227,7 @@ Only while the HUD is visible:
 
 ## Console
 
-- `:hud` hides or shows the HUD. Help text: `:hud # Show or hide the HUD`. Tab completion knows it.
+- `:hud` toggles the HUD, `:hud on` / `:hud off` set it. Help text: `:hud [on|off] # Show or hide the HUD at the bottom of the window`. Tab completion knows the command and `on` / `off`.
 - The console starts hidden.
 
 ## Out of scope
