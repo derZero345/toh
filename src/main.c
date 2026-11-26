@@ -14,14 +14,18 @@
  *   @wait N          idle N frames       @quit
  *   @waitnet N       wait (at most 20 s) until N players joined (host) or the client joined
  *   @waitfile FILE   wait (at most 20 s) until FILE exists   @touch FILE  create FILE
- *   @waitbars        wait (at most 20 s) until the HP panel bars stopped moving; it only sees changes
+ *   @waitbars        wait (at most 20 s) until the HUD bars stopped moving; it only sees changes
  *                    already drawn, so wait a few frames first (e.g. @wait 2)
+ *   @hudrect PART FILE  write "x y w h" of a HUD part (hud_part_rect: an element key, hotbar.N, panel, tab,
+ *                    tab.close) to FILE
+ *   @clickhud PART   left click in the middle of a HUD part
  * A wait that times out ends the program with exit status 3.
  * --auto-file makes every file dialog (images, :save, :load) return the given file.
  * --port sets the port :host listens on (default 41234). TOH_NO_PORTMAP=1 skips the router.
  */
 #include "app.h"
 #include "font.h"
+#include "hud.h"
 #include "session.h"
 #include "vk_renderer.h"
 
@@ -165,6 +169,24 @@ static int run_script_line(const char *line, const char **screenshot) {
     } else if (!strcmp(cmd, "waitbars")) {
         script_cond.kind = WAIT_BARS;
         script_cond.deadline = SDL_GetTicks() + 20000;
+    } else if (!strcmp(cmd, "hudrect") || !strcmp(cmd, "clickhud")) {
+        char part[64] = { 0 }, file[256] = { 0 };
+        sscanf(arg, "%63s %255s", part, file);
+        HudRect r;
+        if (!hud_part_rect(part, &r)) {
+            fprintf(stderr, "@%s: no HUD part \"%s\"\n", cmd, part);
+        } else if (cmd[0] == 'c') {
+            float cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+            push_motion(cx, cy, 0);
+            push_mouse_button(cx, cy, SDL_BUTTON_LEFT, true);
+            push_mouse_button(cx, cy, SDL_BUTTON_LEFT, false);
+        } else {
+            FILE *f = fopen(file, "w");
+            if (f) {
+                fprintf(f, "%d %d %d %d\n", (int)r.x, (int)r.y, (int)r.w, (int)r.h);
+                fclose(f);
+            }
+        }
     } else if (!strcmp(cmd, "touch")) {
         FILE *f = fopen(arg, "w");
         if (f) fclose(f);
@@ -244,7 +266,7 @@ int main(int argc, char **argv) {
     int script_pos = 0, script_wait = 1;
 
     /* Frames are only drawn when something may have changed: after input, while the
-     * camera scrolls, while a script runs, while an HP panel bar moves and when the console caret blinks.
+     * camera scrolls, while a script runs, while a HUD bar moves and when the console caret blinks.
      * Otherwise the loop sleeps until the next event. */
     bool redraw = true, animating = false;
     while (app.running) {

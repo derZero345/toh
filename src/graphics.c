@@ -1,6 +1,7 @@
 /* Window state, grid/camera handling, dialogs and scene rendering (main/GraphicsHandler). */
 #include "app.h"
 #include "draw.h"
+#include "hud_game.h"
 #include "image.h"
 #include "ops.h"
 #include "netmsg.h"
@@ -59,6 +60,7 @@ bool gfx_init(App *app, const char *resource_dir) {
 
     console_init(&gh->console);
     toolbox_init(&gh->toolbox, resource_dir);
+    hud_game_init(resource_dir);
     gfx_change_theme("light");
     return true;
 }
@@ -87,6 +89,7 @@ void gfx_shutdown(void) {
     da_free(&gh->dialog.ids);
     da_free(&gh->confirm.tiles);
     vkr_texture_release(gh->backgroundImage);
+    hud_game_shutdown();
     toolbox_free(&gh->toolbox);
     console_free(&gh->console);
 }
@@ -804,138 +807,20 @@ static void draw_console(void) {
     draw_border(r.x, r.y, r.w, r.h, t->secondary);
 }
 
-/* ---- HP panels (top right) -------------------------------------------------------------------------- */
+/* ---- HUD (bottom centre) ------------------------------------------------------------------------------ */
 
-#define HP_MARGIN 8
-
-static int by_id(const void *a, const void *b) {
-    uint32_t x = (*(Entity *const *)a)->id, y = (*(Entity *const *)b)->id;
-    return x < y ? -1 : x > y;
-}
-
-/* A player sees their own characters, the GM (also offline) the selected ones; oldest first. */
-static void hp_panel_characters(EntityList *out) {
-    if (session_is_client()) {
-        const char *me = session_my_name();
-        for (int i = 0; i < gh->entities.count; i++) {
-            Entity *e = gh->entities.items[i];
-            if (e->type == ENTITY_CHARACTER && e->owner[0] && strcasecmp(e->owner, me) == 0) da_push(out, e);
-        }
-    } else {
-        for (int i = 0; i < gh->selectedEntities.count; i++) {
-            Entity *e = entity_by_id(gh->selectedEntities.items[i]);
-            if (e && e->type == ENTITY_CHARACTER) da_push(out, e);
-        }
-    }
-    if (out->count > 1) qsort(out->items, (size_t)out->count, sizeof(*out->items), by_id);
-}
-
-/* Right-aligned text at right_x on a dark background, so it reads on any map. */
-static void hp_label(const char *text, float right_x, float y, float h, float fs, float ascent, float descent) {
-    float w = dr_text_width(FONT_PLAIN, fs, text);
-    dr_fill_rect(right_x - w - 6, y, w + 6, h, (Color){ 20, 20, 20, 200 });
-    dr_text(FONT_PLAIN, fs, right_x - w - 3, y + (h + ascent - descent) / 2, COLOR_WHITE, text);
-}
-
-static unsigned panel_frame = 1; /* counts drawn frames; 0 means "never shown" on entities */
-static Uint64 panel_last_ms;     /* time of the previous frame */
-static bool bars_moving;         /* some bar moved in the previous frame */
+static Uint64 hud_last_ms;   /* time of the previous frame */
+static bool bars_moving;     /* a HUD bar moved in the previous frame */
 
 bool gfx_bars_moving(void) { return bars_moving; }
 
-/* draws one bar's fill: a light "just lost" part and the solid part */
-static void draw_bar_fill(const BarAnim *a, float frame_x, float frame_w, float y, float h, Color solid,
-                          Color light) {
-    float sl, sh, ll, lh;
-    bar_anim_spans(a, &sl, &sh, &ll, &lh);
-    if (lh > ll) dr_fill_rect(frame_x + ll * frame_w, y, (lh - ll) * frame_w, h, light);
-    if (sh > sl) dr_fill_rect(frame_x + sl * frame_w, y, (sh - sl) * frame_w, h, solid);
-}
-
-static void draw_hp_panels(void) {
+static void draw_hud(void) {
     Uint64 now = SDL_GetTicks();
-    float dt = bars_moving ? (float)(now - panel_last_ms) / 1000.0f : 0; /* idle: start at this frame */
+    float dt = bars_moving ? (float)(now - hud_last_ms) / 1000.0f : 0; /* idle: start at this frame */
     if (dt > 0.1f) dt = 0.1f;
-    panel_last_ms = now;
-    unsigned frame = ++panel_frame;
-    bars_moving = false;
-    EntityList list = { 0 };
-    hp_panel_characters(&list);
-    if (list.count == 0) {
-        da_free(&list);
-        return;
-    }
-    float fs = (float)gh->console.fontSize;
-    float frame_w = fs * 8, name_h = fs * 1.25f, bar_h = fs * 1.25f;
-    float frame_x = (float)gh->winW - HP_MARGIN - frame_w, right = frame_x + frame_w;
-    float bottom = (float)(gh->winH - console_panel_rect().h);
-    float ascent, descent;
-    dr_font_metrics(FONT_PLAIN, fs, &ascent, &descent);
-
-    /* Each panel has its own height. A panel is shown if it fits together with a "+N more" row when more follow. */
-    int shown = 0;
-    float used = HP_MARGIN;
-    for (int i = 0; i < list.count; i++) {
-        float ph = list.items[i]->maxStamina > 0 ? fs * 4.15f : fs * 3;
-        float need = used + ph + (i + 1 < list.count ? name_h : 0);
-        if (need > bottom) break;
-        used += ph;
-        shown++;
-    }
-    const Color bg = { 20, 20, 20, 200 }, red = { 200, 30, 30, 255 }, green = { 40, 160, 60, 255 };
-    const Color light_red = { 235, 130, 130, 255 }, light_green = { 150, 215, 150, 255 };
-    const Color white = COLOR_WHITE;
-    float y = HP_MARGIN;
-    for (int i = 0; i < shown; i++) {
-        Entity *e = list.items[i];
-        float hpf = bar_fraction(e->health, e->maxHealth), stf = bar_fraction(e->stamina, e->maxStamina);
-        if (e->panelFrame != frame - 1) { /* not shown in the previous frame: no animation */
-            bar_anim_reset(&e->hpAnim, hpf);
-            bar_anim_reset(&e->staminaAnim, stf);
-        }
-        e->panelFrame = frame;
-        if (bar_anim_step(&e->hpAnim, hpf, dt)) bars_moving = true;
-        if (e->maxStamina <= 0) bar_anim_reset(&e->staminaAnim, stf); /* no bar: a new one appears at its value */
-        else if (bar_anim_step(&e->staminaAnim, stf, dt)) bars_moving = true;
-        char name[CHAR_NAME_MAX + 16], label[CHAR_NAME_MAX + 32], hp[32], st[32];
-        entity_display_name(e, name, sizeof(name));
-        bool dead = hp_stage(e->health, e->maxHealth) == HP_DEAD;
-        bool tired = e->maxStamina > 0 && e->stamina <= 0;
-        snprintf(label, sizeof(label), "%s%s", name, dead ? " (dead)" : tired ? " (exhausted)" : "");
-        hp_label(label, right, y, name_h, fs, ascent, descent);
-
-        float by = y + name_h;
-        HpBar b = hp_bar_layout(e->health, e->maxHealth, frame_x, frame_w);
-        dr_fill_rect(frame_x, by, frame_w, bar_h, bg);
-        draw_bar_fill(&e->hpAnim, frame_x, frame_w, by, bar_h, red, light_red);
-        if (b.lines) dr_line(b.injured_x, by, b.injured_x, by + bar_h, 2, white);
-        if (b.critical) {
-            float tick = fminf(3, fs * 0.25f - 1); /* stays clear of the stamina bar */
-            dr_line(b.critical_x, by - 3, b.critical_x, by + bar_h + tick, 2, white);
-        }
-        dr_stroke_rect(frame_x, by, frame_w, bar_h, 1.5f, white);
-        snprintf(hp, sizeof(hp), "%d/%d", e->health, e->maxHealth);
-        float hw = dr_text_width(FONT_PLAIN, fs, hp);
-        dr_text(FONT_PLAIN, fs, frame_x + (frame_w - hw) / 2, by + (bar_h + ascent - descent) / 2, white, hp);
-        if (e->maxStamina > 0) {
-            float sy = by + bar_h + fs * 0.25f, sh = fs * 0.9f;
-            dr_fill_rect(frame_x, sy, frame_w, sh, bg);
-            draw_bar_fill(&e->staminaAnim, frame_x, frame_w, sy, sh, green, light_green);
-            dr_stroke_rect(frame_x, sy, frame_w, sh, 1.5f, white);
-            snprintf(st, sizeof(st), "%d/%d", e->stamina, e->maxStamina);
-            float sw = dr_text_width(FONT_PLAIN, fs * 0.8f, st);
-            float sa, sd;
-            dr_font_metrics(FONT_PLAIN, fs * 0.8f, &sa, &sd);
-            dr_text(FONT_PLAIN, fs * 0.8f, frame_x + (frame_w - sw) / 2, sy + (sh + sa - sd) / 2, white, st);
-        }
-        y += e->maxStamina > 0 ? fs * 4.15f : fs * 3;
-    }
-    if (shown < list.count) {
-        char more[32];
-        snprintf(more, sizeof(more), "+%d more", list.count - shown);
-        hp_label(more, right, y, name_h, fs, ascent, descent);
-    }
-    da_free(&list);
+    hud_last_ms = now;
+    bars_moving = hud_game_update(dt);
+    hud_draw();
 }
 
 bool gfx_draw_frame(const char *screenshot_path) {
@@ -953,7 +838,7 @@ bool gfx_draw_frame(const char *screenshot_path) {
     draw_grid();
     draw_fx();
     draw_toolbox();
-    draw_hp_panels();
+    draw_hud();
     draw_console();
 
     dr_end_and_render(t->primary, screenshot_path);

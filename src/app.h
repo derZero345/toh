@@ -102,8 +102,8 @@ typedef struct Entity {
     int slot, slots; /* entity_layout: characters sharing a tile are drawn side by side in `slots` places */
     int size, maxHealth, health, attack, speed, initiative;
     int maxStamina, stamina; /* Tales of Honor stamina; max 0 = no stamina stat */
-    BarAnim hpAnim, staminaAnim; /* HP panel animation; memory only */
-    unsigned panelFrame;         /* the last frame the HP panel showed this entity (0 = never) */
+    BarAnim hpAnim, staminaAnim; /* HUD bar animation; memory only */
+    unsigned panelFrame;         /* the last frame the HUD showed this entity (0 = never) */
     struct Marker *debugMarker;
 } Entity;
 
@@ -135,7 +135,7 @@ HpStage     hp_stage(int hp, int max);
 const char *hp_stage_name(HpStage s);
 /* Current HP after max HP changes: full HP stays full, otherwise it is clamped. */
 int         hp_after_max_change(int hp, int old_max, int new_max);
-/* The HP panel's bar. The frame stands for 0..max; below 0 the fill grows left out of it. */
+/* The HP bar in fractions or pixels. The frame stands for 0..max; below 0 the fill grows left out of it. */
 typedef struct {
     float fill_x, fill_w; /* red part */
     bool lines;           /* max > 0: draw the injured line */
@@ -427,7 +427,7 @@ extern App *gh;
 /* graphics.c */
 bool gfx_init(App *app, const char *resource_dir);
 void gfx_shutdown(void);
-bool gfx_draw_frame(const char *screenshot_path); /* true while something (the HP panel bars) is still moving */
+bool gfx_draw_frame(const char *screenshot_path); /* true while a HUD bar is still moving */
 bool gfx_bars_moving(void);
 void gfx_change_theme(const char *name);
 const Theme *gfx_theme(void);

@@ -1,6 +1,7 @@
 /* In-app console: log, input line, history, auto-completion and all commands
  * (main/Consol, main/ConsolPanel, main/CommandCompleter). */
 #include "app.h"
+#include "hud.h"
 #include "ops.h"
 #include "savefmt.h"
 #include "session.h"
@@ -38,7 +39,7 @@ static const ArgDef ARGS_HELP[]   = {
     { "theme", ":t" },       { "teleport", "tp" },   { "save", ":save" },    { "load", ":load" },
     { "host", ":host" },     { "unhost", ":unhost" }, { "join", ":join" },   { "leave", ":leave" },
     { "players", ":players" }, { "kick", ":kick" },  { "ban", ":ban" },      { "unban", ":unban" },
-    { "claim", ":claim" },   { NULL, NULL },
+    { "claim", ":claim" },   { "hud", ":hud" },   { NULL, NULL },
 };
 static const ArgDef ARGS_INIT[]  = { { "add", "a" }, { "remove", "r" }, { "clear", "c" }, { "show", "s" },
                                      { "next", "n" }, { NULL, NULL } };
@@ -56,7 +57,7 @@ static const CommandDef COMMANDS[] = {
     { "save", ":save", NULL },            { "load", ":load", NULL },
     { "host", ":host", NULL },            { "unhost", ":unhost", NULL }, { "join", ":join", NULL },
     { "leave", ":leave", NULL },          { "players", ":players", NULL }, { "kick", ":kick", NULL },
-    { "ban", ":ban", NULL },              { "unban", ":unban", NULL },  { "claim", ":claim", NULL },
+    { "ban", ":ban", NULL },              { "unban", ":unban", NULL },  { "claim", ":claim", NULL },  { "hud", ":hud", NULL },
 };
 #define NCOMMANDS ((int)(sizeof(COMMANDS) / sizeof(COMMANDS[0])))
 
@@ -147,7 +148,7 @@ void console_init(Console *c) {
     memset(c, 0, sizeof(*c));
     c->historyIndex = -1;
     c->suggestionIndex = -1;
-    c->active = true;
+    c->active = false; /* hidden at start: ':' or Ctrl + Enter opens it */
     c->showLog = true;
     c->fontSize = 16;
 }
@@ -646,6 +647,8 @@ static void cmd_help(Args *a) {
         console_log(":unban <name> # GM: let a banned player join again");
     } else if (!strcmp(arg, "claim") || !strcmp(arg, ":claim")) {
         console_log(":claim # Ask the GM for the selected character (it must have no owner)");
+    } else if (!strcmp(arg, "hud") || !strcmp(arg, ":hud")) {
+        console_log(":hud # Show or hide the HUD at the bottom of the window");
     } else {
         console_log("Available commands:");
         console_log(":q  or quit       # Quit the application");
@@ -669,6 +672,7 @@ static void cmd_help(Args *a) {
         console_log(":players / :kick  # List or remove players");
         console_log(":ban / :unban     # Keep a player out of the session, or let them back in");
         console_log(":claim            # Ask the GM for the selected character");
+        console_log(":hud              # Show or hide the HUD");
     }
 }
 
@@ -988,6 +992,7 @@ void console_command(const char *raw) {
         else session_cmd_unban(a.argv[1]);
     }
     else if (!strcmp(cmd, "claim") || !strcmp(cmd, ":claim"))   session_cmd_claim();
+    else if (!strcmp(cmd, "hud") || !strcmp(cmd, ":hud"))      hud_set_visible(!hud_visible());
     else if (!strcmp(cmd, "init") || !strcmp(cmd, ":i"))        cmd_init(&a);
     else if (!strcmp(cmd, "teleport") || !strcmp(cmd, "tp"))    cmd_teleport(&a);
     else if (!strcmp(cmd, "clear") || !strcmp(cmd, ":cl"))      cmd_clear();
