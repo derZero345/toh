@@ -140,12 +140,13 @@ static float pill_height(const HudElement *e, float s) { return T->pillH * s; }
 
 static void pill_draw(const HudElement *e, HudRect r, const HudValue *v, const HudUiState *ui, int self, float s) {
     float rad = r.h / 2, edge = T->pillEdge * s;
-    round_rect(r, rad, T->accent[e->accent]); /* shows as the coloured left edge */
-    round_rect((HudRect){ r.x + edge, r.y, r.w - edge, r.h }, rad, T->slotBg);
+    round_rect(r, rad, T->slotBg);
+    /* the accent: a short upright bar inside the left rounding */
+    round_rect((HudRect){ r.x + rad * 0.6f, r.y + r.h * 0.25f, edge, r.h * 0.5f }, edge / 2, T->accent[e->accent]);
     const char *label = v && v->pill.label[0] ? v->pill.label : e->label ? e->label : "";
     const char *value = v && v->pill.value[0] ? v->pill.value : "—";
     Color vc = v ? T->text : T->textDim;
-    float pad = T->pillPad * s, x0 = r.x + edge + pad, x1 = r.x + r.w - pad;
+    float pad = T->pillPad * s, x0 = r.x + rad * 0.6f + edge + pad, x1 = r.x + r.w - pad;
     if (label[0]) {
         text_left(FONT_PLAIN, T->smallFont * s, x0, r, T->textDim, label);
         text_right(FONT_BOLD, T->font * s, x1, r, vc, value);
