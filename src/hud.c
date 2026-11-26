@@ -173,10 +173,10 @@ void hud_set_visible(bool on) {
     ui_reset();
 }
 
-__attribute__((unused)) static const HudElement *element(int idx) {
+static const HudElement *element(int idx) {
     return &rows[idx / HUD_MAX_ROW_ELEMENTS].elements[idx % HUD_MAX_ROW_ELEMENTS];
 }
-__attribute__((unused)) static HudRect element_rect(int idx) {
+static HudRect element_rect(int idx) {
     return layout.elems[idx / HUD_MAX_ROW_ELEMENTS][idx % HUD_MAX_ROW_ELEMENTS];
 }
 static const HudComponent *component(const HudElement *e) { return HUD_COMPONENTS[e->type]; }
@@ -314,4 +314,115 @@ bool hud_contains(float x, float y) {
     if (!visible) return false;
     ensure_layout();
     return hud_rect_contains(layout.panel, x, y) || (target.shown && hud_rect_contains(layout.tab, x, y));
+}
+
+/* ---- input and events ---- */
+
+static void (*handler)(const HudEvent *ev);
+
+void hud_set_event_handler(void (*fn)(const HudEvent *ev)) { handler = fn; }
+
+static void send(const HudEvent *ev) {
+    if (handler) handler(ev);
+}
+
+static int element_at(float x, float y) {
+    for (int i = 0; i < row_count(); i++)
+        for (int k = 0; k < rows[i].count; k++)
+            if (hud_rect_contains(layout.elems[i][k], x, y)) return i * HUD_MAX_ROW_ELEMENTS + k;
+    return -1;
+}
+
+/* the value an element shows: published under its key with its type, else NULL */
+static HudValue *element_value(const HudElement *e) {
+    HudValue *v = find_value(e->key);
+    return v && v->type == e->type ? v : NULL;
+}
+
+static void element_mouse(int idx, HudMouseKind kind, float x, float y) {
+    const HudElement *e = element(idx);
+    const HudComponent *c = component(e);
+    if (!c->mouse) return;
+    HudEvent ev = { 0 };
+    if (c->mouse(e, element_rect(idx), element_value(e), (HudMouse){ kind, x, y }, &ui, idx, layout.scale, &ev)) {
+        ev.key = e->key;
+        send(&ev);
+    }
+}
+
+bool hud_mouse_down(float x, float y) {
+    if (!visible) return false;
+    ensure_layout();
+    ui.press = ui.pressSub = -1;
+    if (target.shown && hud_rect_contains(layout.tab, x, y)) {
+        ui.pressClose = target.canClose && hud_rect_contains(layout.close, x, y);
+        pressActive = true;
+        return true;
+    }
+    if (!hud_rect_contains(layout.panel, x, y)) return false;
+    pressActive = true;
+    ui.press = element_at(x, y);
+    if (ui.press >= 0) element_mouse(ui.press, HUD_MOUSE_DOWN, x, y);
+    return true;
+}
+
+bool hud_mouse_move(float x, float y) {
+    if (!visible) return false;
+    ensure_layout();
+    if (pressActive) {
+        if (ui.press >= 0) element_mouse(ui.press, HUD_MOUSE_MOVE, x, y);
+        return true;
+    }
+    ui.hoverClose = target.shown && target.canClose && hud_rect_contains(layout.close, x, y);
+    int idx = element_at(x, y);
+    if (idx != ui.hover) {
+        ui.hover = idx;
+        ui.hoverSub = -1;
+    }
+    if (idx >= 0) element_mouse(idx, HUD_MOUSE_MOVE, x, y);
+    return false;
+}
+
+bool hud_mouse_up(float x, float y) {
+    if (!pressActive) return false;
+    bool close = ui.pressClose;
+    pressActive = false;
+    ui.pressClose = false;
+    if (visible) {
+        ensure_layout();
+        if (close && target.shown && target.canClose && hud_rect_contains(layout.close, x, y))
+            send(&(HudEvent){ .type = HUD_EV_TARGET_CLOSED });
+        if (ui.press >= 0) element_mouse(ui.press, HUD_MOUSE_UP, x, y);
+    }
+    ui.press = ui.pressSub = -1;
+    return true;
+}
+
+bool hud_key(int slot) {
+    if (!visible || slot < 0 || slot >= HUD_MAX_SLOTS) return false;
+    for (int i = 0; i < row_count(); i++)
+        for (int k = 0; k < rows[i].count; k++) {
+            const HudElement *e = &rows[i].elements[k];
+            if (e->type != HUD_HOTBAR) continue;
+            HudValue *v = element_value(e);
+            if (slot >= e->slots || !v || !hud_slot_usable(&v->slots[slot])) return false;
+            send(&(HudEvent){ .type = HUD_EV_SLOT_USED, .key = e->key, .slot = slot });
+            return true;
+        }
+    return false;
+}
+
+/* ---- drawing ---- */
+
+void hud_draw(void) {
+    if (!visible) return;
+    ensure_layout();
+    float s = layout.scale;
+    hud_draw_panel(layout.panel, s);
+    for (int i = 0; i < row_count(); i++)
+        for (int k = 0; k < rows[i].count; k++) {
+            const HudElement *e = &rows[i].elements[k];
+            component(e)->draw(e, layout.elems[i][k], element_value(e), &ui, i * HUD_MAX_ROW_ELEMENTS + k, s);
+        }
+    hud_draw_tab(layout.tab, layout.close, &target, &ui, s);
 }

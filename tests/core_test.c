@@ -1237,6 +1237,70 @@ static void test_hud_layout(void) {
     hud_begin_frame();
 }
 
+static HudEvent hud_events[8];
+static int hud_nevents;
+static void hud_record(const HudEvent *ev) {
+    if (hud_nevents < 8) hud_events[hud_nevents] = *ev;
+    hud_nevents++;
+}
+
+static void test_hud_input(void) {
+    hud_use_config(NULL, 0);
+    hud_set_visible(true);
+    hud_set_event_handler(hud_record);
+    HudScreen s = { 1000, 700, 700, 32, 1 };
+    hud_set_screen(&s);
+    hud_begin_frame();
+    HudSlot ok = { HUD_SLOT_AVAILABLE, "placeholder", 0, 0 }, off = { HUD_SLOT_UNAVAILABLE, "placeholder", 0, 0 };
+    hud_set_slot("hotbar", 0, &ok);
+    hud_set_slot("hotbar", 1, &off);
+    hud_set_slider("value", "Value", 50, 0, 100);
+    hud_set_target("Mao", "", true);
+    HudRect panel, s1, s2, close, slider, pill;
+    CHECK(hud_part_rect("panel", &panel) && hud_part_rect("hotbar.1", &s1) && hud_part_rect("hotbar.2", &s2));
+    CHECK(hud_part_rect("tab.close", &close) && hud_part_rect("value", &slider) && hud_part_rect("pill.left", &pill));
+    float ox = panel.x - 5, oy = panel.y - 50; /* outside the panel and left of the tab */
+    hud_nevents = 0;
+
+    /* a click on a usable slot uses it; the map never sees the click */
+    CHECK(hud_mouse_down(s1.x + 5, s1.y + 5) && hud_mouse_up(s1.x + 5, s1.y + 5));
+    CHECK(hud_nevents == 1 && hud_events[0].type == HUD_EV_SLOT_USED && hud_events[0].slot == 0);
+    CHECK(!strcmp(hud_events[0].key, "hotbar"));
+    /* an unavailable slot and a pill take the click without an event */
+    CHECK(hud_mouse_down(s2.x + 5, s2.y + 5) && hud_mouse_up(s2.x + 5, s2.y + 5) && hud_nevents == 1);
+    CHECK(hud_mouse_down(pill.x + 5, pill.y + 5) && hud_mouse_up(pill.x + 5, pill.y + 5) && hud_nevents == 1);
+    /* outside: not taken */
+    CHECK(!hud_mouse_down(ox, oy) && !hud_mouse_up(ox, oy) && !hud_mouse_move(ox, oy));
+    /* hovering over the HUD is not a drag: the map keeps getting the motion */
+    CHECK(!hud_mouse_move(s1.x + 5, s1.y + 5));
+
+    /* the slider follows a drag, also outside the HUD, until the button is released */
+    CHECK(hud_mouse_down(slider.x + slider.w - 1, slider.y + slider.h / 2));
+    CHECK(hud_nevents == 2 && hud_events[1].type == HUD_EV_SLIDER_CHANGED && hud_events[1].value == 100);
+    CHECK(!strcmp(hud_events[1].key, "value") && hud_value("value")->slider.value == 100);
+    CHECK(hud_mouse_move(0, 0) && hud_nevents == 3 && hud_events[2].value == 0);
+    CHECK(hud_mouse_up(0, 0) && !hud_mouse_move(0, 0) && hud_nevents == 3);
+
+    /* the tab's close button; pressing it and releasing elsewhere does nothing */
+    CHECK(hud_mouse_down(close.x + 2, close.y + 2) && hud_mouse_up(close.x + 2, close.y + 2));
+    CHECK(hud_nevents == 4 && hud_events[3].type == HUD_EV_TARGET_CLOSED && hud_events[3].key == NULL);
+    CHECK(hud_mouse_down(close.x + 2, close.y + 2) && hud_mouse_up(ox, oy) && hud_nevents == 4);
+
+    /* number keys: only usable slots that exist */
+    CHECK(hud_key(0) && hud_nevents == 5 && hud_events[4].slot == 0);
+    CHECK(!hud_key(1) && !hud_key(2) && !hud_key(10) && !hud_key(-1) && hud_nevents == 5);
+
+    /* hidden: nothing is taken */
+    hud_set_visible(false);
+    CHECK(!hud_mouse_down(s1.x + 5, s1.y + 5) && !hud_mouse_up(s1.x + 5, s1.y + 5) && !hud_key(0));
+    CHECK(hud_nevents == 5);
+    hud_set_visible(true);
+    hud_mouse_move(s1.x + 5, s1.y + 5); /* hover, then draw with the stubs */
+    hud_draw();
+    hud_set_event_handler(NULL);
+    hud_begin_frame();
+}
+
 int main(void) {
     test_split_args();
     test_entity_ids();
@@ -1263,6 +1327,7 @@ int main(void) {
     test_hud_widgets();
     test_hud_values();
     test_hud_layout();
+    test_hud_input();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
