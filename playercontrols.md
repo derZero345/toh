@@ -120,7 +120,7 @@ table sees your selection, measurements and attacks in your color.
 | Ctrl + Enter | Open / close the console |
 | Alt + Enter | Show / hide the log |
 | Up / Down in the console | Earlier commands |
-| Tab in the console | Complete a command |
+| Tab in the console | Complete a command or argument (`:c` too); Tab again cycles |
 | Mouse wheel over the console | Scroll the log |
 | Ctrl + `+` / Ctrl + `-` | Bigger / smaller console text and toolbox |
 | `:t [name]` | List the color themes, or choose one |

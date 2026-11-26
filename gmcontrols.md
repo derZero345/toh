@@ -35,7 +35,7 @@ The console at the bottom of the window takes all commands.
 | Alt + Enter | Show / hide the log |
 | Enter | Run the command |
 | Up / Down | Earlier commands |
-| Tab | Complete a command; after a command and a space it lists the arguments. Tab again cycles. |
+| Tab | Complete a command or argument, long or short (`:c` offers `:c`, `:cl`, `:claim`; `:c ms` becomes `:c maxstamina`). After a command and a space it lists the arguments. Tab again cycles. |
 | Left / Right, Home / End, Backspace / Delete | Edit the line |
 | Ctrl + V | Paste text (line breaks become spaces) |
 | Mouse wheel over the console | Scroll the log |

@@ -14,40 +14,60 @@
 
 /* ---- command completer ----------------------------------------------------------------- */
 
+/* An argument and its short form (NULL = none); console_command accepts both. */
 typedef struct {
-    const char *name;
-    const char *const *args; /* NULL-terminated, NULL = no arguments */
+    const char *name, *shortName;
+} ArgDef;
+
+typedef struct {
+    const char *name, *shortName; /* "character" / ":c"; Tab completes either */
+    const ArgDef *args;           /* { NULL } terminated, NULL = no arguments */
 } CommandDef;
 
-static const char *const ARGS_CHARACTER[] = { "delete", "size", "maxhealth", "speed", "initiative", "maxstamina", "stamina", "spend", "recover", "icon", "owner",
-                                              "name", "hp", "damage", "heal", NULL };
-static const char *const ARGS_DELETE[]    = { "delete", NULL };
-static const char *const ARGS_HELP[]      = { "quit", "background", "debug", "character", "wall", "entity", "help",
-                                              "roll", "grid", "gamemaster", "init", "clear", "theme", "teleport", "save", "load",
-                                              "host", "unhost", "join", "leave", "players", "kick", "ban", "unban",
-                                              "claim", NULL };
-static const char *const ARGS_INIT[]      = { "add", "remove", "clear", "show", "next", NULL };
-static const char *const ARGS_THEME[]     = { "purple", "red", "green", "yellow", "light", "dark", "black", NULL };
+static const ArgDef ARGS_CHARACTER[] = {
+    { "delete", "d" },     { "size", "sz" },       { "maxhealth", "h" }, { "speed", "s" },
+    { "initiative", "in" }, { "maxstamina", "ms" }, { "stamina", "st" },  { "spend", NULL },
+    { "recover", NULL },   { "icon", "ic" },       { "owner", "ow" },    { "name", "nm" },
+    { "hp", NULL },        { "damage", "dmg" },    { "heal", NULL },     { NULL, NULL },
+};
+static const ArgDef ARGS_DELETE[] = { { "delete", "d" }, { NULL, NULL } };
+static const ArgDef ARGS_HELP[]   = {
+    { "quit", ":q" },        { "background", ":b" }, { "debug", ":d" },      { "character", ":c" },
+    { "wall", ":w" },        { "entity", ":e" },     { "help", ":h" },       { "roll", ":r" },
+    { "grid", ":g" },        { "gamemaster", ":gm" }, { "init", ":i" },      { "clear", ":cl" },
+    { "theme", ":t" },       { "teleport", "tp" },   { "save", ":save" },    { "load", ":load" },
+    { "host", ":host" },     { "unhost", ":unhost" }, { "join", ":join" },   { "leave", ":leave" },
+    { "players", ":players" }, { "kick", ":kick" },  { "ban", ":ban" },      { "unban", ":unban" },
+    { "claim", ":claim" },   { NULL, NULL },
+};
+static const ArgDef ARGS_INIT[]  = { { "add", "a" }, { "remove", "r" }, { "clear", "c" }, { "show", "s" },
+                                     { "next", "n" }, { NULL, NULL } };
+static const ArgDef ARGS_THEME[] = { { "purple", NULL }, { "red", NULL }, { "green", NULL }, { "yellow", NULL },
+                                     { "light", NULL },  { "dark", NULL }, { "black", NULL }, { NULL, NULL } };
 
 static const CommandDef COMMANDS[] = {
-    { "quit", NULL },        { "background", NULL },        { "debug", NULL },
-    { "character", ARGS_CHARACTER }, { "wall", ARGS_DELETE }, { "entity", ARGS_DELETE },
-    { "help", ARGS_HELP },   { "roll", NULL },              { "grid", NULL },
-    { "gamemaster", NULL },  { "init", ARGS_INIT },         { "clear", NULL },
-    { "theme", ARGS_THEME },
+    { "quit", ":q", NULL },               { "background", ":b", NULL }, { "debug", ":d", NULL },
+    { "character", ":c", ARGS_CHARACTER }, { "wall", ":w", ARGS_DELETE }, { "entity", ":e", ARGS_DELETE },
+    { "help", ":h", ARGS_HELP },          { "roll", ":r", NULL },       { "grid", ":g", NULL },
+    { "gamemaster", ":gm", NULL },        { "init", ":i", ARGS_INIT },  { "clear", ":cl", NULL },
+    { "theme", ":t", ARGS_THEME },
     /* arguments depend on the position and on the existing waypoints: see teleport_suggestions */
-    { "teleport", NULL },    { "tp", NULL },
-    { "save", NULL },        { "load", NULL },
-    { "host", NULL },        { "unhost", NULL },            { "join", NULL },
-    { "leave", NULL },       { "players", NULL },           { "kick", NULL },
-    { "ban", NULL },         { "unban", NULL },             { "claim", NULL },
+    { "teleport", "tp", NULL },
+    { "save", ":save", NULL },            { "load", ":load", NULL },
+    { "host", ":host", NULL },            { "unhost", ":unhost", NULL }, { "join", ":join", NULL },
+    { "leave", ":leave", NULL },          { "players", ":players", NULL }, { "kick", ":kick", NULL },
+    { "ban", ":ban", NULL },              { "unban", ":unban", NULL },  { "claim", ":claim", NULL },
 };
 #define NCOMMANDS ((int)(sizeof(COMMANDS) / sizeof(COMMANDS[0])))
 
 static const CommandDef *find_command(const char *name) {
     for (int i = 0; i < NCOMMANDS; i++)
-        if (strcmp(COMMANDS[i].name, name) == 0) return &COMMANDS[i];
+        if (!strcasecmp(COMMANDS[i].name, name) || !strcasecmp(COMMANDS[i].shortName, name)) return &COMMANDS[i];
     return NULL;
+}
+
+static bool has_prefix(const char *s, const char *prefix) {
+    return s && strncasecmp(s, prefix, strlen(prefix)) == 0;
 }
 
 static void clear_suggestions(void) {
@@ -101,24 +121,23 @@ static void get_suggestions(const char *input) {
         teleport_suggestions(words, pos, trailing_space ? "" : words[nwords - 1]);
         return;
     }
-    if (trailing_space) {
-        /* command + space: all arguments of the command */
+    if (pos > 0) {
+        /* arguments of the command (all of them after a space); a short form such as "ms"
+         * completes to its long one */
         const CommandDef *cmd = find_command(words[0]);
+        const char *prefix = trailing_space ? "" : words[nwords - 1];
         if (cmd && cmd->args)
-            for (int i = 0; cmd->args[i]; i++) da_push(&C->suggestions, str_dup(cmd->args[i]));
-        return;
-    }
-    if (nwords > 1) {
-        const CommandDef *cmd = find_command(words[0]);
-        const char *prefix = words[nwords - 1];
-        if (cmd && cmd->args)
-            for (int i = 0; cmd->args[i]; i++)
-                if (strncmp(cmd->args[i], prefix, strlen(prefix)) == 0)
-                    da_push(&C->suggestions, str_dup(cmd->args[i]));
+            for (const ArgDef *arg = cmd->args; arg->name; arg++)
+                if (has_prefix(arg->name, prefix) || has_prefix(arg->shortName, prefix))
+                    da_push(&C->suggestions, str_dup(arg->name));
     } else {
-        for (int i = 0; i < NCOMMANDS; i++)
-            if (strncmp(COMMANDS[i].name, words[0], strlen(words[0])) == 0)
-                da_push(&C->suggestions, str_dup(COMMANDS[i].name));
+        /* the command itself: ":c" completes the short forms (:c, :cl, :claim), "c" the long ones */
+        for (int i = 0; i < NCOMMANDS; i++) {
+            const CommandDef *cmd = &COMMANDS[i];
+            const char *hit = has_prefix(cmd->name, words[0])        ? cmd->name
+                            : has_prefix(cmd->shortName, words[0]) ? cmd->shortName : NULL;
+            if (hit) da_push(&C->suggestions, str_dup(hit));
+        }
     }
 }
 
@@ -278,10 +297,14 @@ void console_autocomplete(void) {
         get_suggestions(orig);
         const char *last_space = strrchr(orig, ' ');
         const char *last_word = last_space ? last_space + 1 : orig;
-        for (int i = C->suggestions.count - 1; i >= 0; i--)
-            if (strcmp(C->suggestions.items[i], last_word) == 0) {
-                free(C->suggestions.items[i]);
+        /* what is typed already (":c" next to ":cl" and ":claim") comes last: Tab first moves on,
+         * and cycling returns to it */
+        for (int i = 0; i < C->suggestions.count - 1; i++)
+            if (strcasecmp(C->suggestions.items[i], last_word) == 0) {
+                char *typed = C->suggestions.items[i];
                 da_remove_at(&C->suggestions, i);
+                da_push(&C->suggestions, typed);
+                break;
             }
         if (C->suggestions.count > 1) {
             console_log("Possible completions:");
