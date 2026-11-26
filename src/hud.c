@@ -2,6 +2,7 @@
  * No game state here; see hud.h for how the parts fit together. */
 #include "hud.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,6 +40,10 @@ int hud_config_check(const HudRow *r, int n, char *err, size_t cap) {
                          HUD_KEY_MAX - 1);
                 return -1;
             }
+            if (strcmp(e->key, "panel") == 0 || strcmp(e->key, "tab") == 0 || strcmp(e->key, "tab.close") == 0) {
+                snprintf(err, cap, "key \"%s\" is reserved", e->key);
+                return -1;
+            }
             for (int pi = 0; pi <= i; pi++)
                 for (int pk = 0; pk < (pi < i ? r[pi].count : k); pk++)
                     if (strcmp(r[pi].elements[pk].key, e->key) == 0) {
@@ -54,6 +59,22 @@ int hud_config_check(const HudRow *r, int n, char *err, size_t cap) {
             }
         }
     }
+    /* "<hotbar key>.<digits>" names a slot part */
+    for (int i = 0; i < n; i++)
+        for (int k = 0; k < r[i].count; k++) {
+            const char *key = r[i].elements[k].key;
+            const char *dot = strrchr(key, '.');
+            if (!dot || !dot[1] || strspn(dot + 1, "0123456789") != strlen(dot + 1)) continue;
+            for (int pi = 0; pi < n; pi++)
+                for (int pk = 0; pk < r[pi].count; pk++) {
+                    const HudElement *hb = &r[pi].elements[pk];
+                    if (hb->type == HUD_HOTBAR && strlen(hb->key) == (size_t)(dot - key) &&
+                        strncmp(hb->key, key, (size_t)(dot - key)) == 0) {
+                        snprintf(err, cap, "key \"%s\" is reserved", key);
+                        return -1;
+                    }
+                }
+        }
     if (hotbars > 1) {
         snprintf(err, cap, "%d hotbars (at most one: it owns the number keys)", hotbars);
         return -1;
@@ -96,7 +117,7 @@ static HudValue *value_for(const char *key, HudElementType type) {
 
 void hud_set_target(const char *name, const char *extra, bool can_close) {
     target.shown = true;
-    snprintf(target.name, sizeof(target.name), "%s", name);
+    snprintf(target.name, sizeof(target.name), "%s", name ? name : "");
     snprintf(target.extra, sizeof(target.extra), "%s", extra ? extra : "");
     target.canClose = can_close;
 }
@@ -111,14 +132,14 @@ void hud_set_bar(const char *key, const HudBar *bar) {
 void hud_set_pill(const char *key, const char *label, const char *value) {
     HudValue *v = value_for(key, HUD_PILL);
     if (!v) return;
-    snprintf(v->pill.label, sizeof(v->pill.label), "%s", label);
-    snprintf(v->pill.value, sizeof(v->pill.value), "%s", value);
+    snprintf(v->pill.label, sizeof(v->pill.label), "%s", label ? label : "");
+    snprintf(v->pill.value, sizeof(v->pill.value), "%s", value ? value : "");
 }
 
 void hud_set_slider(const char *key, const char *label, int value, int min, int max) {
     HudValue *v = value_for(key, HUD_SLIDER);
     if (!v) return;
-    snprintf(v->slider.label, sizeof(v->slider.label), "%s", label);
+    snprintf(v->slider.label, sizeof(v->slider.label), "%s", label ? label : "");
     v->slider.value = value;
     v->slider.min = min;
     v->slider.max = max;
@@ -158,12 +179,29 @@ static void ui_reset(void) {
     pressActive = false;
 }
 
+static bool config_checked, config_ok;
+
 void hud_use_config(const HudRow *r, int n) {
     rows = r ? r : HUD_ROWS;
     nrows = r ? n : -1;
+    config_checked = false;
     layout.valid = false;
     ui_reset();
 }
+
+/* Checks the config once per change; an invalid one is reported on stderr and the HUD then has no rows. */
+static bool cfg(void) {
+    if (!config_checked) {
+        char err[160];
+        config_ok = hud_config_check(rows, row_count(), err, sizeof(err)) == 0;
+        if (!config_ok) fprintf(stderr, "HUD config: %s\n", err);
+        config_checked = true;
+    }
+    return config_ok;
+}
+
+/* the HUD takes part: shown and its config is valid */
+static bool active(void) { return visible && cfg(); }
 
 void hud_set_screen(const HudScreen *s) { screen = *s; }
 bool hud_visible(void) { return visible; }
@@ -240,7 +278,10 @@ static void layout_compute(void) {
     layout.tab = layout.close = (HudRect){ 0 };
     if (target.shown) {
         float tw = hud_tab_width(&target, s), th = t->tabH * s, cs = t->closeSize * s;
-        layout.tab = (HudRect){ x + (w - tw) / 2, y - t->tabGap * s - th, tw, th };
+        float tx = x + (w - tw) / 2, hi = screen.winW - t->margin * s - tw, lo = screen.left + t->margin * s;
+        if (tx > hi) tx = hi;
+        if (tx < lo) tx = lo;
+        layout.tab = (HudRect){ tx, y - t->tabGap * s - th, tw, th };
         if (target.canClose)
             layout.close = (HudRect){ layout.tab.x + tw - t->tabPad * s - cs, layout.tab.y + (th - cs) / 2, cs, cs };
     }
@@ -267,6 +308,7 @@ static void ensure_layout(void) {
 }
 
 float hud_layout_scale(void) {
+    if (!cfg()) return screen.scale > 0 ? screen.scale : 1;
     ensure_layout();
     return layout.scale;
 }
@@ -274,7 +316,7 @@ float hud_layout_scale(void) {
 int hud_layout_count(void) { return layout_count; }
 
 bool hud_part_rect(const char *part, HudRect *out) {
-    if (!visible) return false;
+    if (!active()) return false;
     ensure_layout();
     if (strcmp(part, "panel") == 0) {
         *out = layout.panel;
@@ -295,6 +337,9 @@ bool hud_part_rect(const char *part, HudRect *out) {
     const char *dot = strrchr(part, '.');
     if (!dot || !dot[1]) return false;
     char *end;
+    if (dot[1] == '0') return false;
+    for (const char *p = dot + 1; *p; p++)
+        if (!isdigit((unsigned char)*p)) return false;
     long slot = strtol(dot + 1, &end, 10);
     if (*end) return false;
     for (int i = 0; i < row_count(); i++)
@@ -311,7 +356,7 @@ bool hud_part_rect(const char *part, HudRect *out) {
 }
 
 bool hud_contains(float x, float y) {
-    if (!visible) return false;
+    if (!active()) return false;
     ensure_layout();
     return hud_rect_contains(layout.panel, x, y) || (target.shown && hud_rect_contains(layout.tab, x, y));
 }
@@ -350,10 +395,27 @@ static void element_mouse(int idx, HudMouseKind kind, float x, float y) {
     }
 }
 
-bool hud_mouse_down(float x, float y) {
-    if (!visible) return false;
-    ensure_layout();
+/* hover as if the pointer moved to x, y with no press held */
+static void refresh_hover(float x, float y) {
+    ui.hoverClose = target.shown && target.canClose && hud_rect_contains(layout.close, x, y);
+    int idx = element_at(x, y);
+    if (idx != ui.hover) {
+        ui.hover = idx;
+        ui.hoverSub = -1;
+    }
+    if (idx >= 0) element_mouse(idx, HUD_MOUSE_MOVE, x, y);
+}
+
+void hud_cancel_press(void) {
     ui.press = ui.pressSub = -1;
+    ui.pressClose = false;
+    pressActive = false;
+}
+
+bool hud_mouse_down(float x, float y) {
+    hud_cancel_press(); /* a press whose release was lost must not stay captured */
+    if (!active()) return false;
+    ensure_layout();
     if (target.shown && hud_rect_contains(layout.tab, x, y)) {
         ui.pressClose = target.canClose && hud_rect_contains(layout.close, x, y);
         pressActive = true;
@@ -367,19 +429,14 @@ bool hud_mouse_down(float x, float y) {
 }
 
 bool hud_mouse_move(float x, float y) {
-    if (!visible) return false;
+    if (!active()) return false;
     ensure_layout();
     if (pressActive) {
+        ui.hoverClose = target.shown && target.canClose && hud_rect_contains(layout.close, x, y);
         if (ui.press >= 0) element_mouse(ui.press, HUD_MOUSE_MOVE, x, y);
         return true;
     }
-    ui.hoverClose = target.shown && target.canClose && hud_rect_contains(layout.close, x, y);
-    int idx = element_at(x, y);
-    if (idx != ui.hover) {
-        ui.hover = idx;
-        ui.hoverSub = -1;
-    }
-    if (idx >= 0) element_mouse(idx, HUD_MOUSE_MOVE, x, y);
+    refresh_hover(x, y);
     return false;
 }
 
@@ -388,18 +445,20 @@ bool hud_mouse_up(float x, float y) {
     bool close = ui.pressClose;
     pressActive = false;
     ui.pressClose = false;
-    if (visible) {
+    if (active()) {
         ensure_layout();
         if (close && target.shown && target.canClose && hud_rect_contains(layout.close, x, y))
             send(&(HudEvent){ .type = HUD_EV_TARGET_CLOSED });
         if (ui.press >= 0) element_mouse(ui.press, HUD_MOUSE_UP, x, y);
+        ui.press = ui.pressSub = -1;
+        refresh_hover(x, y);
     }
     ui.press = ui.pressSub = -1;
     return true;
 }
 
 bool hud_key(int slot) {
-    if (!visible || slot < 0 || slot >= HUD_MAX_SLOTS) return false;
+    if (!active() || slot < 0 || slot >= HUD_MAX_SLOTS) return false;
     for (int i = 0; i < row_count(); i++)
         for (int k = 0; k < rows[i].count; k++) {
             const HudElement *e = &rows[i].elements[k];
@@ -415,7 +474,7 @@ bool hud_key(int slot) {
 /* ---- drawing ---- */
 
 void hud_draw(void) {
-    if (!visible) return;
+    if (!active()) return;
     ensure_layout();
     float s = layout.scale;
     hud_draw_panel(layout.panel, s);

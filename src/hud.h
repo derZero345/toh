@@ -158,6 +158,8 @@ typedef struct {
     int value;       /* HUD_EV_SLIDER_CHANGED */
 } HudEvent;
 
+/* The handler runs in the middle of input handling: it must not call hud_set_visible, hud_use_config or
+ * hud_cancel_press. */
 void hud_set_event_handler(void (*fn)(const HudEvent *ev));
 /* Left button. True when the HUD used the press: the map must ignore it. */
 bool hud_mouse_down(float x, float y);
@@ -165,6 +167,8 @@ bool hud_mouse_down(float x, float y);
 bool hud_mouse_move(float x, float y);
 /* Left button. True if the press had started on the HUD. */
 bool hud_mouse_up(float x, float y);
+/* Forgets a held press, e.g. when the window loses focus. Visibility is untouched. */
+void hud_cancel_press(void);
 /* Number key for slot 0..9 (keys 1..9, 0). True if the slot was used. */
 bool hud_key(int slot);
 

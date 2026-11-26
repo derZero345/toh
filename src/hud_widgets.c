@@ -88,7 +88,7 @@ void hud_draw_tab(HudRect r, HudRect close, const HudTarget *t, const HudUiState
     tab_text(t, text, sizeof(text));
     text_left(FONT_BOLD, T->font * s, x, r, T->text, text);
     if (t->canClose) {
-        Color c = ui->pressClose ? T->pressed : ui->hoverClose ? T->hover : T->textDim;
+        Color c = ui->pressClose && ui->hoverClose ? T->pressed : ui->hoverClose ? T->hover : T->textDim;
         float p = close.w * T->closeInset, th = fmaxf(1.5f, T->closeLine * s);
         dr_line(close.x + p, close.y + p, close.x + close.w - p, close.y + close.h - p, th, c);
         dr_line(close.x + close.w - p, close.y + p, close.x + p, close.y + close.h - p, th, c);
@@ -188,7 +188,10 @@ static bool slider_mouse(const HudElement *e, HudRect r, HudValue *v, HudMouse m
                          float s, HudEvent *ev) {
     if (!v || m.kind == HUD_MOUSE_UP || (m.kind == HUD_MOUSE_MOVE && ui->press != self)) return false;
     HudRect tr = slider_track(r, s);
-    if (m.kind == HUD_MOUSE_DOWN && m.x < tr.x - T->sliderKnob * s / 2) return false; /* on the label */
+    if (m.kind == HUD_MOUSE_DOWN && m.x < tr.x - T->sliderKnob * s / 2) { /* on the label: no drag follows */
+        ui->press = -1;
+        return false;
+    }
     float f = tr.w > 0 ? clampf((m.x - tr.x) / tr.w, 0, 1) : 0;
     int val = v->slider.min + (int)lroundf(f * (float)(v->slider.max - v->slider.min));
     if (val == v->slider.value) return false;

@@ -1301,6 +1301,109 @@ static void test_hud_input(void) {
     hud_begin_frame();
 }
 
+static void test_hud_review(void) {
+    const HudTheme *t = &HUD_THEME;
+    hud_use_config(NULL, 0);
+    hud_set_visible(true);
+    hud_set_event_handler(hud_record);
+    HudScreen sc = { 1000, 700, 700, 32, 1 };
+    hud_set_screen(&sc);
+    hud_begin_frame();
+    HudSlot ok = { HUD_SLOT_AVAILABLE, "placeholder", 0, 0 };
+    hud_set_slot("hotbar", 0, &ok);
+    hud_set_slider("value", "Value", 50, 0, 100);
+    hud_set_target("Mao", "", true);
+    HudRect panel, slider, close, tab, r;
+    CHECK(hud_part_rect("panel", &panel) && hud_part_rect("value", &slider) && hud_part_rect("tab.close", &close));
+    CHECK(hud_part_rect("tab", &tab));
+    hud_nevents = 0;
+
+    /* 1: a press on the slider label, then motion: no jump */
+    CHECK(hud_mouse_down(slider.x + 3, slider.y + slider.h / 2));
+    CHECK(hud_mouse_move(slider.x + slider.w - 1, slider.y + slider.h / 2));
+    CHECK(hud_mouse_up(slider.x + slider.w - 1, slider.y + slider.h / 2));
+    CHECK(hud_nevents == 0 && hud_value("value")->slider.value == 50);
+
+    /* 2: a lost mouse-up does not capture the next press */
+    CHECK(hud_mouse_down(panel.x + 1, panel.y + 1));
+    CHECK(!hud_mouse_down(panel.x - 5, panel.y - 80) && !hud_mouse_move(panel.x - 5, panel.y - 80) &&
+          !hud_mouse_up(panel.x - 5, panel.y - 80));
+    CHECK(hud_mouse_down(tab.x + 1, tab.y + 1) && hud_mouse_up(close.x + 2, close.y + 2) && hud_nevents == 0);
+    hud_cancel_press();
+    CHECK(!hud_mouse_up(0, 0));
+
+    /* press on the tab, release over the panel: nothing */
+    CHECK(hud_mouse_down(close.x + 2, close.y + 2) && hud_mouse_up(panel.x + 1, panel.y + 1) && hud_nevents == 0);
+
+    /* 4: the close button's pressed look follows the pointer */
+    CHECK(hud_mouse_down(close.x + 2, close.y + 2));
+    CHECK(hud_mouse_move(0, 0) && hud_mouse_up(0, 0));
+
+    /* 6: slot part names are strict */
+    CHECK(!hud_part_rect("hotbar.+3", &r) && !hud_part_rect("hotbar. 3", &r) && !hud_part_rect("hotbar.03", &r));
+    CHECK(hud_part_rect("hotbar.10", &r));
+
+    /* 8: NULL texts */
+    hud_set_pill("pill.left", NULL, NULL);
+    hud_set_slider("value", NULL, 1, 0, 2);
+    hud_set_target(NULL, NULL, false);
+    CHECK(hud_value("pill.left")->pill.label[0] == 0 && hud_target()->shown);
+
+    /* 9: a long name in a narrow window keeps the tab right of the toolbox */
+    hud_begin_frame();
+    char longname[HUD_TEXT_MAX];
+    memset(longname, 'W', sizeof(longname) - 1);
+    longname[sizeof(longname) - 1] = 0;
+    hud_set_target(longname, "", true);
+    sc = (HudScreen){ 300, 700, 700, 32, 1 };
+    hud_set_screen(&sc);
+    CHECK(hud_part_rect("tab", &tab) && tab.x >= 32 + t->margin - 0.01f);
+    sc = (HudScreen){ 1000, 700, 700, 32, 1 };
+    hud_set_screen(&sc);
+
+    /* 11: per-frame cycle keeps the layout */
+    hud_begin_frame();
+    hud_set_target("Mao", "", true);
+    CHECK(hud_part_rect("panel", &panel));
+    int n = hud_layout_count();
+    hud_begin_frame();
+    hud_set_target("Mao", "", true);
+    CHECK(hud_part_rect("panel", &panel) && hud_layout_count() == n);
+
+    /* 3 and 7: an invalid config leaves the HUD without rows */
+    static const HudElement two[] = { { .type = HUD_HOTBAR, .key = "a", .slots = 2 },
+                                      { .type = HUD_HOTBAR, .key = "b", .slots = 2 } };
+    static const HudRow bad[] = { { two, 2 } };
+    hud_use_config(bad, 1);
+    CHECK(!hud_part_rect("panel", &r) && !hud_mouse_down(500, 600) && !hud_contains(500, 600) && !hud_key(0));
+    hud_draw();
+    hud_use_config(NULL, 0);
+    CHECK(hud_part_rect("panel", &r));
+    char err[160];
+    static const HudElement res1[] = { { .type = HUD_PILL, .key = "tab" } };
+    static const HudElement res2[] = { { .type = HUD_HOTBAR, .key = "bar", .slots = 3 }, { .type = HUD_PILL, .key = "bar.2" } };
+    static const HudElement res3[] = { { .type = HUD_HOTBAR, .key = "bar", .slots = 3 }, { .type = HUD_PILL, .key = "bar.x" } };
+    HudRow r1 = { res1, 1 }, r2 = { res2, 2 }, r3 = { res3, 2 };
+    CHECK(hud_config_check(&r1, 1, err, sizeof(err)) == -1 && strstr(err, "reserved"));
+    CHECK(hud_config_check(&r2, 1, err, sizeof(err)) == -1 && strstr(err, "reserved"));
+    CHECK(hud_config_check(&r3, 1, err, sizeof(err)) == 0);
+
+    /* 11: a row without flex elements is centred; two flex elements share the free width */
+    static const HudElement lone[] = { { .type = HUD_PILL, .key = "p" } };
+    static const HudElement flex2[] = { { .type = HUD_SLIDER, .key = "s1" }, { .type = HUD_SLIDER, .key = "s2" } };
+    static const HudElement hb[] = { { .type = HUD_HOTBAR, .key = "hb", .slots = 6 } };
+    static const HudRow cfg2[] = { { lone, 1 }, { flex2, 2 }, { hb, 1 } };
+    hud_use_config(cfg2, 3);
+    HudRect p, a, b, h;
+    CHECK(hud_part_rect("panel", &p) && hud_part_rect("p", &a) && hud_part_rect("s1", &a) && hud_part_rect("s2", &b));
+    CHECK(near(a.w, b.w, 0.01f) && near(a.w + b.w + t->elemGap, p.w - 2 * t->padding, 0.01f));
+    CHECK(hud_part_rect("p", &a) && near(a.x + a.w / 2, p.x + p.w / 2, 0.01f) && a.w < p.w - 2 * t->padding);
+    CHECK(hud_part_rect("hb", &h) && near(h.x + h.w / 2, p.x + p.w / 2, 0.01f));
+    hud_use_config(NULL, 0);
+    hud_set_event_handler(NULL);
+    hud_begin_frame();
+}
+
 int main(void) {
     test_split_args();
     test_entity_ids();
@@ -1328,6 +1431,7 @@ int main(void) {
     test_hud_values();
     test_hud_layout();
     test_hud_input();
+    test_hud_review();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
