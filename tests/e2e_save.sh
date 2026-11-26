@@ -20,7 +20,7 @@ similar() { awk -v v="$(rmse "$1" "$2")" 'BEGIN { exit !(v < 0.005) }'; }
 
 # The final :q must quit by itself (table unchanged since :load!); otherwise timeout fails the test.
 timeout 60 ./toh --size 600x400 --auto-file "$icon" \
-    --exec ":b $bg" \
+    --exec ":hud" --exec ":b $bg" \
     --exec "@click 300 200" --exec ":c" \
     --exec "@click 380 260" --exec ":w" \
     --exec "tp waypoint create camp 2 3" \

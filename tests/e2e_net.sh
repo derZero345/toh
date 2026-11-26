@@ -77,14 +77,14 @@ green() {
     awk -v s="$rgb" 'BEGIN { split(s, c, " "); exit !(c[2] > 0.5 && c[1] < 0.35 && c[3] < 0.4) }'
 }
 
-# The HP panel is anchored to the right edge (margin 8, frame width 128, first bar at y 28..48), and the
-# window manager may resize the window, so compute the pixel from the screenshot's width:
-# "panel_x FILE OFFSET" prints "X 38" with X = (width - 136) + OFFSET, the frame's left edge plus OFFSET.
-panel_x() { echo "$(($(magick identify -format %w "$1") - 136 + $2)) 38"; }
-# The stamina bar sits under the HP bar at y 52..66.4 (sample y 59); 5/9 of 128 px is 71 px of fill.
-ST_IN=10; ST_OUT=110
-st_x() { echo "$(($(magick identify -format %w "$1") - 136 + $2)) 59"; }
-HP_IN=10; HP_NEG=-16    # offsets: inside the frame, and left of it (negative HP)
+# Pixels on the HUD's bars, from the rectangles @hudrect wrote ("x y w h"). Both bars are two-sided: the right
+# half of the element is the frame (0..max), the left half the zone below 0.
+# "hp_at FILE OFFSET": OFFSET px right of the frame's left edge (negative: into the zone below 0), mid-height.
+hp_at() { local x y w h; read -r x y w h < "$1"; echo "$((x + w / 2 + $2)) $((y + h / 2))"; }
+# "st_at FILE PERCENT": PERCENT of the stamina frame's width, mid-height.
+st_at() { local x y w h; read -r x y w h < "$1"; echo "$((x + w / 2 + w / 2 * $2 / 100)) $((y + h / 2))"; }
+HP_IN=10; HP_NEG=-16    # inside the frame, and left of it (negative HP)
+ST_IN=5; ST_OUT=85      # percent of the stamina frame: 5/9 is 56 %
 
 # The dice of a roll land anywhere on screen; ":r 0d6" right after ":r 2d6" clears them before any check.
 # Tiles (pixel coordinates): A = Bob's character, B = the GM's, C = spawned after Bob joined.
@@ -96,7 +96,7 @@ P="500 140"; Q="140 140"     # empty tiles: the GM selects P, Bob selects Q (pre
 D="440 140"; D2="440 200"    # Bob asks for a new character on D, the GM agrees, Bob moves it to D2
 
 TOH_JOINCODE_FILE="$out/code" timeout 90 ./toh --size 600x400 --port "$port" --auto-file "$icon" \
-    --exec "@click $A" --exec ":c speed 6" --exec "@click $A" --exec ":c owner Bob" --exec "@click $A" \
+    --exec ":hud" --exec "@click $A" --exec ":c speed 6" --exec "@click $A" --exec ":c owner Bob" --exec "@click $A" \
     --exec "@click $B" --exec ":c speed 6" --exec "@click $B" \
     --exec "$host_cmd" \
     --exec "@waitnet 1" \
@@ -115,9 +115,11 @@ TOH_JOINCODE_FILE="$out/code" timeout 90 ./toh --size 600x400 --port "$port" --a
     --exec "@waitfile $out/requested" --exec "@wait 30" --exec "@shot $out/host-request.png" --exec "y" \
     --exec "@touch $out/created" --exec "@waitfile $out/client-moved2" --exec "@wait 30" \
     --exec "@shot $out/host-created.png" \
-    --exec "@click $A2" --exec ":c h 20 ms 9" --exec "@wait 10" --exec "@waitbars" --exec "@shot $out/host-hp-full.png" \
+    --exec "@click $A2" --exec ":c h 20 ms 9" --exec ":hud" --exec "@wait 10" --exec "@waitbars" \
+    --exec "@hudrect hp $out/host-hp-full.hp" --exec "@shot $out/host-hp-full.png" \
     --exec "@touch $out/hp-set" --exec "@waitfile $out/hp-damaged" --exec "@wait 30" \
-    --exec "@waitbars" --exec "@shot $out/host-hp.png" \
+    --exec "@waitbars" --exec "@hudrect hp $out/host-hp.hp" --exec "@hudrect stamina $out/host-hp.st" \
+    --exec "@shot $out/host-hp.png" \
     --exec ":unhost" --exec "@wait 10" --exec ":q!" \
     > "$out/host.log" 2>&1 &
 host=$!
@@ -130,7 +132,7 @@ code=$(cat "$out/code")
 # The client's final :q must be refused (after the session ended the table counts as modified);
 # :q! then quits.
 timeout 90 ./toh --size 600x400 --auto-file "$icon" \
-    --exec ":join $code Bob" --exec "@waitnet 1" --exec "@wait 10" \
+    --exec ":hud" --exec ":join $code Bob" --exec "@waitnet 1" --exec "@wait 10" \
     --exec "@shot $out/client-joined.png" --exec "@touch $out/client-joined" \
     --exec "@waitfile $out/host-selected" --exec "@wait 30" --exec "@shot $out/client-presence.png" \
     --exec "@click $Q" --exec "@wait 10" --exec "@touch $out/client-selected" --exec "@waitfile $out/host-saw" \
@@ -149,9 +151,11 @@ timeout 90 ./toh --size 600x400 --auto-file "$icon" \
     --exec "@click $D" --exec "@down lshift" --exec "@click $D2" --exec "@up lshift" --exec "@wait 30" \
     --exec "@touch $out/client-moved2" \
     --exec "@waitfile $out/hp-set" --exec "@wait 30" \
-    --exec "@click $A2" --exec ":c damage 25" --exec ":c spend 4" --exec ":c spend 9" --exec "@wait 30" --exec "@waitbars" --exec "@shot $out/client-hp.png" \
+    --exec "@click $A2" --exec ":c damage 25" --exec ":c spend 4" --exec ":c spend 9" --exec ":hud" \
+    --exec "@wait 30" --exec "@waitbars" --exec "@hudrect hp $out/client-hp.hp" \
+    --exec "@hudrect stamina $out/client-hp.st" --exec "@shot $out/client-hp.png" \
     --exec "@touch $out/hp-damaged" \
-    --exec "@wait 60" \
+    --exec "@wait 240" \
     --exec ":q" --exec "@shot $out/client-quit-refused.png" --exec ":q!" \
     > "$out/client.log" 2>&1 || fail "the client exited with status $? (see $out/client.log)"
 wait "$host" || fail "the host exited with status $? (see $out/host.log)"
@@ -185,17 +189,17 @@ faint "$out/host-request.png" $D || fail "the GM does not see a preview of the r
 occupied "$out/client-created.png" $D || fail "the accepted character does not show on the client"
 occupied "$out/host-created.png" $D2 || fail "Bob could not move the character he created"
 [ -f "$out/client-quit-refused.png" ] || fail ":q quit the client although the session ended"
-# HP panel: the GM's full bar, Bob's own damage (-5 of 20) on his screen and on the GM's
-red "$out/host-hp-full.png" $(panel_x "$out/host-hp-full.png" $HP_IN) || fail "the GM's HP panel does not show a full red bar"
-! red "$out/host-hp-full.png" $(panel_x "$out/host-hp-full.png" $HP_NEG) || fail "the full HP bar reaches left of its frame"
-red "$out/client-hp.png" $(panel_x "$out/client-hp.png" $HP_NEG) || fail "Bob's HP panel does not show negative HP left of the frame"
-! red "$out/client-hp.png" $(panel_x "$out/client-hp.png" $HP_IN) || fail "Bob's HP bar is still filled inside the frame at -5 HP"
-red "$out/host-hp.png" $(panel_x "$out/host-hp.png" $HP_NEG) || fail "the GM does not see Bob's damage on the HP panel"
-# Stamina bar: 9 max, spent 4 (5 left), the spend of 9 refused, so green at +10 and not at +110, on both screens
-green "$out/client-hp.png" $(st_x "$out/client-hp.png" $ST_IN) || fail "Bob's stamina bar is not green at 5/9"
-! green "$out/client-hp.png" $(st_x "$out/client-hp.png" $ST_OUT) || fail "Bob's stamina bar is too full (the spend of 9 should be refused)"
-green "$out/host-hp.png" $(st_x "$out/host-hp.png" $ST_IN) || fail "the GM does not see Bob's stamina bar"
-! green "$out/host-hp.png" $(st_x "$out/host-hp.png" $ST_OUT) || fail "the GM sees a too full stamina bar for Bob"
+# HUD: the GM's full bar, Bob's own damage (-5 of 20) on his screen and on the GM's
+red "$out/host-hp-full.png" $(hp_at "$out/host-hp-full.hp" $HP_IN) || fail "the GM's HUD does not show a full red bar"
+! red "$out/host-hp-full.png" $(hp_at "$out/host-hp-full.hp" $HP_NEG) || fail "the full HP bar reaches left of its frame"
+red "$out/client-hp.png" $(hp_at "$out/client-hp.hp" $HP_NEG) || fail "Bob's HUD does not show negative HP left of the frame"
+! red "$out/client-hp.png" $(hp_at "$out/client-hp.hp" $HP_IN) || fail "Bob's HP bar is still filled inside the frame at -5 HP"
+red "$out/host-hp.png" $(hp_at "$out/host-hp.hp" $HP_NEG) || fail "the GM does not see Bob's damage on the HUD"
+# Stamina bar: 9 max, spent 4 (5 left), the spend of 9 refused, so green at 5 % and not at 85 %, on both screens
+green "$out/client-hp.png" $(st_at "$out/client-hp.st" $ST_IN) || fail "Bob's stamina bar is not green at 5/9"
+! green "$out/client-hp.png" $(st_at "$out/client-hp.st" $ST_OUT) || fail "Bob's stamina bar is too full (the spend of 9 should be refused)"
+green "$out/host-hp.png" $(st_at "$out/host-hp.st" $ST_IN) || fail "the GM does not see Bob's stamina bar"
+! green "$out/host-hp.png" $(st_at "$out/host-hp.st" $ST_OUT) || fail "the GM sees a too full stamina bar for Bob"
 
 if [ "$mode" = relay ]; then
     grep -q linked "$out/relay.log" || fail "the client did not come through the relay (see $out/relay.log)"
