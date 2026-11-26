@@ -2,12 +2,13 @@
 #define TOH_SAVEFMT_H
 
 /*
- * .tuhh file format, version 6: encoding, decoding and validation.
+ * .tuhh file format, version 7: encoding, decoding and validation.
  * Version 2 adds an owner name after each character's stats; version 1 files still load (no owners).
  * Version 3 drops the armor class (versions 1 and 2 store one after attack; it is skipped).
  * Version 4 uses the size classes of Tales of Honor; older sizes are converted (savefmt_size_from_v3).
  * Version 5 adds a name after each character's owner (versions 1-4 load without names).
  * Version 6 adds max and current stamina after the name.
+ * Version 7 adds the party name after stamina.
  *
  * Plain C11 on top of libzstd, libwebp and libsodium. It knows nothing about SDL,
  * Vulkan or the App struct, so tools or a server can reuse it to validate files.
@@ -22,7 +23,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SAVEFMT_VERSION     6
+#define SAVEFMT_VERSION     7
 #define SAVEFMT_TAG_SIZE    32
 #define SAVEFMT_HEADER_SIZE 12 /* magic, version, flags, state_len */
 
@@ -80,6 +81,7 @@ typedef struct {
     char owner[SAVEFMT_OWNER_MAX]; /* characters only: player name, "" = no owner (version 2) */
     char name[SAVEFMT_CHAR_NAME_MAX]; /* characters only: "" = no name (version 5) */
     int32_t max_stamina, stamina; /* characters only (version 6) */
+    char party[SAVEFMT_CHAR_NAME_MAX]; /* characters only: "" = no party (version 7) */
 } SaveEntity;
 
 typedef struct {

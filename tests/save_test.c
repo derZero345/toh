@@ -106,6 +106,14 @@ static uint8_t *encode_sample(Sample *s, size_t *len) {
     return file;
 }
 
+static SaveError encode_sample_err(Sample *s) {
+    uint8_t *out = NULL;
+    size_t len = 0;
+    SaveError e = savefmt_encode(&s->d, NULL, &out, &len);
+    free(out);
+    return e;
+}
+
 /* ---- tests ----------------------------------------------------------------------------- */
 
 static void test_tag(void) {
@@ -694,6 +702,45 @@ static void test_stamina_versions(void) {
     free(f);
 }
 
+/* parties (version 7): saved per character; a version 6 body loads with no party */
+static void test_party_versions(void) {
+    Sample s;
+    sample_init(&s);
+    snprintf(s.entities[0].party, SAVEFMT_CHAR_NAME_MAX, "Silver Hand");
+    size_t len;
+    uint8_t *file = encode_sample(&s, &len);
+    SaveData d;
+    CHECK_ERR(savefmt_decode(file, len, &d), SAVE_OK);
+    CHECK(d.nentities == 3 && strcmp(d.entities[0].party, "Silver Hand") == 0 && d.entities[1].party[0] == '\0');
+    savefmt_free(&d);
+    free(file);
+
+    /* a wall with a party and a bad party name are refused */
+    snprintf(s.entities[2].party, SAVEFMT_CHAR_NAME_MAX, "Heroes");
+    CHECK(encode_sample_err(&s) == SAVE_ERR_INVALID);
+    s.entities[2].party[0] = '\0';
+    snprintf(s.entities[0].party, SAVEFMT_CHAR_NAME_MAX, "tab\there");
+    CHECK(encode_sample_err(&s) == SAVE_ERR_INVALID);
+    sample_free(&s);
+
+    /* a version 6 body (v5 layout + stamina) loads with no party */
+    W st = { .n = 0 }, im = { .n = 0 };
+    wimage(&im, 8, 8);
+    wworld(&st, 0);
+    wuv(&st, 1);
+    wcharacter(&st, 3, "Bob");
+    wstr(&st, "Mao");
+    wsv(&st, 9); wsv(&st, 4);
+    wuv(&st, 0); wuv(&st, 0);
+    wuv(&st, 0);
+    uint8_t *f = wrap_v(&st, &im, &len, 1, 6);
+    CHECK_ERR(savefmt_decode(f, len, &d), SAVE_OK);
+    CHECK(d.nentities == 1 && d.entities[0].max_stamina == 9 && d.entities[0].stamina == 4 &&
+          d.entities[0].party[0] == '\0');
+    savefmt_free(&d);
+    free(f);
+}
+
 /* sizes of version 1-3 saves map to Tales of Honor's classes by footprint */
 static void test_size_conversion(void) {
     const int32_t from[] = { -5, -2, -1, 0, 1, 2, 3, 9 }, to[] = { -2, -1, 0, 1, 3, 4, 4, 4 };
@@ -752,6 +799,7 @@ int main(int argc, char **argv) {
     test_owner_versions();
     test_char_names();
     test_stamina_versions();
+    test_party_versions();
     test_size_conversion();
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;

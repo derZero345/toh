@@ -94,6 +94,7 @@ typedef struct Entity {
     uint32_t id;                 /* unique while the program runs (entity_register), never 0 */
     char owner[PLAYER_NAME_MAX]; /* characters: player who controls it, "" = nobody (only the GM) */
     char name[CHAR_NAME_MAX];    /* characters: "" = no name, shown as "Character #<id>" */
+    char party[CHAR_NAME_MAX];   /* characters: party name, "" = none (parties: party.h) */
     EntityType type;
     Texture *image;
     Hex tile;

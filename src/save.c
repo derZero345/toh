@@ -94,6 +94,7 @@ static void gather(Gathered *g) {
             snprintf(s->name, sizeof(s->name), "%s", e->name);
             s->max_stamina = e->maxStamina;
             s->stamina = e->stamina;
+            snprintf(s->party, sizeof(s->party), "%s", e->party);
         }
     }
 
@@ -335,6 +336,7 @@ static void apply(SaveData *d, bool keep_view) {
             snprintf(e->name, sizeof(e->name), "%s", s->name);
             e->maxStamina = s->max_stamina;
             e->stamina = hp_clamp(s->stamina, s->max_stamina);
+            snprintf(e->party, sizeof(e->party), "%s", s->party);
         }
         entity_register(e);
     }
