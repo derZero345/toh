@@ -30,6 +30,7 @@ typedef enum {
     OP_SET_HEALTH,       /* ids, healthMode, value: set or change current HP (owners too) */
     OP_SET_NAME,         /* ids, charName (owners too) */
     OP_SET_STAMINA,      /* ids, healthMode (HEALTH_SET / HEALTH_CHANGE / STAMINA_SPEND), value (owners too) */
+    OP_SET_PARTY,        /* ids, party ("" = no party); GM only */
     OP_COUNT
 } OpType;
 
@@ -45,6 +46,7 @@ typedef struct {
     int size, maxHealth, health, attack, speed, initiative; /* characters only */
     int maxStamina, stamina;                                /* characters only */
     char name[CHAR_NAME_MAX]; /* characters: "" = no name */
+    char party[CHAR_NAME_MAX]; /* characters: "" = no party */
 } EntitySpec;
 
 typedef struct Op {
@@ -60,6 +62,7 @@ typedef struct Op {
     char name[WAYPOINT_NAME_MAX]; /* OP_WAYPOINT_*: waypoint name, OP_SET_OWNER: player name */
     int healthMode, value;        /* OP_SET_HEALTH, OP_SET_STAMINA */
     char charName[CHAR_NAME_MAX]; /* OP_SET_NAME */
+    char party[CHAR_NAME_MAX];    /* OP_SET_PARTY: "" = no party */
     bool remote;  /* someone else's op: leave the local selection and path preview alone */
     bool keepIds; /* OP_SPAWN from the host: create the entities with the ids in ids */
 } Op;

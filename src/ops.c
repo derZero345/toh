@@ -22,6 +22,7 @@ EntitySpec op_spec_from_entity(const Entity *e) {
                      .speed = e->speed, .initiative = e->initiative,
                      .maxStamina = e->maxStamina, .stamina = e->stamina };
     snprintf(s.name, sizeof(s.name), "%s", e->name);
+    snprintf(s.party, sizeof(s.party), "%s", e->party);
     return s;
 }
 
@@ -73,7 +74,8 @@ static bool count_ok(int n) { return n >= 0 && (unsigned)n <= SAVEFMT_MAX_ENTITI
 
 /* Rules for everyone, the GM included: the op has to make sense for the current table. */
 static OpResult check_structure(const Op *op) {
-    if (!memchr(op->name, '\0', sizeof(op->name)) || !memchr(op->charName, '\0', sizeof(op->charName)))
+    if (!memchr(op->name, '\0', sizeof(op->name)) || !memchr(op->charName, '\0', sizeof(op->charName)) ||
+        !memchr(op->party, '\0', sizeof(op->party)))
         return OPR_INVALID;
     if (!count_ok(op->ids.count) || !count_ok(op->values.count) || !count_ok(op->specs.count)) return OPR_INVALID;
     switch (op->type) {
@@ -89,6 +91,8 @@ static OpResult check_structure(const Op *op) {
             if (!s->image || (s->type != ENTITY_CHARACTER && s->type != ENTITY_WALL)) return OPR_INVALID;
             if (!memchr(s->name, '\0', sizeof(s->name))) return OPR_INVALID;
             if (s->name[0] && (s->type != ENTITY_CHARACTER || !savefmt_char_name_valid(s->name))) return OPR_INVALID;
+            if (!memchr(s->party, '\0', sizeof(s->party))) return OPR_INVALID;
+            if (s->party[0] && (s->type != ENTITY_CHARACTER || !savefmt_char_name_valid(s->party))) return OPR_INVALID;
             if (s->maxStamina < 0 || s->maxStamina > SAVEFMT_MAX_HP) return OPR_INVALID; /* the wire's limit */
         }
         return OPR_OK;
@@ -121,6 +125,9 @@ static OpResult check_structure(const Op *op) {
         return OPR_OK;
     case OP_SET_NAME:
         if (!savefmt_char_name_valid(op->charName)) return OPR_INVALID;
+        return ids_exist(op) ? OPR_OK : OPR_NO_ENTITY;
+    case OP_SET_PARTY:
+        if (op->party[0] && !savefmt_char_name_valid(op->party)) return OPR_INVALID;
         return ids_exist(op) ? OPR_OK : OPR_NO_ENTITY;
     case OP_SET_STATS:
         if ((op->statMask & STAT_MAXSTAMINA) && (op->maxStamina < 0 || op->maxStamina > SAVEFMT_MAX_HP))
@@ -208,6 +215,7 @@ static void apply_spawn(Op *op) {
             e->stamina = hp_clamp(s->stamina, s->maxStamina);
             e->attack = s->attack;
             snprintf(e->name, sizeof(e->name), "%s", s->name);
+            snprintf(e->party, sizeof(e->party), "%s", s->party);
         }
         if (keep) entity_register_as(e, given[i]);
         else entity_register(e);
@@ -301,6 +309,20 @@ static void apply_stamina(const Op *op) {
         entity_display_name(e, name, sizeof(name));
         console_log("%s: stamina %d/%d -> %d/%d%s", name, before, e->maxStamina, e->stamina, e->maxStamina,
                     e->stamina <= 0 ? " (exhausted)" : "");
+    }
+}
+
+/* Logs the result for the person who made the change: "Mao: party Heroes" / "Mao: no party". */
+static void apply_party(const Op *op) {
+    for (int i = 0; i < op->ids.count; i++) {
+        Entity *e = character_at(op, i);
+        if (!e) continue;
+        snprintf(e->party, sizeof(e->party), "%s", op->party);
+        if (op->remote) continue;
+        char name[CHAR_NAME_MAX + 16];
+        entity_display_name(e, name, sizeof(name));
+        if (op->party[0]) console_log("%s: party %s", name, op->party);
+        else console_log("%s: no party", name);
     }
 }
 
@@ -405,6 +427,9 @@ void ops_apply(Op *op) {
             Entity *e = character_at(op, i);
             if (e) snprintf(e->name, sizeof(e->name), "%s", op->charName);
         }
+        break;
+    case OP_SET_PARTY:
+        apply_party(op);
         break;
     case OP_COUNT:
         break;

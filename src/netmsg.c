@@ -32,6 +32,7 @@ static bool dice_ok(const char *s) {
 static bool spec_ok(const NetSpec *s) {
     if (s->type > SAVE_ENT_WALL || !coord_ok(s->row) || !coord_ok(s->col)) return false;
     if (s->name[0] && (s->type != SAVE_ENT_CHARACTER || !savefmt_char_name_valid(s->name))) return false;
+    if (s->party[0] && (s->type != SAVE_ENT_CHARACTER || !savefmt_char_name_valid(s->party))) return false;
     if (s->type != SAVE_ENT_CHARACTER) return true;
     return s->speed <= SAVEFMT_MAX_SPEED && s->max_stamina >= 0 && s->max_stamina <= SAVEFMT_MAX_HP &&
            s->stamina >= -SAVEFMT_MAX_HP && s->stamina <= SAVEFMT_MAX_HP;
@@ -74,6 +75,8 @@ static bool op_ok(const NetOp *o) {
                (o->health_mode != 2 || o->value >= 0);
     case NOP_SET_NAME:
         return savefmt_char_name_valid(o->char_name);
+    case NOP_SET_PARTY:
+        return o->party[0] == '\0' || savefmt_char_name_valid(o->party);
     case NOP_ROLL:
         if (o->nvalues > NETMSG_MAX_ROLLS || (o->nvalues && !o->values)) return false;
         for (uint32_t i = 0; i < o->nvalues; i++)
@@ -233,6 +236,7 @@ static void put_op(Buf *b, const NetOp *o) {
                 put_str(b, s->name);
                 put_sv(b, s->max_stamina);
                 put_sv(b, s->stamina);
+                put_str(b, s->party);
             }
         }
         put_ids(b, o->ids, o->nids);
@@ -290,6 +294,10 @@ static void put_op(Buf *b, const NetOp *o) {
     case NOP_SET_NAME:
         put_ids(b, o->ids, o->nids);
         put_str(b, o->char_name);
+        break;
+    case NOP_SET_PARTY:
+        put_ids(b, o->ids, o->nids);
+        put_str(b, o->party);
         break;
     case NOP_ROLL:
         put_str(b, o->dice);
@@ -502,6 +510,7 @@ static void get_op(Rd *r, NetOp *o) {
                 get_str(r, s->name, sizeof(s->name));
                 s->max_stamina = get_sv(r);
                 s->stamina = get_sv(r);
+                get_str(r, s->party, sizeof(s->party));
             }
         }
         o->ids = get_ids(r, &o->nids);
@@ -572,6 +581,10 @@ static void get_op(Rd *r, NetOp *o) {
     case NOP_SET_NAME:
         o->ids = get_ids(r, &o->nids);
         get_str(r, o->char_name, sizeof(o->char_name));
+        break;
+    case NOP_SET_PARTY:
+        o->ids = get_ids(r, &o->nids);
+        get_str(r, o->party, sizeof(o->party));
         break;
     case NOP_ROLL: {
         get_str(r, o->dice, sizeof(o->dice));

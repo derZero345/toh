@@ -301,6 +301,7 @@ static bool net_from_op(const Op *op, NetOp *o) {
     o->health_mode = (uint8_t)op->healthMode;
     o->value = op->value;
     snprintf(o->char_name, sizeof(o->char_name), "%s", op->charName);
+    snprintf(o->party, sizeof(o->party), "%s", op->party);
     if (op->type == OP_SET_ICON || (op->type == OP_SET_BACKGROUND && op->image)) {
         o->has_image = true;
         uint8_t kind = op->type == OP_SET_BACKGROUND ? SAVE_IMG_LOSSY : SAVE_IMG_LOSSLESS;
@@ -321,6 +322,7 @@ static bool net_from_op(const Op *op, NetOp *o) {
         n->max_stamina = s->maxStamina;
         n->stamina = s->stamina;
         snprintf(n->name, sizeof(n->name), "%s", s->name);
+        snprintf(n->party, sizeof(n->party), "%s", s->party);
         if (!s->image || !texture_hash(s->image, SAVE_IMG_LOSSLESS, n->image)) return false;
     }
     return true;
@@ -345,6 +347,7 @@ static bool op_from_net(const NetOp *o, Op *op) {
     op->healthMode = o->health_mode;
     op->value = o->value;
     snprintf(op->charName, sizeof(op->charName), "%s", o->char_name);
+    snprintf(op->party, sizeof(op->party), "%s", o->party);
     if (o->has_image && !(op->image = cache_find(o->image))) return false;
     for (uint32_t i = 0; i < o->nspecs; i++) {
         const NetSpec *n = &o->specs[i];
@@ -355,6 +358,7 @@ static bool op_from_net(const NetOp *o, Op *op) {
                          .maxStamina = n->max_stamina, .stamina = n->stamina };
         if (!s.image) return false;
         snprintf(s.name, sizeof(s.name), "%s", n->name);
+        snprintf(s.party, sizeof(s.party), "%s", n->party);
         da_push(&op->specs, s);
     }
     return true;

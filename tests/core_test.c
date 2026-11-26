@@ -23,6 +23,7 @@ _Static_assert((int)NOP_MOVE == (int)OP_MOVE && (int)NOP_SPAWN == (int)OP_SPAWN 
                (int)NOP_INIT_CLEAR == (int)OP_INIT_CLEAR && (int)NOP_INIT_SHOW == (int)OP_INIT_SHOW &&
                (int)NOP_INIT_NEXT == (int)OP_INIT_NEXT && (int)NOP_SET_OWNER == (int)OP_SET_OWNER && (int)NOP_SET_HEALTH == (int)OP_SET_HEALTH &&
                (int)NOP_SET_NAME == (int)OP_SET_NAME && (int)NOP_SET_STAMINA == (int)OP_SET_STAMINA &&
+               (int)NOP_SET_PARTY == (int)OP_SET_PARTY &&
                (int)NOP_ROLL == (int)OP_COUNT,
                "NetOpType must match OpType");
 _Static_assert((int)NSTAT_SIZE == (int)STAT_SIZE && (int)NSTAT_MAXHEALTH == (int)STAT_MAXHEALTH &&
@@ -919,6 +920,65 @@ static void test_stamina(void) {
     op_free(&ms); op_free(&spend); op_free(&both); op_free(&rec); op_free(&set);
 }
 
+static void test_party_ops(void) {
+    reset_table();
+    Entity *hero = add_character((Hex){ 0, 0 }, 3, "Alice");
+    Entity *orc = add_character((Hex){ 0, 2 }, 3, "");
+    Entity *wall = add_wall((Hex){ 4, 4 });
+    OpAuthor alice = player("Alice");
+
+    Op pt = { .type = OP_SET_PARTY };
+    snprintf(pt.party, sizeof(pt.party), "Heroes");
+    da_push(&pt.ids, hero->id);
+    da_push(&pt.ids, orc->id);
+    da_push(&pt.ids, wall->id);
+    CHECK_R(ops_check(&pt, &GM), OPR_OK);
+    CHECK_R(ops_check(&pt, &alice), OPR_GM_ONLY); /* players can't, not even for their own characters */
+    stub_last_log[0] = '\0';
+    ops_apply(&pt);
+    CHECK(!strcmp(hero->party, "Heroes") && !strcmp(orc->party, "Heroes") && wall->party[0] == '\0');
+    CHECK(strstr(stub_last_log, ": party Heroes"));
+
+    /* "" leaves the party; someone else's change logs nothing here */
+    Op leave = { .type = OP_SET_PARTY, .remote = true };
+    da_push(&leave.ids, orc->id);
+    CHECK_R(ops_check(&leave, &GM), OPR_OK);
+    stub_last_log[0] = '\0';
+    ops_apply(&leave);
+    CHECK(orc->party[0] == '\0' && stub_last_log[0] == '\0');
+    leave.remote = false;
+    ops_apply(&leave);
+    CHECK(strstr(stub_last_log, ": no party"));
+
+    /* bad names are refused */
+    Op bad = { .type = OP_SET_PARTY };
+    snprintf(bad.party, sizeof(bad.party), "tab\there");
+    da_push(&bad.ids, hero->id);
+    CHECK_R(ops_check(&bad, &GM), OPR_INVALID);
+
+    /* parties travel with spawned copies (paste); walls can't have one */
+    Op sp = { .type = OP_SPAWN };
+    EntitySpec s = op_spec_from_entity(hero);
+    CHECK(!strcmp(s.party, "Heroes"));
+    da_push(&sp.specs, s);
+    CHECK_R(ops_check(&sp, &GM), OPR_OK);
+    ops_apply(&sp);
+    Entity *copy = entity_by_id(sp.ids.items[0]);
+    CHECK(copy && !strcmp(copy->party, "Heroes"));
+    EntitySpec w = op_spec_from_entity(wall);
+    snprintf(w.party, sizeof(w.party), "Heroes");
+    Op wsp = { .type = OP_SPAWN };
+    da_push(&wsp.specs, w);
+    CHECK_R(ops_check(&wsp, &GM), OPR_INVALID);
+
+    op_free(&pt);
+    op_free(&leave);
+    op_free(&bad);
+    op_free(&sp);
+    op_free(&wsp);
+    reset_table();
+}
+
 static bool near(float a, float b, float eps) { return fabsf(a - b) <= eps; }
 
 static void test_bar_anim(void) {
@@ -1552,6 +1612,7 @@ int main(void) {
     test_hp_rules();
     test_health_and_names();
     test_stamina();
+    test_party_ops();
     test_bar_anim();
     test_hud_icons();
     test_hud_widgets();

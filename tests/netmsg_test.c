@@ -61,6 +61,7 @@ static NetOp sample_op(int type) {
                                .health = 12, .attack = 5, .speed = 6, .initiative = -1 };
         fill_hash(specs2[0].image, 1);
         strcpy(specs2[0].name, "Mao");
+        strcpy(specs2[0].party, "Silver Hand");
         specs2[0].max_stamina = 9; specs2[0].stamina = 3;
         specs2[1] = (NetSpec){ .type = SAVE_ENT_WALL, .row = -1000000, .col = 9 };
         fill_hash(specs2[1].image, 2);
@@ -108,6 +109,10 @@ static NetOp sample_op(int type) {
     case NOP_SET_NAME:
         o.ids = ids3; o.nids = 1;
         strcpy(o.char_name, "Mao Clausewitz");
+        break;
+    case NOP_SET_PARTY:
+        o.ids = ids3; o.nids = 2;
+        strcpy(o.party, "Heroes");
         break;
     case NOP_ROLL:
         strcpy(o.dice, "2d6+3");
@@ -227,6 +232,7 @@ static void test_fields_survive(void) {
           d.op.specs[0].health == 12 && memcmp(d.op.specs[0].image, specs2[0].image, NET_HASH_SIZE) == 0);
     CHECK(d.op.specs[1].type == SAVE_ENT_WALL && d.op.specs[1].row == -1000000 && d.op.specs[1].speed == 0);
     CHECK(strcmp(d.op.specs[0].name, "Mao") == 0 && d.op.specs[1].name[0] == '\0');
+    CHECK(strcmp(d.op.specs[0].party, "Silver Hand") == 0 && d.op.specs[1].party[0] == '\0');
     CHECK(d.op.specs[0].max_stamina == 9 && d.op.specs[0].stamina == 3);
     netmsg_free(&d);
 
@@ -240,6 +246,13 @@ static void test_fields_survive(void) {
 
     m = sample_msg(NM_OP, NOP_SET_NAME);
     CHECK(round_trip(&m, &d) && d.op.nids == 1 && strcmp(d.op.char_name, "Mao Clausewitz") == 0);
+    netmsg_free(&d);
+
+    m = sample_msg(NM_OP, NOP_SET_PARTY);
+    CHECK(round_trip(&m, &d) && d.op.nids == 2 && strcmp(d.op.party, "Heroes") == 0);
+    netmsg_free(&d);
+    m = sample_msg(NM_OP, NOP_SET_PARTY); m.op.party[0] = '\0';
+    CHECK(round_trip(&m, &d) && d.op.party[0] == '\0'); /* leaving the party */
     netmsg_free(&d);
 
     m = sample_msg(NM_OP, NOP_SET_STATS);
@@ -389,6 +402,8 @@ static void test_encoder_refuses_invalid(void) {
     m = sample_msg(NM_OP, NOP_SET_STAMINA); m.op.health_mode = 3; check_invalid(m, "stamina mode 3");
     m = sample_msg(NM_OP, NOP_SET_STAMINA); m.op.value = -1; check_invalid(m, "negative stamina spend");
     m = sample_msg(NM_OP, NOP_SET_NAME); m.op.char_name[0] = '\0'; check_invalid(m, "empty character name");
+    m = sample_msg(NM_OP, NOP_SET_PARTY); strcpy(m.op.party, "tab\there"); check_invalid(m, "party with a control character");
+    m = sample_msg(NM_OP, NOP_SPAWN); strcpy(specs2[1].party, "Heroes"); check_invalid(m, "wall with a party"); specs2[1].party[0] = '\0';
     m = sample_msg(NM_OP, NOP_SPAWN); strcpy(specs2[1].name, "wall"); check_invalid(m, "wall with a name"); specs2[1].name[0] = '\0';
     m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = 0; check_invalid(m, "empty stat mask");
     m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = 32; check_invalid(m, "unknown stat bit");
