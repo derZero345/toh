@@ -3,6 +3,7 @@
 #include "app.h"
 #include "hud.h"
 #include "ops.h"
+#include "party.h"
 #include "savefmt.h"
 #include "session.h"
 
@@ -29,7 +30,8 @@ static const ArgDef ARGS_CHARACTER[] = {
     { "delete", "d" },     { "size", "sz" },       { "maxhealth", "h" }, { "speed", "s" },
     { "initiative", "in" }, { "maxstamina", "ms" }, { "stamina", "st" },  { "spend", NULL },
     { "recover", NULL },   { "icon", "ic" },       { "owner", "ow" },    { "name", "nm" },
-    { "hp", NULL },        { "damage", "dmg" },    { "heal", NULL },     { NULL, NULL },
+    { "hp", NULL },        { "damage", "dmg" },    { "heal", NULL },     { "party", "pt" },
+    { NULL, NULL },
 };
 static const ArgDef ARGS_HUD[] = { { "on", NULL }, { "off", NULL }, { NULL, NULL } };
 static const ArgDef ARGS_DELETE[] = { { "delete", "d" }, { NULL, NULL } };
@@ -40,7 +42,7 @@ static const ArgDef ARGS_HELP[]   = {
     { "theme", ":t" },       { "teleport", "tp" },   { "save", ":save" },    { "load", ":load" },
     { "host", ":host" },     { "unhost", ":unhost" }, { "join", ":join" },   { "leave", ":leave" },
     { "players", ":players" }, { "kick", ":kick" },  { "ban", ":ban" },      { "unban", ":unban" },
-    { "claim", ":claim" },   { "hud", ":hud" },   { NULL, NULL },
+    { "claim", ":claim" },   { "hud", ":hud" },   { "party", ":party" },   { NULL, NULL },
 };
 static const ArgDef ARGS_INIT[]  = { { "add", "a" }, { "remove", "r" }, { "clear", "c" }, { "show", "s" },
                                      { "next", "n" }, { NULL, NULL } };
@@ -59,6 +61,7 @@ static const CommandDef COMMANDS[] = {
     { "host", ":host", NULL },            { "unhost", ":unhost", NULL }, { "join", ":join", NULL },
     { "leave", ":leave", NULL },          { "players", ":players", NULL }, { "kick", ":kick", NULL },
     { "ban", ":ban", NULL },              { "unban", ":unban", NULL },  { "claim", ":claim", NULL },  { "hud", ":hud", ARGS_HUD },
+    { "party", ":party", NULL },
 };
 #define NCOMMANDS ((int)(sizeof(COMMANDS) / sizeof(COMMANDS[0])))
 
@@ -432,6 +435,8 @@ static void cmd_character(Args *a) {
     char owner[PLAYER_NAME_MAX] = "";
     char name[CHAR_NAME_MAX] = "";
     bool has_name = false;
+    char party[CHAR_NAME_MAX] = "";
+    bool has_party = false;
     struct { int mode, value; bool stamina; } res[8]; /* hp / stamina changes, in the order given */
     int nres = 0;
     for (int i = 1; i < a->argc;) {
@@ -470,6 +475,17 @@ static void cmd_character(Args *a) {
             }
             snprintf(name, sizeof(name), "%s", val);
             has_name = true;
+            i += 2;
+            continue;
+        }
+        if (strcmp(key, "pt") == 0 || strcmp(key, "party") == 0) {
+            /* the word after it is always the name; nothing after it: leave the party */
+            if (val && !savefmt_char_name_valid(val)) {
+                console_log("Names are 1 to %d bytes long", CHAR_NAME_MAX - 1);
+                return;
+            }
+            snprintf(party, sizeof(party), "%s", val ? val : "");
+            has_party = true;
             i += 2;
             continue;
         }
@@ -521,9 +537,15 @@ static void cmd_character(Args *a) {
         i += 2;
     }
 
+    if (has_party && session_is_client()) { /* parties are the GM's; nothing is sent */
+        console_log("%s", ops_result_text(OPR_GM_ONLY));
+        return;
+    }
+
     if (gh->selectedEntities.count == 0) {
         if (has_owner || nres > 0) console_log("Select the characters first");
-        else gfx_spawn_character(size, max_health, speed, initiative, max_stamina, has_name ? name : NULL);
+        else gfx_spawn_character(size, max_health, speed, initiative, max_stamina, has_name ? name : NULL,
+                                 has_party ? party : NULL);
         return;
     }
 
@@ -542,13 +564,20 @@ static void cmd_character(Args *a) {
         icon_targets++;
     }
     if (stats.statMask && stats.ids.count > 0) ops_submit(&stats);
-    if ((has_name || nres > 0) && stats.ids.count == 0) console_log("Select the characters first");
+    if ((has_name || has_party || nres > 0) && stats.ids.count == 0) console_log("Select the characters first");
     if (has_name && stats.ids.count > 0) {
         Op nm = { .type = OP_SET_NAME };
         snprintf(nm.charName, sizeof(nm.charName), "%s", name);
         for (int i = 0; i < stats.ids.count; i++) da_push(&nm.ids, stats.ids.items[i]);
         ops_submit(&nm);
         op_free(&nm);
+    }
+    if (has_party && stats.ids.count > 0) {
+        Op pt = { .type = OP_SET_PARTY };
+        snprintf(pt.party, sizeof(pt.party), "%s", party);
+        for (int i = 0; i < stats.ids.count; i++) da_push(&pt.ids, stats.ids.items[i]);
+        ops_submit(&pt);
+        op_free(&pt);
     }
     for (int k = 0; k < nres && stats.ids.count > 0; k++) {
         if (res[k].stamina && !(stats.statMask & STAT_MAXSTAMINA && max_stamina > 0)) {
@@ -574,7 +603,7 @@ static void cmd_character(Args *a) {
         if (owner[0]) console_log("%d character(s) now belong to %s", own.ids.count, owner);
         else console_log("%d character(s) no longer have an owner", own.ids.count);
     }
-    if (has[5] && icon_targets > 0) gfx_request_file(ACTION_CHARACTER_ICON, NULL, 0, 0, 0, 0, 0, NULL);
+    if (has[5] && icon_targets > 0) gfx_request_file(ACTION_CHARACTER_ICON, NULL, 0, 0, 0, 0, 0, NULL, NULL);
     op_free(&stats);
     op_free(&own);
 }
@@ -594,6 +623,7 @@ static void cmd_help(Args *a) {
         console_log("  initiative <n> | icon | owner <player|none>");
         console_log("  name <name> (quotes for spaces) | hp <n> | damage <n> | heal <n>");
         console_log("  maxstamina <n> | stamina <n> | spend <n> | recover <n>");
+        console_log("  party <name> | party (last: leave the party) - GM only");
         console_log("  players: name, HP and stamina of your own characters; with nothing selected,");
         console_log("  asks the GM for a new character of your own");
     } else if (!strcmp(arg, "wall") || !strcmp(arg, ":w")) {
@@ -648,6 +678,8 @@ static void cmd_help(Args *a) {
         console_log(":unban <name> # GM: let a banned player join again");
     } else if (!strcmp(arg, "claim") || !strcmp(arg, ":claim")) {
         console_log(":claim # Ask the GM for the selected character (it must have no owner)");
+    } else if (!strcmp(arg, "party") || !strcmp(arg, ":party")) {
+        console_log(":party # List the parties (players: the parties of their own characters)");
     } else if (!strcmp(arg, "hud") || !strcmp(arg, ":hud")) {
         console_log(":hud [on|off] # Show or hide the HUD at the bottom of the window");
     } else {
@@ -673,6 +705,7 @@ static void cmd_help(Args *a) {
         console_log(":players / :kick  # List or remove players");
         console_log(":ban / :unban     # Keep a player out of the session, or let them back in");
         console_log(":claim            # Ask the GM for the selected character");
+        console_log(":party            # List the parties");
         console_log(":hud [on|off]     # Show or hide the HUD");
     }
 }
@@ -993,6 +1026,8 @@ void console_command(const char *raw) {
         else session_cmd_unban(a.argv[1]);
     }
     else if (!strcmp(cmd, "claim") || !strcmp(cmd, ":claim"))   session_cmd_claim();
+    else if (!strcmp(cmd, "party") || !strcmp(cmd, ":party"))
+        party_log(session_is_client() ? session_my_name() : NULL);
     else if (!strcmp(cmd, "hud") || !strcmp(cmd, ":hud")) {
         if (a.argc == 1) hud_set_visible(!hud_visible());
         else if (a.argc == 2 && !strcmp(a.argv[1], "on")) hud_set_visible(true);
