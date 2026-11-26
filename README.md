@@ -28,6 +28,9 @@ and network message decoders, needs clang; `FUZZ_TIME=600` fuzzes each longer) a
 window, then runs a host and a client on localhost; needs a display and ImageMagick).
 Set `TOH_VK_VALIDATION=1` to enable the Khronos validation layer when it is installed.
 
+Your settings (for now the theme chosen with `:t`) are kept in `settings.txt` next to the program, a plain text file
+of `key = value` lines that git ignores. `TOH_SETTINGS=<file>` uses another file, `TOH_SETTINGS=` none (the e2e tests do that).
+
 ## Controls
 
 Full guides: [gmcontrols.md](gmcontrols.md) (every control and command) and
@@ -58,7 +61,7 @@ Console commands: `:q` quit, `:b [file.png]` background, `:d` debug, `:c` charac
 (`delete`, `size n`, `maxhealth n`, `maxstamina n`, `stamina n`, `spend n`, `recover n`, `speed n`, `initiative n`, `icon`, `owner <player|none>`, `name <name>`, `party <name>` (GM),
 `hp n`, `damage n`, `heal n`; the HUD at the bottom shows the selected (your own, or a party member's) character's HP and stamina),
 `:w [delete]` wall, `:e delete`, `:r 2d6+3` roll, `:g` grid orientation, `:gm` gamemaster,
-`:i [add|remove|clear|show|next]` initiative, `:cl` clear, `:t [name]` theme, `:h [command]` help, `:hud [on|off]` HUD on/off,
+`:i [add|remove|clear|show|next]` initiative, `:cl` clear, `:t [name]` theme (remembered in `settings.txt`), `:h [command]` help, `:hud [on|off]` HUD on/off,
 `:save [file]` / `:load[!] [file]` save files (see below), `:q!` quit without saving,
 `:host`, `:join`, `:leave`, `:unhost`, `:players`, `:kick`, `:ban`, `:unban`, `:claim`, `:party` multiplayer (see below).
 
@@ -109,7 +112,8 @@ Use `:q!` / `:load!` to discard them. Camera, zoom and theme are saved but don't
 close button always quits.
 
 A save contains the background, characters (image, stats, current HP and stamina, name, owner and party), walls, the initiative order, waypoints, grid
-orientation, camera and theme; not the console, selections, clipboard or measurements. `:c owner <player>` gives the
+orientation, camera and theme (loading shows it, but the theme remembered for the next start stays the one from `:t`);
+not the console, selections, clipboard or measurements. `:c owner <player>` gives the
 selected characters to a player; pasted copies have no owner (but keep their party).
 
 The format (`src/savefmt.h`, version 7; files from older versions still load) is binary and compact: the game state is packed with varints and zstd-compressed, and

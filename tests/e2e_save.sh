@@ -4,6 +4,7 @@
 # Usage: tests/e2e_save.sh   (or: make e2e)
 set -euo pipefail
 cd "$(dirname "$0")/.."
+export TOH_SETTINGS= # no settings file: the user's theme must not change the pixels, and :t must not change it
 
 out=${KEEP:-$(mktemp -d)}
 [ -n "${KEEP:-}" ] || trap 'rm -rf "$out"' EXIT

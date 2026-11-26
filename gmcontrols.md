@@ -371,14 +371,15 @@ Paths may contain spaces, with or without quotes around them; `~/` means your ho
 
 A save holds the background, characters (image, stats, current HP and stamina, name, owner and party), walls, initiative, waypoints, grid orientation,
 camera and theme. It does not hold the console, selections, clipboard or measurements. Saves from older versions
-still load; an armor class stored in them is ignored.
+still load; an armor class stored in them is ignored. Loading a save shows its theme, but the game keeps remembering
+the theme you chose with `:t` for the next start.
 
 ## 16. Display and comfort
 
 | Input | Action |
 |---|---|
 | `:t` | List the color themes |
-| `:t <name>` | Choose a theme: purple, red, green, yellow, light, dark, black; the colours fade over a quarter second (the HUD outline follows the theme) |
+| `:t <name>` | Choose a theme: purple, red, green, yellow, light, dark, black; the colours fade over a quarter second (the HUD outline follows the theme). The game remembers it for the next start (see below) |
 | Ctrl + `+` / Ctrl + `-` | Bigger / smaller console text, toolbox and HUD |
 | `:hud [on\|off]` | Show / hide the HUD (without an argument it toggles; Tab completes `on` / `off`) |
 | 1 … 9, 0 (console closed; also on the keypad) | Use hotbar slot 1–10 (once per key press; holding does not repeat) |
@@ -391,6 +392,14 @@ slot writes a log line. The HUD is shown at every start; `:hud off`
 hides it until the next start. The map does not react to the pointer over the HUD: no tile is highlighted under it,
 and clicks, the mouse wheel and the right button there don't reach the map (a camera drag can cross it). The keyboard
 cursor scrolls the view when it would move under the HUD.
+
+### Settings file
+
+The game remembers your settings in `settings.txt` in the game's folder (next to the program). For now that is the
+theme chosen with `:t`. It is a plain text file with one `key = value` per line, for example `theme = dark`; the game
+rewrites it when a setting changes and keeps any other lines (comments starting with `#`, keys it doesn't know). You
+can edit it while the game is closed. A missing file or an unknown theme in it means the default theme, Light. The
+file is in `.gitignore`, so it never ends up in the repository.
 
 ## 17. Keyboard-only play
 
@@ -420,6 +429,7 @@ cursor scrolls the view when it would move under the HUD.
 | `TOH_RELAY=host:port` | Use another relay; `TOH_RELAY=` (empty) turns the relay off |
 | `TOH_NO_PORTMAP=1` | `:host --direct` doesn't touch the router |
 | `TOH_VK_VALIDATION=1` | Vulkan validation layer (debugging) |
+| `TOH_SETTINGS=<file>` | Read and write the settings there instead of `settings.txt` next to the program; `TOH_SETTINGS=` (empty) uses no settings file, so nothing is remembered (the tests do that) |
 
 ## 19. What players can and cannot do
 

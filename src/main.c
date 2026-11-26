@@ -26,6 +26,8 @@
  * A wait that times out ends the program with exit status 3.
  * --auto-file makes every file dialog (images, :save, :load) return the given file.
  * --port sets the port :host listens on (default 41234). TOH_NO_PORTMAP=1 skips the router.
+ * TOH_SETTINGS=<file> reads and writes the settings there instead of settings.txt next to the program;
+ * TOH_SETTINGS= (empty) uses no settings file (the tests do that).
  */
 #include "app.h"
 #include "font.h"
@@ -33,6 +35,7 @@
 #include "hud_game.h"
 #include "radial_game.h"
 #include "session.h"
+#include "settings.h"
 #include "vk_renderer.h"
 
 #include <stdio.h>
@@ -243,6 +246,19 @@ static void find_resource_dir(char *out, size_t n) {
     snprintf(out, n, "resources");
 }
 
+/* settings.txt next to the program; TOH_SETTINGS=<file> another file, TOH_SETTINGS= (empty) none */
+static void init_settings(void) {
+    const char *env = getenv("TOH_SETTINGS");
+    if (env) {
+        settings_init(env[0] ? env : NULL);
+        return;
+    }
+    char path[1024];
+    const char *base = SDL_GetBasePath();
+    snprintf(path, sizeof(path), "%ssettings.txt", base ? base : "");
+    settings_init(path);
+}
+
 static void update_window_size(void) {
     SDL_GetWindowSize(gh->window, &gh->winW, &gh->winH);
     float density = SDL_GetWindowPixelDensity(gh->window);
@@ -289,6 +305,7 @@ int main(int argc, char **argv) {
     if (!font_init()) return 1;
     char resdir[512];
     find_resource_dir(resdir, sizeof(resdir));
+    init_settings();
     gfx_init(&app, resdir);
     save_init();
     session_init();
@@ -380,6 +397,7 @@ int main(int argc, char **argv) {
     session_shutdown(); /* tells the players, removes the router mapping */
     SDL_StopTextInput(app.window);
     gfx_shutdown();
+    settings_free();
     font_shutdown();
     vkr_shutdown();
     SDL_DestroyWindow(app.window);

@@ -431,7 +431,7 @@ bool gfx_init(App *app, const char *resource_dir);
 void gfx_shutdown(void);
 bool gfx_draw_frame(const char *screenshot_path); /* true while a HUD bar moves or the theme fades */
 bool gfx_bars_moving(void);
-void gfx_change_theme(const char *name);
+bool gfx_change_theme(const char *name); /* false (and a log line) if there is no such theme */
 const Theme *gfx_theme(void);
 void gfx_toggle_console(void);
 void gfx_set_console_visibility(bool visible);

@@ -141,7 +141,7 @@ The entries are placeholders: choosing one writes `Menu: <entry> on [row|col]` t
 | Mouse wheel over the console | Scroll the log |
 | Ctrl + `+` / Ctrl + `-` | Bigger / smaller console text, toolbox and HUD |
 | `:hud` | Show / hide the HUD |
-| `:t [name]` | List the color themes, or choose one |
+| `:t [name]` | List the color themes, or choose one (remembered for the next start) |
 | `:cl` | Clear the log and command history |
 | Arrow keys, Enter | Play without a mouse: move a cursor, Enter = left click, Right Shift + Enter = right click, Right Shift + Up / Down = zoom |
 

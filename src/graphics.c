@@ -3,6 +3,7 @@
 #include "draw.h"
 #include "hud_game.h"
 #include "radial_game.h"
+#include "settings.h"
 #include "image.h"
 #include "ops.h"
 #include "netmsg.h"
@@ -71,7 +72,8 @@ bool gfx_init(App *app, const char *resource_dir) {
     toolbox_init(&gh->toolbox, resource_dir);
     hud_game_init(resource_dir);
     radial_game_init();
-    gfx_change_theme("light");
+    const char *theme = settings_get("theme"); /* the one chosen with :t last time */
+    if (!theme || !gfx_change_theme(theme)) gfx_change_theme("light");
     return true;
 }
 
@@ -134,7 +136,7 @@ static bool theme_fade_step(void) {
 
 const Theme *gfx_theme(void) { return fading ? &fade_shown : &gh->themes[gh->currentTheme]; }
 
-void gfx_change_theme(const char *name) {
+bool gfx_change_theme(const char *name) {
     for (int i = 0; i < gh->nthemes; i++) {
         if (strcasecmp(gh->themes[i].name, name) == 0) {
             if (theme_set && i != gh->currentTheme) { /* the first theme (at start) appears without a fade */
@@ -145,10 +147,11 @@ void gfx_change_theme(const char *name) {
             }
             gh->currentTheme = i;
             theme_set = true;
-            return;
+            return true;
         }
     }
     console_log("There is no such theme as \"%s\"", name);
+    return false;
 }
 
 void gfx_toggle_console(void) {

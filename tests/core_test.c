@@ -6,6 +6,7 @@
 #include "hud_game.h"
 #include "radial.h"
 #include "radial_game.h"
+#include "settings.h"
 #include "image.h"
 #include "netmsg.h"
 #include "ops.h"
@@ -1900,6 +1901,83 @@ static void test_radial_menu(void) {
     reset_table();
 }
 
+/* ---- settings ---- */
+
+static char *read_all(const char *file) {
+    static char buf[4096];
+    FILE *f = fopen(file, "r");
+    if (!f) return NULL;
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[n] = '\0';
+    return buf;
+}
+
+static void write_all(const char *file, const char *text) {
+    FILE *f = fopen(file, "w");
+    if (f) {
+        fputs(text, f);
+        fclose(f);
+    }
+}
+
+static void test_settings(void) {
+    const char *file = "build/settings_test.txt";
+    remove(file);
+
+    /* no file yet: nothing set; the first set creates it with a header */
+    settings_init(file);
+    CHECK(!settings_get("theme") && !strcmp(settings_path(), file));
+    CHECK(settings_set("theme", "dark") && !strcmp(settings_get("theme"), "dark"));
+    char *text = read_all(file);
+    CHECK(text && text[0] == '#' && strstr(text, "\ntheme = dark\n"));
+    settings_init(file);
+    CHECK(!strcmp(settings_get("theme"), "dark"));
+    CHECK(settings_set("theme", "red"));
+    text = read_all(file);
+    CHECK(text && strstr(text, "theme = red\n") && !strstr(text, "dark")); /* replaced, header not repeated */
+    CHECK(strstr(text, "# Tales") == text && !strstr(text + 1, "# Tales"));
+
+    /* hand-edited: comments, blank lines, other keys and junk stay; spaces are trimmed; the last one counts */
+    write_all(file, "# mine\n\n  theme=green  \nfuture.key = 1 = 2\njunk line\n= no key\ntheme = purple\r\n");
+    settings_init(file);
+    CHECK(!strcmp(settings_get("theme"), "purple") && !strcmp(settings_get("future.key"), "1 = 2"));
+    CHECK(!settings_get("junk line") && !settings_get(""));
+    CHECK(settings_set("theme", " black "));
+    text = read_all(file);
+    CHECK(text && !strcmp(text, "# mine\n\n  theme=green  \nfuture.key = 1 = 2\njunk line\n= no key\ntheme = black\n"));
+    CHECK(settings_set("new", "x"));
+    text = read_all(file);
+    CHECK(text && strstr(text, "theme = black\nnew = x\n"));
+
+    /* refused: more than one line, '=' or '#' in the key, an empty key */
+    CHECK(!settings_set("theme", "a\nb = c") && !settings_set("a=b", "c") && !settings_set("#a", "c"));
+    CHECK(!settings_set("  ", "c") && !strcmp(settings_get("theme"), "black"));
+
+    /* a line longer than the read buffer is kept but is no setting */
+    char big[1500];
+    memset(big, 'x', sizeof(big));
+    memcpy(big, "long = ", 7);
+    big[sizeof(big) - 1] = '\0';
+    char content[1600];
+    snprintf(content, sizeof(content), "%s\ntheme = red\n", big);
+    write_all(file, content);
+    settings_init(file);
+    CHECK(!settings_get("long") && !strcmp(settings_get("theme"), "red"));
+
+    /* the file can't be written: false, but the value is kept for this run */
+    settings_init("build/no-such-dir/settings.txt");
+    CHECK(!settings_set("theme", "red") && !strcmp(settings_get("theme"), "red"));
+
+    /* no file: only in memory */
+    settings_init(NULL);
+    CHECK(!settings_path() && !settings_get("theme"));
+    CHECK(settings_set("theme", "dark") && !strcmp(settings_get("theme"), "dark"));
+    settings_free();
+    CHECK(!settings_get("theme"));
+    remove(file);
+}
+
 int main(void) {
     test_split_args();
     test_entity_ids();
@@ -1934,6 +2012,7 @@ int main(void) {
     test_hud_game();
     test_radial_config();
     test_radial_menu();
+    test_settings();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;

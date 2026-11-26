@@ -6,6 +6,7 @@
 #        TOH_E2E_RELAY=1 tests/e2e_net.sh   goes through build/toh-relay on a local port
 set -euo pipefail
 cd "$(dirname "$0")/.."
+export TOH_SETTINGS= # no settings file: the user's theme must not change the pixels, and :t must not change it
 
 out=${KEEP:-$(mktemp -d)}
 relay_pid=

@@ -10,3 +10,7 @@
 crash-*
 leak-*
 timeout-*
+
+# the user's settings (src/settings.h)
+/settings.txt
+/settings.txt.tmp

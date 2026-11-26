@@ -2,6 +2,7 @@
  * (main/Consol, main/ConsolPanel, main/CommandCompleter). */
 #include "app.h"
 #include "hud.h"
+#include "settings.h"
 #include "ops.h"
 #include "party.h"
 #include "savefmt.h"
@@ -377,7 +378,9 @@ static bool parse_int_arg(const char *s, int *out) {
 
 static void cmd_theme(Args *a) {
     if (a->argc > 1) {
-        gfx_change_theme(a->argv[1]);
+        /* remembered for the next start; a theme shown by :load is not */
+        if (gfx_change_theme(a->argv[1]) && !settings_set("theme", gh->themes[gh->currentTheme].name))
+            console_log("Could not save the theme to %s", settings_path());
         return;
     }
     console_log("The following themes are available:");
@@ -646,7 +649,7 @@ static void cmd_help(Args *a) {
     } else if (!strcmp(arg, "clear") || !strcmp(arg, ":cl")) {
         console_log(":cl or clear # Clear the command log and history");
     } else if (!strcmp(arg, "theme") || !strcmp(arg, ":t")) {
-        console_log(":t  or theme [name] # List themes or choose one by name");
+        console_log(":t  or theme [name] # List themes or choose one by name (remembered for the next start)");
     } else if (!strcmp(arg, "teleport") || !strcmp(arg, "tp")) {
         console_log("tp  or teleport # Centre the view on a tile or waypoint");
         console_log("  tp <row> <col>  (also [row|col] as shown in debug mode)");
