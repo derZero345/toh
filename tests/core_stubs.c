@@ -89,9 +89,15 @@ void session_send_op(const Op *op) {
     stub_sent_ops++;
 }
 void session_broadcast_op(const Op *op) { (void)op; }
+typedef struct { float x, y, w, h; Color c; } StubFill;
 /* Drawing: the HUD draws through these; the tests check layout and input only. Text is 0.5 em per byte. */
 void dr_set_alpha(float a) { (void)a; }
-void dr_fill_rect(float x, float y, float w, float h, Color c) { (void)x, (void)y, (void)w, (void)h, (void)c; }
+StubFill stub_fill_ring[32]; /* the last 32 dr_fill_rect calls */
+int stub_fills;               /* how many there were in all */
+void dr_fill_rect(float x, float y, float w, float h, Color c) {
+    stub_fill_ring[stub_fills++ % 32] = (StubFill){ x, y, w, h, c };
+}
+void dr_polygon(const Vec2 *pts, int n, float th, Color c) { (void)pts, (void)n, (void)th, (void)c; }
 void dr_stroke_rect(float x, float y, float w, float h, float th, Color c) {
     (void)x, (void)y, (void)w, (void)h, (void)th, (void)c;
 }

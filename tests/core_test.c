@@ -987,6 +987,18 @@ static void test_hud_icons(void) {
     CHECK(hud_icon("placeholder") == NULL && stub_refs(t) == 0);
 }
 
+typedef struct { float x, y, w, h; Color c; } StubFill;
+extern StubFill stub_fill_ring[32];
+extern int stub_fills;
+static bool fill_seen(int since, float x, float w, Color c) {
+    for (int i = since; i < stub_fills; i++) {
+        StubFill *f = &stub_fill_ring[i % 32];
+        if (near(f->x, x, 0.01f) && near(f->w, w, 0.01f) && f->c.r == c.r && f->c.g == c.g && f->c.b == c.b &&
+            f->c.a == c.a) return true;
+    }
+    return false;
+}
+
 static void test_hud_widgets(void) {
     const HudTheme *t = &HUD_THEME;
     const HudComponent *hc = HUD_COMPONENTS[HUD_HOTBAR], *sc = HUD_COMPONENTS[HUD_SLIDER];
@@ -1002,7 +1014,7 @@ static void test_hud_widgets(void) {
     CHECK(near(hc->height(&hb, 1), t->slot, 0.01f));
     CHECK(near(bc->height(&thin, 1), t->thinBarH, 0.01f) && near(bc->height(&thick, 1), t->barH, 0.01f));
     CHECK(near(pc->min_width(&pill, 1), t->pillW, 0.01f) && near(pc->height(&pill, 1), t->pillH, 0.01f));
-    CHECK(near(sc->height(&sl, 1), fmaxf(t->sliderKnob, t->font + 4), 0.01f));
+    CHECK(near(sc->height(&sl, 1), fmaxf(t->sliderKnob, t->font + t->sliderTextPad), 0.01f));
     CHECK(bc->flex && sc->flex && !pc->flex && !hc->flex);
     CHECK(!bc->mouse && !pc->mouse && sc->mouse && hc->mouse);
 
@@ -1036,6 +1048,10 @@ static void test_hud_widgets(void) {
     ui.press = -1;
     hc->mouse(&hb, r, &hv, (HudMouse){ HUD_MOUSE_MOVE, s4.x + 5, s4.y + 5 }, &ui, 7, 1, &ev);
     CHECK(ui.hoverSub == 3);
+    ui.press = 7;
+    hc->mouse(&hb, r, &hv, (HudMouse){ HUD_MOUSE_MOVE, s3.x + 5, s3.y + 5 }, &ui, 7, 1, &ev);
+    CHECK(ui.hoverSub == 2); /* follows the pointer while pressed too */
+    ui.press = -1;
 
     /* slider: follows the pointer within its range while pressed, one event per new value */
     HudRect sr = { 0, 0, sc->min_width(&sl, 1) + 100, sc->height(&sl, 1) };
@@ -1046,6 +1062,8 @@ static void test_hud_widgets(void) {
     CHECK(!sc->mouse(&sl, sr, &sv, (HudMouse){ HUD_MOUSE_MOVE, sr.w + 80, 5 }, &ui, 3, 1, &ev)); /* still 100 */
     CHECK(sc->mouse(&sl, sr, &sv, (HudMouse){ HUD_MOUSE_MOVE, -500, 5 }, &ui, 3, 1, &ev) && ev.value == 0);
     ui.press = -1;
+    sv.slider.value = 50;
+    CHECK(!sc->mouse(&sl, sr, &sv, (HudMouse){ HUD_MOUSE_DOWN, sr.x + 5, 5 }, &ui, 3, 1, &ev) && sv.slider.value == 50);
     CHECK(!sc->mouse(&sl, sr, &sv, (HudMouse){ HUD_MOUSE_MOVE, sr.w, 5 }, &ui, 3, 1, &ev)); /* only hovering */
     CHECK(!sc->mouse(&sl, sr, NULL, (HudMouse){ HUD_MOUSE_DOWN, sr.w, 5 }, &ui, 3, 1, &ev)); /* no value */
 
@@ -1075,6 +1093,17 @@ static void test_hud_widgets(void) {
     hc->draw(&hb, r, NULL, &ui, 7, 1);
     hud_draw_panel(r, 1);
     hud_draw_tab(r, r, &tg, &ui, 1);
+
+    /* drawing maths: a two-sided bar's frame is the right half; the zone below 0 reaches left of it */
+    HudRect br = { 100, 50, 400, 20 };
+    HudValue lv = { .type = HUD_BAR };
+    lv.bar.solidLo = -0.3f;
+    int since = stub_fills;
+    bc->draw(&two, br, &lv, &ui, 0, 1);
+    CHECK(fill_seen(since, 240, 60, t->accent[HUD_ACCENT_RED]));
+    since = stub_fills;
+    bc->draw(&two, br, NULL, &ui, 0, 1);
+    CHECK(!fill_seen(since, 240, 60, t->accent[HUD_ACCENT_RED]) && stub_fills > since);
 }
 
 int main(void) {

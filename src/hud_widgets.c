@@ -5,7 +5,6 @@
 
 #include <math.h>
 #include <stdio.h>
-#include <string.h>
 
 #define T (&HUD_THEME)
 
@@ -16,17 +15,21 @@ static void round_rect(HudRect r, float radius, Color c) {
     dr_fill_round_rect(r.x, r.y, r.w, r.h, radius * 2, radius * 2, c);
 }
 
-/* outline of a rounded rectangle: four edges and four quarter arcs (0 degrees = 3 o'clock, counter-clockwise) */
+/* Outline of a rounded rectangle as ONE closed polyline, stroked once: separate lines and arcs would overlap at the
+ * joints and show up brighter there when the colour is translucent. Corners in order TR, TL, BL, BR. */
 static void stroke_round_rect(HudRect r, float rad, float th, Color c) {
-    float x0 = r.x, y0 = r.y, x1 = r.x + r.w, y1 = r.y + r.h, d = rad * 2;
-    dr_line(x0 + rad, y0, x1 - rad, y0, th, c);
-    dr_line(x0 + rad, y1, x1 - rad, y1, th, c);
-    dr_line(x0, y0 + rad, x0, y1 - rad, th, c);
-    dr_line(x1, y0 + rad, x1, y1 - rad, th, c);
-    dr_stroke_arc(x0, y0, d, d, 90, 90, th, c);
-    dr_stroke_arc(x1 - d, y0, d, d, 0, 90, th, c);
-    dr_stroke_arc(x0, y1 - d, d, d, 180, 90, th, c);
-    dr_stroke_arc(x1 - d, y1 - d, d, d, 270, 90, th, c);
+    enum { SEG = 8 };
+    Vec2 p[4 * (SEG + 1)];
+    int n = 0;
+    rad = fminf(rad, fminf(r.w, r.h) / 2);
+    float cx[4] = { r.x + r.w - rad, r.x + rad, r.x + rad, r.x + r.w - rad };
+    float cy[4] = { r.y + rad, r.y + rad, r.y + r.h - rad, r.y + r.h - rad };
+    for (int k = 0; k < 4; k++)
+        for (int i = 0; i <= SEG; i++) {
+            double a = (k * 90.0 + 90.0 * i / SEG) * 3.14159265358979 / 180.0;
+            p[n++] = (Vec2){ cx[k] + rad * cos(a), cy[k] - rad * sin(a) };
+        }
+    dr_polygon(p, n, th, c);
 }
 
 static float baseline(FontStyle st, float size, HudRect r) {
@@ -86,7 +89,7 @@ void hud_draw_tab(HudRect r, HudRect close, const HudTarget *t, const HudUiState
     text_left(FONT_BOLD, T->font * s, x, r, T->text, text);
     if (t->canClose) {
         Color c = ui->pressClose ? T->pressed : ui->hoverClose ? T->hover : T->textDim;
-        float p = close.w * 0.28f, th = fmaxf(1.5f, 2 * s);
+        float p = close.w * T->closeInset, th = fmaxf(1.5f, T->closeLine * s);
         dr_line(close.x + p, close.y + p, close.x + close.w - p, close.y + close.h - p, th, c);
         dr_line(close.x + close.w - p, close.y + p, close.x + p, close.y + close.h - p, th, c);
     }
@@ -154,7 +157,7 @@ static void pill_draw(const HudElement *e, HudRect r, const HudValue *v, const H
 /* ---- slider ---- */
 
 static float slider_min_width(const HudElement *e, float s) { return (T->sliderLabelW + T->sliderMinW) * s; }
-static float slider_height(const HudElement *e, float s) { return fmaxf(T->sliderKnob, T->font + 4) * s; }
+static float slider_height(const HudElement *e, float s) { return fmaxf(T->sliderKnob, T->font + T->sliderTextPad) * s; }
 
 /* the track starts after the label; half a knob of room at both ends */
 static HudRect slider_track(HudRect r, float s) {
@@ -185,6 +188,7 @@ static bool slider_mouse(const HudElement *e, HudRect r, HudValue *v, HudMouse m
                          float s, HudEvent *ev) {
     if (!v || m.kind == HUD_MOUSE_UP || (m.kind == HUD_MOUSE_MOVE && ui->press != self)) return false;
     HudRect tr = slider_track(r, s);
+    if (m.kind == HUD_MOUSE_DOWN && m.x < tr.x - T->sliderKnob * s / 2) return false; /* on the label */
     float f = tr.w > 0 ? clampf((m.x - tr.x) / tr.w, 0, 1) : 0;
     int val = v->slider.min + (int)lroundf(f * (float)(v->slider.max - v->slider.min));
     if (val == v->slider.value) return false;
@@ -223,22 +227,22 @@ static void hotbar_draw(const HudElement *e, HudRect r, const HudValue *v, const
         HudSlotState st = sl ? sl->state : HUD_SLOT_EMPTY;
         bool used = st != HUD_SLOT_EMPTY;
         bool hover = used && ui->hover == self && ui->hoverSub == i;
-        bool pressed = used && ui->press == self && ui->pressSub == i;
+        bool pressed = used && ui->press == self && ui->pressSub == i && ui->hoverSub == i; /* pointer still on it */
         HudRect sr = hud_slot_rect(r, i, s);
         if (hover && !pressed) sr.y -= s; /* raised */
         round_rect(sr, rad, T->slotBg);
         Texture *icon = used && sl->icon[0] ? hud_icon(sl->icon) : NULL;
         if (icon) {
-            if (st == HUD_SLOT_UNAVAILABLE) dr_set_alpha(0.35f);
+            if (st == HUD_SLOT_UNAVAILABLE) dr_set_alpha(T->unavailableAlpha);
             dr_image(icon, sr.x + pad, sr.y + pad, sr.w - 2 * pad, sr.h - 2 * pad);
-            dr_set_alpha(1);
+            dr_set_alpha(1); /* the HUD is drawn at full alpha, so 1 is the right value to go back to */
         }
         if (st == HUD_SLOT_UNAVAILABLE) round_rect(sr, rad, T->veil);
         if (used && sl->cooldown > 0) {
             char cd[16];
             snprintf(cd, sizeof(cd), "%d", sl->cooldown);
             round_rect(sr, rad, T->veil);
-            text_centered(FONT_BOLD, T->font * 1.3f * s, sr, T->text, cd);
+            text_centered(FONT_BOLD, T->font * T->cooldownFontScale * s, sr, T->text, cd);
         }
         Color border = pressed                   ? T->pressed
                        : hover                   ? T->hover
@@ -263,7 +267,7 @@ static bool hotbar_mouse(const HudElement *e, HudRect r, HudValue *v, HudMouse m
         ui->pressSub = at;
         return false;
     case HUD_MOUSE_MOVE:
-        if (ui->press != self) ui->hoverSub = at;
+        ui->hoverSub = at;
         return false;
     case HUD_MOUSE_UP:
         if (at < 0 || at != ui->pressSub || !v || !hud_slot_usable(&v->slots[at])) return false;

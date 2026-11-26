@@ -27,6 +27,9 @@ typedef struct {
     float sliderTrack, sliderKnob, sliderLabelW, sliderMinW;
     /* hotbar */
     float slot, slotGap, slotRadius, slotIconPad, slotTextPad;
+    /* details: icon alpha of an unavailable slot, cooldown number size (times font), close cross inset (fraction of
+     * the close box), close cross line width, extra slider height beyond the font */
+    float unavailableAlpha, cooldownFontScale, closeInset, closeLine, sliderTextPad;
     /* target tab */
     float tabH, tabGap, tabPad, tabIcon, closeSize;
     /* shadow: layers spreading by shadowStep each */
