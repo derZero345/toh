@@ -141,7 +141,7 @@ footprint (old large → Huge, old huge and gargantuan → Gigantic).
 - After each change your log shows the result, e.g. `Mao: 14/20 -> 10/20 (Injured)`.
 - `damage` and `heal` add to the current HP, so changes from several people at once add up. HP and stamina values
   go from -1,000,000 to 1,000,000 (max stamina from 0), and one command takes at most 8 HP or stamina changes.
-- `hp`, `damage`, `heal`, `stamina`, `spend`, `recover` and `name` on a selection without characters say "Select the characters first".
+- `hp`, `damage`, `heal`, `stamina`, `spend`, `recover`, `name` and `party` on a selection without characters say "Select the characters first".
 - `stamina`, `spend` and `recover` on a character without max stamina say "<name> has no stamina; give it some with
   :c maxstamina <n>".
 - A character at full HP stays at full HP when you change its max HP.
@@ -181,7 +181,7 @@ footprint (old large → Huge, old huge and gargantuan → Gigantic).
   one party. Names ignore case: "Heroes" and "heroes" are the same party.
 - Only you set parties. A player's `:c party` says "Only the GM can do that".
 - The word after `party` is always the name: `:c party size 3` makes a party called "size". Only `party` at the end
-  of the line leaves the party.
+  of the line leaves the party; with nothing selected it says "Select the characters first".
 - Your log shows each change, e.g. `Mao: party Heroes` or `Mao: no party`.
 - Players see the HUD (HP and stamina) of every character that shares a party with one of their own, when they
   select it. Party members still can't change each other's characters.
@@ -222,7 +222,7 @@ or by creating them on a tile, no bulk is checked.
 | Ctrl + C | Copy the selected entities |
 | Ctrl + V | Paste them at the tile under the mouse, in the same arrangement. Each paste is relative to the previous one, so pasting repeatedly makes a row. |
 
-Pasted characters keep their name and HP but have no owner.
+Pasted characters keep their name, HP and party but have no owner.
 
 ## 8. Initiative
 
@@ -346,7 +346,7 @@ anything else asks again). Several requests wait in line; each player can have a
 
 Paths may contain spaces, with or without quotes around them; `~/` means your home folder. The window's close button always quits.
 
-A save holds the background, characters (image, stats, current HP and stamina, name and owner), walls, initiative, waypoints, grid orientation,
+A save holds the background, characters (image, stats, current HP and stamina, name, owner and party), walls, initiative, waypoints, grid orientation,
 camera and theme. It does not hold the console, selections, clipboard or measurements. Saves from older versions
 still load; an armor class stored in them is ignored.
 

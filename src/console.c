@@ -543,7 +543,8 @@ static void cmd_character(Args *a) {
     }
 
     if (gh->selectedEntities.count == 0) {
-        if (has_owner || nres > 0) console_log("Select the characters first");
+        /* a bare "party" leaves a party: nothing to create */
+        if (has_owner || nres > 0 || (has_party && !party[0])) console_log("Select the characters first");
         else gfx_spawn_character(size, max_health, speed, initiative, max_stamina, has_name ? name : NULL,
                                  has_party ? party : NULL);
         return;

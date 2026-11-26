@@ -37,7 +37,8 @@ character sees its tab, HP and stamina, just like for their own characters.
 | `:party` | | everyone | List the parties and their members. |
 
 - The word after `party` is always taken as the name, so `:c party size 3` makes a party called "size". Only
-  `party` at the end of the line clears.
+  `party` at the end of the line clears; with nothing selected it says "Select the characters first" (there is
+  nothing to create).
 - `party` can be combined with the other `:c` options. Like the other selection options, without a
   selection it applies to the new character being created.
 - A player's `:c party ...` is refused with "Only the GM can do that"; a player's request for a new
