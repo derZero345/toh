@@ -154,7 +154,7 @@ The HUD has its own dark style for readability on any map; it does not follow th
   a darker, unframed dying zone of the same width, where the fill grows leftwards from the frame's left edge
   while HP is negative. Markers: the injured line in the frame's middle, and while dying the critical tick in
   the middle of the dying zone, as on the old panel.
-- Stat pill: a rounded capsule, dark inside, a coloured left edge, a small label and a value. Empty: "—".
+- Stat pill: a rounded capsule, dark inside, a short accent-coloured bar inside its left end, a small label and a value. Empty: "—".
 - Slider: a thin track, filled in the accent colour up to the knob, a round knob, and a label left of it that
   reads `<label> <value>`.
 - Hotbar slot states:

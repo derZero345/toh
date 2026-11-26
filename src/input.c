@@ -90,7 +90,8 @@ static void move_tile_under_mouse(int dir) {
         Hex cur = gh->tileUnderMouse;
         Hex next = hex_neighbor_raw(cur, dir - 1);
         Vec2 oc = hex_center(cur), nc = hex_center(next);
-        if (nc.x < 0 || nc.y < 0 || nc.x > gh->winW || nc.y > console_panel_rect().y)
+        if (nc.x < 0 || nc.y < 0 || nc.x > gh->winW || nc.y > console_panel_rect().y ||
+            hud_game_contains(nc))
             gfx_grid_offset((int)(oc.x - nc.x), (int)(oc.y - nc.y));
         gh->tileUnderMouse = next;
         gh->hasTileUnderMouse = true;
@@ -350,7 +351,9 @@ static void key_pressed(const SDL_KeyboardEvent *k) {
             if (gh->isRShiftDown) zoom_at_cursor(1);
             else move_tile_under_mouse(4);
             break;
-        default: hud_game_key(key); break; /* 1..9, 0: hotbar slots */
+        default:
+            if (!k->repeat) hud_game_key(key); /* holding a slot key fires it once */
+            break; /* 1..9, 0: hotbar slots */
         }
     }
 
@@ -481,6 +484,14 @@ void io_handle_event(const SDL_Event *e) {
         Vec2 p = { e->motion.x, e->motion.y };
         if (hud_game_mouse_move(p)) { /* dragging the HUD's slider */
             gh->mousePos = p;
+            if (gh->hasDragStart) gh->dragStart = p; /* a right drag must not jump after a press on the HUD */
+            break;
+        }
+        if (!(e->motion.state & (SDL_BUTTON_LMASK | SDL_BUTTON_MMASK | SDL_BUTTON_RMASK)) &&
+            hud_game_contains(p)) { /* nothing under the panel is highlighted */
+            gh->mousePos = p;
+            gh->hasTileUnderMouse = false;
+            da_clear(&gh->entityPreviewTiles);
             break;
         }
         if (e->motion.state & (SDL_BUTTON_LMASK | SDL_BUTTON_MMASK | SDL_BUTTON_RMASK)) mouse_dragged(p);
@@ -505,6 +516,9 @@ void io_handle_event(const SDL_Event *e) {
         break;
     case SDL_EVENT_TEXT_INPUT:
         text_input(e->text.text);
+        break;
+    case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+        hud_game_mouse_move((Vec2){ -1e6f, -1e6f }); /* clears the HUD hover */
         break;
     case SDL_EVENT_WINDOW_FOCUS_LOST:
         /* avoid stuck keys (a known issue of the Java version) */

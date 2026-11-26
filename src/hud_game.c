@@ -96,14 +96,14 @@ HudScreen hud_game_screen(void) {
     return (HudScreen){ (float)gh->winW, (float)gh->winH, (float)con.y, (float)gh->toolbox.size, scale };
 }
 
-static void refresh_screen(void) {
+void hud_game_refresh_screen(void) {
     HudScreen s = hud_game_screen();
     hud_set_screen(&s);
 }
 
 bool hud_game_update(float dt) {
     frame++;
-    refresh_screen();
+    hud_game_refresh_screen();
     hud_begin_frame();
     if (!hud_visible()) return false;
     bool moving = false;
@@ -146,22 +146,22 @@ void hud_game_shutdown(void) {
 /* ---- input ---- */
 
 bool hud_game_mouse_down(Vec2 p) {
-    refresh_screen();
+    hud_game_refresh_screen();
     return hud_mouse_down((float)p.x, (float)p.y);
 }
 
 bool hud_game_mouse_move(Vec2 p) {
-    refresh_screen();
+    hud_game_refresh_screen();
     return hud_mouse_move((float)p.x, (float)p.y);
 }
 
 bool hud_game_mouse_up(Vec2 p) {
-    refresh_screen();
+    hud_game_refresh_screen();
     return hud_mouse_up((float)p.x, (float)p.y);
 }
 
 bool hud_game_contains(Vec2 p) {
-    refresh_screen();
+    hud_game_refresh_screen();
     return hud_contains((float)p.x, (float)p.y);
 }
 

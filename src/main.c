@@ -26,6 +26,7 @@
 #include "app.h"
 #include "font.h"
 #include "hud.h"
+#include "hud_game.h"
 #include "session.h"
 #include "vk_renderer.h"
 
@@ -173,6 +174,7 @@ static int run_script_line(const char *line, const char **screenshot) {
         char part[64] = { 0 }, file[256] = { 0 };
         sscanf(arg, "%63s %255s", part, file);
         HudRect r;
+        hud_game_refresh_screen();
         if (!hud_part_rect(part, &r)) {
             fprintf(stderr, "@%s: no HUD part \"%s\"\n", cmd, part);
         } else if (cmd[0] == 'c') {
@@ -181,8 +183,10 @@ static int run_script_line(const char *line, const char **screenshot) {
             push_mouse_button(cx, cy, SDL_BUTTON_LEFT, true);
             push_mouse_button(cx, cy, SDL_BUTTON_LEFT, false);
         } else {
-            FILE *f = fopen(file, "w");
-            if (f) {
+            FILE *f = file[0] ? fopen(file, "w") : NULL;
+            if (!f) {
+                fprintf(stderr, "@hudrect: cannot write \"%s\"\n", file);
+            } else {
                 fprintf(f, "%d %d %d %d\n", (int)r.x, (int)r.y, (int)r.w, (int)r.h);
                 fclose(f);
             }

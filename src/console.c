@@ -31,6 +31,7 @@ static const ArgDef ARGS_CHARACTER[] = {
     { "recover", NULL },   { "icon", "ic" },       { "owner", "ow" },    { "name", "nm" },
     { "hp", NULL },        { "damage", "dmg" },    { "heal", NULL },     { NULL, NULL },
 };
+static const ArgDef ARGS_HUD[] = { { "on", NULL }, { "off", NULL }, { NULL, NULL } };
 static const ArgDef ARGS_DELETE[] = { { "delete", "d" }, { NULL, NULL } };
 static const ArgDef ARGS_HELP[]   = {
     { "quit", ":q" },        { "background", ":b" }, { "debug", ":d" },      { "character", ":c" },
@@ -57,7 +58,7 @@ static const CommandDef COMMANDS[] = {
     { "save", ":save", NULL },            { "load", ":load", NULL },
     { "host", ":host", NULL },            { "unhost", ":unhost", NULL }, { "join", ":join", NULL },
     { "leave", ":leave", NULL },          { "players", ":players", NULL }, { "kick", ":kick", NULL },
-    { "ban", ":ban", NULL },              { "unban", ":unban", NULL },  { "claim", ":claim", NULL },  { "hud", ":hud", NULL },
+    { "ban", ":ban", NULL },              { "unban", ":unban", NULL },  { "claim", ":claim", NULL },  { "hud", ":hud", ARGS_HUD },
 };
 #define NCOMMANDS ((int)(sizeof(COMMANDS) / sizeof(COMMANDS[0])))
 
@@ -648,7 +649,7 @@ static void cmd_help(Args *a) {
     } else if (!strcmp(arg, "claim") || !strcmp(arg, ":claim")) {
         console_log(":claim # Ask the GM for the selected character (it must have no owner)");
     } else if (!strcmp(arg, "hud") || !strcmp(arg, ":hud")) {
-        console_log(":hud # Show or hide the HUD at the bottom of the window");
+        console_log(":hud [on|off] # Show or hide the HUD at the bottom of the window");
     } else {
         console_log("Available commands:");
         console_log(":q  or quit       # Quit the application");
@@ -672,7 +673,7 @@ static void cmd_help(Args *a) {
         console_log(":players / :kick  # List or remove players");
         console_log(":ban / :unban     # Keep a player out of the session, or let them back in");
         console_log(":claim            # Ask the GM for the selected character");
-        console_log(":hud              # Show or hide the HUD");
+        console_log(":hud [on|off]     # Show or hide the HUD");
     }
 }
 
@@ -992,7 +993,12 @@ void console_command(const char *raw) {
         else session_cmd_unban(a.argv[1]);
     }
     else if (!strcmp(cmd, "claim") || !strcmp(cmd, ":claim"))   session_cmd_claim();
-    else if (!strcmp(cmd, "hud") || !strcmp(cmd, ":hud"))      hud_set_visible(!hud_visible());
+    else if (!strcmp(cmd, "hud") || !strcmp(cmd, ":hud")) {
+        if (a.argc == 1) hud_set_visible(!hud_visible());
+        else if (a.argc == 2 && !strcmp(a.argv[1], "on")) hud_set_visible(true);
+        else if (a.argc == 2 && !strcmp(a.argv[1], "off")) hud_set_visible(false);
+        else console_log("Usage: :hud [on|off]");
+    }
     else if (!strcmp(cmd, "init") || !strcmp(cmd, ":i"))        cmd_init(&a);
     else if (!strcmp(cmd, "teleport") || !strcmp(cmd, "tp"))    cmd_teleport(&a);
     else if (!strcmp(cmd, "clear") || !strcmp(cmd, ":cl"))      cmd_clear();
