@@ -1512,6 +1512,17 @@ static void test_hud_game(void) {
     app.isCtrlDown = false;
     app.debugMode = false;
 
+    /* the outline follows the colour theme's border colour */
+    Color def = hud_border();
+    CHECK(def.r == HUD_THEME.border.r && def.g == HUD_THEME.border.g && def.a == HUD_THEME.border.a);
+    app.nthemes = 1;
+    app.currentTheme = 0;
+    app.themes[0].secondary = (Color){ 0xda, 0x80, 0xff, 255 };
+    hud_game_update(0);
+    Color themed = hud_border();
+    CHECK(themed.r == 0xda && themed.g == 0x80 && themed.b == 0xff && themed.a == 255);
+    app.nthemes = 0;
+
     /* hidden: nothing published, nothing moving */
     hud_set_visible(false);
     CHECK(!hud_game_update(0.016f) && hud_value("hotbar") == NULL);

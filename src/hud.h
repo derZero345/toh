@@ -140,6 +140,9 @@ typedef struct {
 void hud_set_screen(const HudScreen *s);
 bool hud_visible(void);
 void hud_set_visible(bool on);
+/* The outline of the panel and tab; HUD_THEME.border until set. The game sets its colour theme's border colour. */
+void hud_set_border(Color c);
+Color hud_border(void);
 /* A part of the current layout: an element key, "<hotbar key>.<1..slots>", "panel", "tab" or "tab.close".
  * False if the HUD is hidden, there is no such part, or the tab (or its close button) is not shown. */
 bool hud_part_rect(const char *part, HudRect *out);

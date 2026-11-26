@@ -334,7 +334,7 @@ still load; an armor class stored in them is ignored.
 | Input | Action |
 |---|---|
 | `:t` | List the color themes |
-| `:t <name>` | Choose a theme: purple, red, green, yellow, light, dark, black |
+| `:t <name>` | Choose a theme: purple, red, green, yellow, light, dark, black (the HUD outline follows it) |
 | Ctrl + `+` / Ctrl + `-` | Bigger / smaller console text, toolbox and HUD |
 | `:hud [on\|off]` | Show / hide the HUD (without an argument it toggles; Tab completes `on` / `off`) |
 | 1 … 9, 0 (console closed; also on the keypad) | Use hotbar slot 1–10 (once per key press; holding does not repeat) |

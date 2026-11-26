@@ -61,7 +61,7 @@ void hud_draw_panel(HudRect r, float s) {
         round_rect((HudRect){ r.x - o, r.y - o / 2, r.w + 2 * o, r.h + 2 * o }, rad + o, T->shadow);
     }
     round_rect(r, rad, T->panel);
-    stroke_round_rect(r, rad, fmaxf(1, s), T->border);
+    stroke_round_rect(r, rad, fmaxf(1, s), hud_border());
 }
 
 static void tab_text(const HudTarget *t, char *out, size_t cap) {

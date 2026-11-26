@@ -155,6 +155,8 @@ void hud_set_slot(const char *key, int index, const HudSlot *slot) {
 
 static HudScreen screen = { 800, 600, 600, 0, 1 };
 static bool visible = true;
+static Color border;
+static bool border_set;
 static HudUiState ui = { -1, -1, -1, -1, false, false };
 static bool pressActive; /* a left press started on the HUD and is still held */
 
@@ -205,6 +207,13 @@ static bool active(void) { return visible && cfg(); }
 
 void hud_set_screen(const HudScreen *s) { screen = *s; }
 bool hud_visible(void) { return visible; }
+
+void hud_set_border(Color c) {
+    border = c;
+    border_set = true;
+}
+
+Color hud_border(void) { return border_set ? border : HUD_THEME.border; }
 
 void hud_set_visible(bool on) {
     visible = on;

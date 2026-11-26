@@ -36,7 +36,7 @@ typedef struct {
     float shadowStep;
     int shadowLayers;
     /* colours */
-    Color panel, border, shadow, text, textDim;
+    Color panel, border /* default; see hud_set_border */, shadow, text, textDim;
     Color barBg, barFrame, dyingBg, marker, emptyLine;
     Color slotBg, veil, hover, pressed;
     Color accent[HUD_ACCENT_COUNT], accentLight[HUD_ACCENT_COUNT];
