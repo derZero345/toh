@@ -41,6 +41,9 @@ If your character has stamina, a green bar under the HP bar shows it (`current/m
 stamina (refused with "Not enough stamina" if you don't have enough) and `:c recover <n>` to get it back, up to the
 maximum. At 0 or below your character is exhausted. `:c stamina <n>` sets it directly.
 
+If the GM put your character into a party, select another party member's character to see its HP and stamina
+too. `:party` lists your parties and who is in them.
+
 Select your character and type `:c damage <n>`, `:c heal <n>` or `:c hp <n>` to change its HP, and
 `:c name <name>` to name it (quotes for spaces: `:c name "Mao Clausewitz"`).
 
@@ -109,6 +112,7 @@ table sees your selection, measurements and attacks in your color.
 | Command | Action |
 |---|---|
 | `:players` | Who is at the table, and their colors |
+| `:party` | Your parties and who is in them |
 | `:save [file]` | Save a copy of the table for yourself |
 | `:leave` | Leave the table (you keep a copy as an unsaved table) |
 | `:q` / `:q!` | Quit / quit without saving |

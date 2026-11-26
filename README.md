@@ -54,12 +54,12 @@ in the Java version.
 | Alt + X / S / A / C / V | drag / measure / area / cone / line tool |
 
 Console commands: `:q` quit, `:b [file.png]` background, `:d` debug, `:c` character
-(`delete`, `size n`, `maxhealth n`, `maxstamina n`, `stamina n`, `spend n`, `recover n`, `speed n`, `initiative n`, `icon`, `owner <player|none>`, `name <name>`,
-`hp n`, `damage n`, `heal n`; the HUD at the bottom shows the selected (or your own) character's HP and stamina),
+(`delete`, `size n`, `maxhealth n`, `maxstamina n`, `stamina n`, `spend n`, `recover n`, `speed n`, `initiative n`, `icon`, `owner <player|none>`, `name <name>`, `party <name>` (GM),
+`hp n`, `damage n`, `heal n`; the HUD at the bottom shows the selected (your own, or a party member's) character's HP and stamina),
 `:w [delete]` wall, `:e delete`, `:r 2d6+3` roll, `:g` grid orientation, `:gm` gamemaster,
 `:i [add|remove|clear|show|next]` initiative, `:cl` clear, `:t [name]` theme, `:h [command]` help, `:hud [on|off]` HUD on/off,
 `:save [file]` / `:load[!] [file]` save files (see below), `:q!` quit without saving,
-`:host`, `:join`, `:leave`, `:unhost`, `:players`, `:kick`, `:ban`, `:unban`, `:claim` multiplayer (see below).
+`:host`, `:join`, `:leave`, `:unhost`, `:players`, `:kick`, `:ban`, `:unban`, `:claim`, `:party` multiplayer (see below).
 
 ## Playing together
 

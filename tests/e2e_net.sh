@@ -120,6 +120,9 @@ TOH_JOINCODE_FILE="$out/code" timeout 90 ./toh --size 600x400 --port "$port" --a
     --exec "@touch $out/hp-set" --exec "@waitfile $out/hp-damaged" --exec "@wait 30" \
     --exec "@waitbars" --exec "@hudrect hp $out/host-hp.hp" --exec "@hudrect stamina $out/host-hp.st" \
     --exec "@shot $out/host-hp.png" \
+    --exec "@waitfile $out/noparty-checked" \
+    --exec "@click $B3" --exec ":c h 10 hp 10 party Heroes" --exec "@click $A2" --exec ":c party Heroes" \
+    --exec "@touch $out/party-set" --exec "@waitfile $out/party-checked" \
     --exec ":unhost" --exec "@touch $out/unhosted" --exec "@wait 10" --exec ":q!" \
     > "$out/host.log" 2>&1 &
 host=$!
@@ -155,6 +158,12 @@ timeout 90 ./toh --size 600x400 --auto-file "$icon" \
     --exec "@wait 30" --exec "@waitbars" --exec "@hudrect hp $out/client-hp.hp" \
     --exec "@hudrect stamina $out/client-hp.st" --exec "@shot $out/client-hp.png" \
     --exec "@touch $out/hp-damaged" \
+    --exec "@click $B3" --exec "@wait 10" --exec "@waitbars" \
+    --exec "@hudrect hp $out/client-noparty.hp" --exec "@shot $out/client-noparty.png" \
+    --exec "@touch $out/noparty-checked" --exec "@waitfile $out/party-set" --exec "@wait 30" \
+    --exec "@click $B3" --exec "@wait 10" --exec "@waitbars" \
+    --exec "@hudrect hp $out/client-party.hp" --exec "@shot $out/client-party.png" \
+    --exec "@touch $out/party-checked" \
     --exec "@waitfile $out/unhosted" --exec "@wait 60" \
     --exec ":q" --exec "@shot $out/client-quit-refused.png" --exec ":q!" \
     > "$out/client.log" 2>&1 || fail "the client exited with status $? (see $out/client.log)"
@@ -200,6 +209,12 @@ green "$out/client-hp.png" $(st_at "$out/client-hp.st" $ST_IN) || fail "Bob's st
 ! green "$out/client-hp.png" $(st_at "$out/client-hp.st" $ST_OUT) || fail "Bob's stamina bar is too full (the spend of 9 should be refused)"
 green "$out/host-hp.png" $(st_at "$out/host-hp.st" $ST_IN) || fail "the GM does not see Bob's stamina bar"
 ! green "$out/host-hp.png" $(st_at "$out/host-hp.st" $ST_OUT) || fail "the GM sees a too full stamina bar for Bob"
+
+# Parties: outside a party Bob's HUD keeps showing his own character (-5/20) when he selects the GM's; once both
+# are in "Heroes" it shows the GM's character (10/10)
+red "$out/client-noparty.png" $(hp_at "$out/client-noparty.hp" $HP_NEG) || fail "Bob's HUD showed the GM's character outside a party"
+red "$out/client-party.png" $(hp_at "$out/client-party.hp" $HP_IN) || fail "Bob does not see his party member's HP"
+! red "$out/client-party.png" $(hp_at "$out/client-party.hp" $HP_NEG) || fail "Bob's HUD still shows his own character after joining a party"
 
 if [ "$mode" = relay ]; then
     grep -q linked "$out/relay.log" || fail "the client did not come through the relay (see $out/relay.log)"

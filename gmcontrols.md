@@ -157,7 +157,8 @@ footprint (old large → Huge, old huge and gargantuan → Gigantic).
 - **HUD** at the bottom centre of the window (see [section 16](#16-display-and-comfort)). It shows one character:
   - the selected one; if several are selected, the oldest, and the tab says `+N` for the others;
   - with nothing selected, a player sees their own oldest character; you see none (the bars stay empty).
-  - A player's HUD only ever shows characters they own: if they select someone else's, it still shows their own.
+  - A player's HUD shows characters they own and characters in a party with one of theirs (see **Parties**); if
+    they select anyone else's, it still shows their own.
   - The tab above the panel shows the name, with "(dead)" at −max HP or "(exhausted)" at 0 stamina or below.
     Its ✕ clears the selection.
   - A red HP bar with `current/max` and a line in the middle where the character becomes injured. Left of its
@@ -167,6 +168,26 @@ footprint (old large → Huge, old huge and gargantuan → Gigantic).
     left in the same way).
   - When HP or stamina changes, the bar slides to the new value; a loss leaves a lighter part for a moment that
     shows how much was lost.
+
+### Parties
+
+| Command | Short | Action |
+|---|---|---|
+| `:c party <name>` | `pt` | Put the selected characters into a party, or the new one when creating (`:c name Mao party Heroes`). Quotes for spaces: `:c party "Silver Hand"`. 1 to 32 bytes. |
+| `:c party` | `pt` | As the last option, with no name after it: take the selected characters out of their party |
+| `:party` | | List the parties: `Heroes: Mao (anna), Kiri (ben), Brann (NPC)` |
+
+- A party is a name on characters; NPCs (characters without an owner) can be in one. A character is in at most
+  one party. Names ignore case: "Heroes" and "heroes" are the same party.
+- Only you set parties. A player's `:c party` says "Only the GM can do that".
+- The word after `party` is always the name: `:c party size 3` makes a party called "size". Only `party` at the end
+  of the line leaves the party.
+- Your log shows each change, e.g. `Mao: party Heroes` or `Mao: no party`.
+- Players see the HUD (HP and stamina) of every character that shares a party with one of their own, when they
+  select it. Party members still can't change each other's characters.
+- `:party` lists parties in creation order. Players see only the parties their own characters are in. With
+  nothing to list it says "No parties" (players: "None of your characters is in a party").
+- This only decides what the HUD shows: every player's game receives all HP values.
 
 ### Delete
 
@@ -388,11 +409,11 @@ Players can:
 - use the measure and attack tools;
 - save a copy of the table;
 - change the HP, stamina and name of their own characters (`:c hp`, `damage`, `heal`, `stamina`, `spend`, `recover`, `name`), and give max stamina in a request for a new character;
-- change their own camera, zoom, theme and HUD (`:hud`), and see the HP and stamina of their own characters only.
+- change their own camera, zoom, theme and HUD (`:hud`), and see the HP and stamina of their own characters and of the members of their parties (select them), and list their parties with `:party`.
 
 Everything else is yours, including:
 - creating characters directly, editing characters' other stats, deleting characters, and walls;
-- giving characters to players;
+- giving characters to players, and putting characters into parties (`:c party`);
 - the initiative order (apart from `:i next`);
 - waypoints, the background and the grid;
 - `:gm`, `:load`, kicking and banning.
