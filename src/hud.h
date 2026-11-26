@@ -118,7 +118,8 @@ void hud_set_bar(const char *key, const HudBar *bar);
 void hud_set_pill(const char *key, const char *label, const char *value);
 void hud_set_slider(const char *key, const char *label, int value, int min, int max);
 void hud_set_slot(const char *key, int index, const HudSlot *slot); /* other slots of that key stay */
-const HudValue *hud_value(const char *key); /* published this frame under key, or NULL */
+/* Published this frame under key, or NULL. The pointer is valid until the next hud_begin_frame. */
+const HudValue *hud_value(const char *key);
 
 typedef struct {
     bool shown;
@@ -152,7 +153,7 @@ void hud_draw(void);
 typedef enum { HUD_EV_TARGET_CLOSED, HUD_EV_SLOT_USED, HUD_EV_SLIDER_CHANGED } HudEventType;
 typedef struct {
     HudEventType type;
-    const char *key; /* the element's key; NULL for HUD_EV_TARGET_CLOSED */
+    const char *key; /* the config's static key string (compare with strcmp); NULL for HUD_EV_TARGET_CLOSED */
     int slot;        /* HUD_EV_SLOT_USED: 0..9 */
     int value;       /* HUD_EV_SLIDER_CHANGED */
 } HudEvent;

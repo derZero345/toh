@@ -14,6 +14,7 @@ static const struct { const char *key, *file; } ICONS[] = {
 static Texture *textures[NICONS];
 
 void hud_icons_init(const char *resource_dir) {
+    hud_icons_free(); /* a second init must not leak the first set */
     for (int i = 0; i < NICONS; i++) {
         char path[1024];
         snprintf(path, sizeof(path), "%s/images/hud/%s", resource_dir, ICONS[i].file);
