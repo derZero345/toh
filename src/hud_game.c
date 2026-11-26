@@ -1,6 +1,7 @@
 /* The HUD adapter: chooses the character, publishes the values the config's keys name, and turns HUD events into
  * game actions. This is the only HUD file that touches game state (see hud.h). */
 #include "hud_game.h"
+#include "party.h"
 #include "session.h"
 
 #include <stdio.h>
@@ -11,10 +12,14 @@ static unsigned frame = 1; /* counts updates; Entity.panelFrame 0 means never sh
 
 /* ---- which character ---- */
 
+static bool mine(const Entity *e) {
+    return e && e->type == ENTITY_CHARACTER && e->owner[0] && strcasecmp(e->owner, session_my_name()) == 0;
+}
+
 bool hud_can_see(const Entity *e) {
     if (!e || e->type != ENTITY_CHARACTER) return false;
     if (!session_is_client()) return true;
-    return e->owner[0] && strcasecmp(e->owner, session_my_name()) == 0;
+    return mine(e) || party_visible(e, session_my_name());
 }
 
 Entity *hud_pick_character(int *others, bool *from_selection) {
@@ -33,7 +38,7 @@ Entity *hud_pick_character(int *others, bool *from_selection) {
     if (best || !session_is_client()) return best;
     for (int i = 0; i < gh->entities.count; i++) {
         Entity *e = gh->entities.items[i];
-        if (hud_can_see(e) && (!best || e->id < best->id)) best = e;
+        if (mine(e) && (!best || e->id < best->id)) best = e;
     }
     return best;
 }

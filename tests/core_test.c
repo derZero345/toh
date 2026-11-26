@@ -7,6 +7,7 @@
 #include "image.h"
 #include "netmsg.h"
 #include "ops.h"
+#include "party.h"
 #include "savefmt.h"
 
 #include <limits.h>
@@ -1039,6 +1040,63 @@ static void test_bar_anim(void) {
     CHECK(bar_fraction(10, 20) == 0.5f && bar_fraction(-30, 20) == -1.0f && bar_fraction(5, 0) == 0.0f);
 }
 
+static void test_parties(void) {
+    reset_table();
+    stub_client = false;
+    Entity *mao = add_character((Hex){ 0, 0 }, 3, "alice"); /* the stub player is "alice" */
+    Entity *kiri = add_character((Hex){ 0, 2 }, 3, "ben");
+    Entity *brann = add_character((Hex){ 0, 4 }, 3, "");     /* an NPC */
+    Entity *orc = add_character((Hex){ 0, 6 }, 3, "");
+    Entity *zed = add_character((Hex){ 0, 8 }, 3, "carl");
+    snprintf(mao->name, sizeof(mao->name), "Mao");
+    snprintf(kiri->name, sizeof(kiri->name), "Kiri");
+    snprintf(mao->party, sizeof(mao->party), "Heroes");
+    snprintf(kiri->party, sizeof(kiri->party), "heroes"); /* names ignore case */
+    snprintf(brann->party, sizeof(brann->party), "Heroes");
+    snprintf(zed->party, sizeof(zed->party), "Villains");
+
+    CHECK(party_shared(mao, kiri) && party_shared(mao, brann) && !party_shared(mao, zed) && !party_shared(mao, orc));
+    CHECK(!party_shared(orc, orc)); /* no party is not a party */
+    CHECK(party_visible(kiri, "alice") && party_visible(brann, "ALICE") && party_visible(mao, "alice"));
+    CHECK(!party_visible(zed, "alice") && !party_visible(orc, "alice") && !party_visible(kiri, "nobody"));
+
+    /* the HUD: players see their party; with nothing selected still their own character */
+    stub_client = true;
+    CHECK(hud_can_see(mao) && hud_can_see(kiri) && hud_can_see(brann));
+    CHECK(!hud_can_see(zed) && !hud_can_see(orc));
+    da_clear(&app.selectedEntities);
+    int others;
+    bool sel;
+    CHECK(hud_pick_character(&others, &sel) == mao && !sel);
+    da_push(&app.selectedEntities, brann->id);
+    da_push(&app.selectedEntities, zed->id);
+    CHECK(hud_pick_character(&others, &sel) == brann && sel && others == 0);
+    da_clear(&app.selectedEntities);
+    mao->party[0] = '\0'; /* she left: Kiri is hidden again */
+    CHECK(!hud_can_see(kiri) && !hud_can_see(brann) && hud_can_see(mao));
+    snprintf(mao->party, sizeof(mao->party), "Heroes");
+
+    /* :party lists parties in creation order, spelled as on their oldest member */
+    char want[160];
+    int before = stub_log_count;
+    party_log(NULL); /* the GM: both parties, Villains last */
+    snprintf(want, sizeof(want), "Villains: Character #%u (carl)", zed->id);
+    CHECK(stub_log_count == before + 2 && !strcmp(stub_last_log, want));
+    before = stub_log_count;
+    party_log("alice"); /* a player: only hers */
+    CHECK(stub_log_count == before + 1);
+    snprintf(want, sizeof(want), "Heroes: Mao (alice), Kiri (ben), Character #%u (NPC)", brann->id);
+    CHECK(!strcmp(stub_last_log, want));
+    party_log("dave");
+    CHECK(!strcmp(stub_last_log, "None of your characters is in a party"));
+    entities_delete_type(2);
+    party_log(NULL);
+    CHECK(!strcmp(stub_last_log, "No parties"));
+
+    stub_client = false;
+    reset_table();
+}
+
 static void test_hud_icons(void) {
     CHECK(hud_icon("placeholder") == NULL); /* not loaded yet */
     hud_icons_init("resources");
@@ -1614,6 +1672,7 @@ int main(void) {
     test_stamina();
     test_party_ops();
     test_bar_anim();
+    test_parties();
     test_hud_icons();
     test_hud_widgets();
     test_hud_values();

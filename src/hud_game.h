@@ -11,8 +11,8 @@ void hud_game_shutdown(void);
  * frame while bars move, else 0. True while a bar is still moving. */
 bool hud_game_update(float dt);
 void hud_game_refresh_screen(void); /* sets the HUD's screen now (scripts ask for part rectangles before a frame) */
-/* May the viewer see this character's HP? The GM (or playing alone): any character; a player: their own.
- * Parties will extend this. */
+/* May the viewer see this character's HP? The GM (or playing alone): any character; a player: their own and
+ * those in a party with one of their own (party.h). */
 bool hud_can_see(const Entity *e);
 /* The character the HUD shows, or NULL. *others: how many more visible characters are selected;
  * *from_selection: it is selected (else it is the player's own oldest character). */
