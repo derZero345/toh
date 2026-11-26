@@ -116,7 +116,7 @@ as it scaled the old panel. Base values (scale 1) live in `hud_theme.c`; the one
 | Token | Value |
 |---|---|
 | margin to window edge / console | 12 |
-| panel padding / row gap | 10 / 6 |
+| panel padding / row gap / gap between elements | 10 / 6 / 8 |
 | panel corner radius | 10 |
 | hotbar slot size / gap | 44 / 6 |
 | HP bar height / thin bar height | 20 / 12 |
@@ -171,7 +171,8 @@ The HUD has its own dark style for readability on any map; it does not follow th
 
 1. Resources: stat pill `"pill.left"` (placeholder, grey) · two-sided HP bar `"hp"` (red) · stat pill
    `"pill.right"` (placeholder, grey).
-2. Stamina: thin bar `"stamina"` (green).
+2. Stamina: thin two-sided bar `"stamina"` (green). Two-sided because `:c stamina <n>` can set stamina below 0,
+   which the old panel drew to the left like HP. Both bars are centred in their rows, so their 0 points line up.
 3. Control: slider `"value"` (gold), label "Value", 0–100, starting at 50.
 4. Hotbar `"hotbar"`: 10 slots, all with the placeholder icon. Slot 1 available, slot 2 available with count 3,
    slot 3 on cooldown 2, slot 4 unavailable, slots 5–10 empty.
@@ -219,7 +220,8 @@ Only while the HUD is visible:
   On a slot: pressed state; releasing over the same slot uses it. On ✕: target closed. On the slider: it jumps to
   the pointer and follows it while the button is held, also outside the HUD, sending an event for each new value.
 - Right button and wheel over the HUD: consumed, nothing happens.
-- Mouse motion: hover state for slots and ✕.
+- Mouse motion: hover state for slots and ✕. Motion is only kept from the map while a press that started on the
+  HUD is held (slider drag); otherwise the map still sees it, so a camera drag can cross the HUD.
 - Keys 1–9, 0 and keypad 1–9, 0 while the console is closed: use that slot. Empty, unavailable and cooling-down
   slots do nothing.
 
