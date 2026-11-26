@@ -8,6 +8,7 @@
  * useful for automated testing:
  *   @move X Y        mouse motion        @click X Y / @rclick X Y   mouse button
  *   @drag X Y        motion with LMB     @wheel N                   wheel notches
+ *   @rdown X Y / @rdrag X Y / @rup X Y  right button press, motion with it held, release
  *   @key [mods+]KEY  key press, e.g. @key ctrl+return, @key alt+c, @key lshift+down
  *   @down KEY / @up KEY                  hold or release a key
  *   @type TEXT       typed text          @shot FILE  save a screenshot
@@ -19,6 +20,9 @@
  *   @hudrect PART FILE  write "x y w h" of a HUD part (hud_part_rect: an element key, hotbar.N, panel, tab,
  *                    tab.close) to FILE
  *   @clickhud PART   left click in the middle of a HUD part
+ *   @radialpoint PART FILE  write "x y" of an open radial menu part (radial_part_point: center, ring.N,
+ *                    parent.N) to FILE
+ *   @clickradial PART  left click on a radial menu part
  * A wait that times out ends the program with exit status 3.
  * --auto-file makes every file dialog (images, :save, :load) return the given file.
  * --port sets the port :host listens on (default 41234). TOH_NO_PORTMAP=1 skips the router.
@@ -27,6 +31,7 @@
 #include "font.h"
 #include "hud.h"
 #include "hud_game.h"
+#include "radial_game.h"
 #include "session.h"
 #include "vk_renderer.h"
 
@@ -121,6 +126,10 @@ static int run_script_line(const char *line, const char **screenshot) {
         push_motion(x, y, 0);
     } else if (!strcmp(cmd, "drag")) {
         push_motion(x, y, SDL_BUTTON_LMASK);
+    } else if (!strcmp(cmd, "rdown") || !strcmp(cmd, "rup")) {
+        push_mouse_button(x, y, SDL_BUTTON_RIGHT, cmd[1] == 'd');
+    } else if (!strcmp(cmd, "rdrag")) {
+        push_motion(x, y, SDL_BUTTON_RMASK);
     } else if (!strcmp(cmd, "click") || !strcmp(cmd, "rclick")) {
         Uint8 b = cmd[0] == 'r' ? SDL_BUTTON_RIGHT : SDL_BUTTON_LEFT;
         push_motion(x, y, 0);
@@ -188,6 +197,26 @@ static int run_script_line(const char *line, const char **screenshot) {
                 fprintf(stderr, "@hudrect: cannot write \"%s\"\n", file);
             } else {
                 fprintf(f, "%d %d %d %d\n", (int)r.x, (int)r.y, (int)r.w, (int)r.h);
+                fclose(f);
+            }
+        }
+    } else if (!strcmp(cmd, "radialpoint") || !strcmp(cmd, "clickradial")) {
+        char part[64] = { 0 }, file[256] = { 0 };
+        sscanf(arg, "%63s %255s", part, file);
+        float px, py;
+        radial_game_refresh_screen();
+        if (!radial_part_point(part, &px, &py)) {
+            fprintf(stderr, "@%s: no radial menu part \"%s\"\n", cmd, part);
+        } else if (cmd[0] == 'c') {
+            push_motion(px, py, 0);
+            push_mouse_button(px, py, SDL_BUTTON_LEFT, true);
+            push_mouse_button(px, py, SDL_BUTTON_LEFT, false);
+        } else {
+            FILE *f = file[0] ? fopen(file, "w") : NULL;
+            if (!f) {
+                fprintf(stderr, "@radialpoint: cannot write \"%s\"\n", file);
+            } else {
+                fprintf(f, "%d %d\n", (int)px, (int)py);
                 fclose(f);
             }
         }

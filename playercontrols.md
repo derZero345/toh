@@ -102,12 +102,24 @@ Pick a tool in the toolbox on the left, or with these shortcuts:
 | Alt + V | Line attack | Right click the start point; the line follows the mouse |
 | Alt + A | Area attack | Right click the centre; the circle grows with the mouse |
 | Alt + C | Cone attack | Right click the tip; Shift + mouse wheel changes the cone angle |
-| Alt + X | Drag | Hold the right mouse button to move the view |
+| Alt + X | Drag | Hold the right mouse button to move the view; a right click opens the tile menu (section 9) |
 
 Hold Ctrl while aiming to aim at the exact mouse position instead of the middle of a tile. Everyone at the
 table sees your selection, measurements and attacks in your color.
 
-## 9. Other useful commands
+## 9. The tile menu
+
+With the Drag tool (selected at start), **right click** a tile without moving the mouse: a ring menu opens
+around it.
+
+- **Left click** an entry to use it. An entry with a small triangle opens a second ring around the first; the
+  centre button (or the highlighted entry) then goes back.
+- Hover an entry to see its name. A greyed-out entry can't be used right now; hovering it says why.
+- **Esc**, a click outside or another right click closes the menu. A right click on another tile opens it there.
+
+The entries are placeholders: choosing one writes `Menu: <entry> on [row|col]` to the log.
+
+## 10. Other useful commands
 
 | Command | Action |
 |---|---|
@@ -118,7 +130,7 @@ table sees your selection, measurements and attacks in your color.
 | `:q` / `:q!` | Quit / quit without saving |
 | `:h [command]` | Help |
 
-## 10. Comfort
+## 11. Comfort
 
 | Input | Action |
 |---|---|

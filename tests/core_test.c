@@ -4,6 +4,8 @@
 #include "baranim.h"
 #include "hud.h"
 #include "hud_game.h"
+#include "radial.h"
+#include "radial_game.h"
 #include "image.h"
 #include "netmsg.h"
 #include "ops.h"
@@ -1681,6 +1683,223 @@ static void test_text_wrap(void) {
     CHECK(text_wrap(FONT_PLAIN, 10, "abc", 1, sp, 8) == 3 && span_is("abc", sp[2], "c"));
 }
 
+/* ---- radial menu ---- */
+
+static RadialEvent rad_events[16];
+static int rad_nevents;
+static void rad_record(const RadialEvent *ev) {
+    if (rad_nevents < 16) rad_events[rad_nevents++] = *ev;
+}
+
+static bool rad_click(const char *part) {
+    float x, y;
+    if (!radial_part_point(part, &x, &y)) return false;
+    radial_mouse_down(x, y);
+    radial_mouse_up(x, y);
+    return true;
+}
+
+static void rad_settle(void) {
+    for (int i = 0; i < 200 && radial_update(0.05f); i++) {}
+}
+
+static void test_radial_config(void) {
+    char err[160];
+    int nr;
+    const RadialRule *rules = radial_game_rules(&nr);
+    CHECK(radial_config_check(RADIAL_MENUS, RADIAL_NMENUS, rules, nr, err, sizeof(err)) == 0);
+
+    static const RadialEntry one[] = { { .id = "x", .icon = "i", .kind = RADIAL_ACTION } };
+    static const RadialEntry twice[] = { { .id = "x", .icon = "i" }, { .id = "x", .icon = "i" } };
+    static const RadialEntry no_id[] = { { .icon = "i" } };
+    static const RadialEntry no_icon[] = { { .id = "x" } };
+    static const RadialEntry bad_rule[] = { { .id = "x", .icon = "i", .enabled_if = "!nope" } };
+    static const RadialEntry bad_kind[] = { { .id = "x", .icon = "i", .kind = RADIAL_KIND_COUNT } };
+    static const RadialEntry bad_accent[] = { { .id = "x", .icon = "i", .accent = HUD_ACCENT_COUNT } };
+    static const RadialEntry empty_sub[] = { { .id = "x", .icon = "i", .kind = RADIAL_SUBMENU } };
+    static const RadialEntry action_kids[] = { { .id = "x", .icon = "i", RADIAL_CHILDREN(one) } };
+    static const RadialEntry nested_twice[] = { { .id = "x", .icon = "i", .kind = RADIAL_SUBMENU, RADIAL_CHILDREN(one) } };
+    static const RadialEntry too_many[RADIAL_MAX_ENTRIES + 1];
+    static const RadialEntry center_sub = { .id = "c", .icon = "i", .kind = RADIAL_SUBMENU, RADIAL_CHILDREN(one) };
+#define M(entries) { { "m", NULL, entries, (int)(sizeof(entries) / sizeof(entries[0])) } }
+    const RadialMenu m_ok[] = M(one), m_twice[] = M(twice), m_no_id[] = M(no_id), m_no_icon[] = M(no_icon);
+    const RadialMenu m_rule[] = M(bad_rule), m_kind[] = M(bad_kind), m_accent[] = M(bad_accent);
+    const RadialMenu m_empty[] = M(empty_sub), m_kids[] = M(action_kids), m_many[] = M(too_many);
+    const RadialMenu m_nested[] = M(nested_twice); /* "x" again inside its own submenu */
+#undef M
+    const RadialMenu m_center[] = { { "m", &center_sub, one, 1 } };
+    const RadialMenu m_two[] = { { "m", NULL, one, 1 }, { "m", NULL, one, 1 } };
+    CHECK(radial_config_check(m_ok, 1, rules, nr, err, sizeof(err)) == 0);
+    CHECK(radial_config_check(m_twice, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "twice"));
+    CHECK(radial_config_check(m_nested, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "twice"));
+    CHECK(radial_config_check(m_no_id, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "id"));
+    CHECK(radial_config_check(m_no_icon, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "icon"));
+    CHECK(radial_config_check(m_rule, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "rule"));
+    CHECK(radial_config_check(m_kind, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "kind"));
+    CHECK(radial_config_check(m_accent, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "accent"));
+    CHECK(radial_config_check(m_empty, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "entries"));
+    CHECK(radial_config_check(m_kids, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "children"));
+    CHECK(radial_config_check(m_many, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "entries"));
+    CHECK(radial_config_check(m_center, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "centre"));
+    CHECK(radial_config_check(m_two, 2, rules, nr, err, sizeof(err)) != 0 && strstr(err, "twice"));
+    CHECK(radial_config_check(m_ok, 0, rules, nr, err, sizeof(err)) != 0);
+
+    /* depth: RADIAL_MAX_DEPTH submenu levels below the top are fine, one more is not */
+    RadialEntry chain[RADIAL_MAX_DEPTH + 2];
+    char ids[RADIAL_MAX_DEPTH + 2][8];
+    for (int i = 0; i < RADIAL_MAX_DEPTH + 2; i++) {
+        snprintf(ids[i], sizeof(ids[i]), "d%d", i);
+        chain[i] = (RadialEntry){ .id = ids[i], .icon = "i", .kind = RADIAL_SUBMENU, .children = &chain[i + 1],
+                                  .nchildren = 1 };
+    }
+    chain[RADIAL_MAX_DEPTH + 1] = (RadialEntry){ .id = ids[RADIAL_MAX_DEPTH + 1], .icon = "i" };
+    const RadialMenu deep[] = { { "m", NULL, chain, 1 } };
+    CHECK(radial_config_check(deep, 1, rules, nr, err, sizeof(err)) != 0 && strstr(err, "deeper"));
+    chain[RADIAL_MAX_DEPTH] = (RadialEntry){ .id = ids[RADIAL_MAX_DEPTH], .icon = "i" };
+    CHECK(radial_config_check(deep, 1, rules, nr, err, sizeof(err)) == 0);
+
+    /* segment geometry: 0 at the top, clockwise */
+    CHECK(radial_segment_at(4, 0, -10) == 0 && radial_segment_at(4, 10, 0) == 1);
+    CHECK(radial_segment_at(4, 0, 10) == 2 && radial_segment_at(4, -10, 0) == 3);
+    CHECK(radial_segment_at(1, 3, 7) == 0 && radial_segment_at(6, 1, -10) == 0);
+    float a0, a1;
+    radial_segment_angles(0, 4, &a0, &a1);
+    CHECK(near(a0, -135, 0.01f) && near(a1, -45, 0.01f));
+}
+
+static void test_radial_menu(void) {
+    const HudTheme *t = &HUD_THEME;
+    reset_table();
+    stub_client = false;
+    radial_game_init();
+    radial_use_config(NULL, 0);
+    radial_set_event_handler(rad_record);
+    RadialScreen scr = { 1000, 800, 1 };
+    radial_set_screen(&scr);
+    RadialTarget tg = { 3, 4 }; /* an empty tile */
+    float x, y;
+
+    CHECK(!radial_open("nope", &tg, 500, 400) && !radial_is_open() && !radial_menu_id());
+    CHECK(radial_open("tile", &tg, 500, 400) && radial_is_open() && !strcmp(radial_menu_id(), "tile"));
+    CHECK(radial_update(0)); /* it animates in */
+    CHECK(radial_part_point("ring.6", &x, &y));          /* the GM entry: the GM sees it */
+    CHECK(!radial_part_point("ring.7", &x, &y) && !radial_part_point("parent.1", &x, &y));
+    CHECK(!radial_part_point("ring.0", &x, &y) && !radial_part_point("ring.x", &x, &y));
+    CHECK(radial_part_point("ring.1", &x, &y) && near(x, 500, 0.5f) && y < 400); /* the first one is at the top */
+    CHECK(radial_part_point("center", &x, &y) && near(x, 500, 0.01f) && near(y, 400, 0.01f));
+
+    /* an action: one event with its id, the menu and the hex, then the menu closes */
+    rad_nevents = 0;
+    CHECK(rad_click("ring.1"));
+    CHECK(rad_nevents == 2 && rad_events[0].type == RADIAL_EV_ACTION && !strcmp(rad_events[0].id, "action.1"));
+    CHECK(!strcmp(rad_events[0].menu, "tile") && rad_events[0].target.row == 3 && rad_events[0].target.col == 4);
+    CHECK(rad_events[1].type == RADIAL_EV_CLOSED && !radial_is_open());
+    CHECK(radial_menu_id() != NULL); /* still fading out */
+    rad_settle();
+    CHECK(!radial_menu_id() && !radial_update(0.1f));
+
+    /* a disabled entry: nothing happens, the menu stays */
+    radial_open("tile", &tg, 500, 400);
+    rad_nevents = 0;
+    CHECK(rad_click("ring.4") && rad_nevents == 0 && radial_is_open());
+
+    /* submenus, without waiting for the animations: clicks go to where the rings are going */
+    CHECK(rad_click("ring.3") && radial_depth() == 1 && !strcmp(radial_submenu_id(), "menu.a"));
+    CHECK(radial_part_point("parent.3", &x, &y) && radial_part_point("ring.7", &x, &y));
+    CHECK(rad_click("ring.3") && radial_depth() == 2 && !strcmp(radial_submenu_id(), "a.more")); /* nested */
+    CHECK(radial_part_point("parent.7", &x, &y) && radial_part_point("ring.3", &x, &y));
+    CHECK(rad_click("center") && radial_depth() == 1 && !strcmp(radial_submenu_id(), "menu.a")); /* back */
+    CHECK(rad_click("parent.3") && radial_depth() == 0 && !radial_submenu_id()); /* the open one again: back */
+    CHECK(rad_click("ring.3") && rad_click("parent.5") && radial_depth() == 1); /* another one: switched */
+    CHECK(!strcmp(radial_submenu_id(), "menu.b"));
+    rad_settle();
+    CHECK(rad_click("ring.4") && rad_nevents == 2 && !strcmp(rad_events[0].id, "b.4") && !radial_is_open());
+    rad_settle();
+
+    /* a press released elsewhere does nothing; a gap inside the menu doesn't close it; outside does */
+    radial_open("tile", &tg, 500, 400);
+    rad_nevents = 0;
+    CHECK(radial_part_point("ring.1", &x, &y) && radial_mouse_down(x, y) && radial_mouse_up(x + 200, y));
+    CHECK(rad_nevents == 0 && radial_is_open());
+    float gap = (t->radialCenterR + t->radialAloneIn - t->radialSegGap / 2) / 2;
+    CHECK(radial_mouse_down(500, 400 - gap) && radial_is_open() && radial_mouse_up(500, 400 - gap));
+    CHECK(radial_contains(500, 400 - gap) && !radial_contains(900, 100));
+    CHECK(radial_mouse_down(900, 100) && !radial_is_open() && rad_nevents == 1);
+    CHECK(!radial_mouse_up(900, 100) && !radial_mouse_down(900, 100)); /* closed: the map gets it */
+
+    /* the centre on the top level runs the menu's own action */
+    radial_open("tile", &tg, 500, 400);
+    rad_nevents = 0;
+    CHECK(rad_click("center") && rad_nevents == 2 && !strcmp(rad_events[0].id, "center"));
+
+    /* close is animated and sent once */
+    radial_open("tile", &tg, 500, 400);
+    rad_nevents = 0;
+    radial_close();
+    radial_close();
+    CHECK(rad_nevents == 1 && rad_events[0].type == RADIAL_EV_CLOSED && !radial_is_open());
+    CHECK(!radial_mouse_move(500, 400)); /* closing: takes no input */
+
+    /* rules: a player doesn't see the GM entry; with something on the tile the entry is enabled */
+    stub_client = true;
+    CHECK(radial_open("tile", &tg, 500, 400) && radial_part_point("ring.5", &x, &y));
+    CHECK(!radial_part_point("ring.6", &x, &y));
+    stub_client = false;
+    add_wall((Hex){ 3, 4 });
+    CHECK(radial_open("tile", &tg, 500, 400));
+    rad_nevents = 0;
+    CHECK(rad_click("ring.4") && rad_nevents == 2 && !strcmp(rad_events[0].id, "action.3"));
+    CHECK(!strcmp(radial_game_menu_for((Hex){ 3, 4 }), "tile")); /* a wall is no character */
+    add_character((Hex){ 5, 5 }, 3, "");
+    CHECK(!strcmp(radial_game_menu_for((Hex){ 5, 5 }), "character"));
+    CHECK(!strcmp(radial_game_menu_for((Hex){ 9, 9 }), "tile"));
+
+    /* nothing visible: it doesn't open */
+    static const RadialEntry gm_only[] = { { .id = "g", .icon = "i", .visible_if = "gm" } };
+    const RadialMenu m[] = { { "gm", NULL, gm_only, 1 } };
+    radial_use_config(m, 1);
+    stub_client = true;
+    CHECK(!radial_open("gm", &tg, 500, 400) && !radial_is_open());
+    stub_client = false;
+    CHECK(radial_open("gm", &tg, 500, 400));
+    rad_nevents = 0;
+    CHECK(rad_click("center") && rad_nevents == 1 && rad_events[0].type == RADIAL_EV_CLOSED); /* no centre: close */
+    /* an invalid config opens nothing */
+    const RadialMenu bad[] = { { "bad", NULL, gm_only, 0 } };
+    radial_use_config(bad, 1);
+    CHECK(!radial_open("bad", &tg, 500, 400));
+    radial_use_config(NULL, 0);
+
+    /* near the window edge the menu moves inside */
+    radial_open("tile", &tg, 5, 790);
+    float e = t->radialOuterOut + t->radialHoverPop + t->radialMargin;
+    CHECK(radial_part_point("center", &x, &y) && near(x, e, 0.01f) && near(y, 800 - e, 0.01f));
+    radial_move_to(500, 400);
+    CHECK(radial_part_point("center", &x, &y) && near(x, 500, 0.01f));
+
+    /* drawing runs in every state (the stubs draw nothing, but check that the sectors are filled with convex parts) */
+    extern int stub_polys, stub_bad_polys;
+    int polys = stub_polys;
+    radial_part_point("ring.2", &x, &y);
+    CHECK(radial_mouse_move(x, y));
+    radial_draw();
+    rad_click("ring.3");
+    radial_part_point("ring.5", &x, &y);
+    radial_mouse_move(x, y); /* the disabled one: tooltip with the reason */
+    radial_draw();
+    rad_settle();
+    radial_draw();
+    radial_close();
+    radial_draw();
+    rad_settle();
+    radial_draw();
+    CHECK(stub_polys > polys + 50 && stub_bad_polys == 0);
+
+    radial_game_shutdown();
+    radial_set_event_handler(NULL);
+    reset_table();
+}
+
 int main(void) {
     test_split_args();
     test_entity_ids();
@@ -1713,6 +1932,8 @@ int main(void) {
     test_hud_input();
     test_hud_review();
     test_hud_game();
+    test_radial_config();
+    test_radial_menu();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;

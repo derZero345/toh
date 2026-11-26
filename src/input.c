@@ -2,10 +2,17 @@
 #include "app.h"
 #include "ops.h"
 #include "hud_game.h"
+#include "radial_game.h"
 
 #include <stdio.h>
 
 #define CON (&gh->console)
+
+/* A right press with the Drag tool that hasn't moved further than this (pixels) is a click: it opens the menu. */
+#define RCLICK_SLOP 5
+
+static bool rclick_pending; /* a right press with the Drag tool that may still become a click */
+static Vec2 rclick_at;
 
 static void select_entity(void);
 static void select_tile(void);
@@ -359,6 +366,7 @@ static void key_pressed(const SDL_KeyboardEvent *k) {
 
     /* always active */
     switch (key) {
+    case SDLK_ESCAPE: radial_game_close(); break;
     case SDLK_LSHIFT:
         gh->isShiftDown = true;
         if (gh->selectedEntities.count > 0) refresh_preview();
@@ -464,24 +472,41 @@ void io_handle_event(const SDL_Event *e) {
         gh->mouseActive = true;
         gh->mousePos = (Vec2){ e->button.x, e->button.y };
         if (e->button.button == SDL_BUTTON_LEFT) {
+            if (radial_game_mouse_down(gh->mousePos)) break; /* the open menu takes every left press */
             if (!hud_game_mouse_down(gh->mousePos)) lmb_pressed(); /* the HUD keeps its clicks from the map */
         } else if (e->button.button == SDL_BUTTON_RIGHT) {
+            rclick_pending = false;
+            if (radial_game_right_down(gh->mousePos)) break; /* closed the menu */
             if (hud_game_contains(gh->mousePos)) break;
             gh->RMBDown = true;
             rmb_pressed();
+            rclick_pending = gh->mode == DRAG_MODE; /* the other tools use the right button themselves */
+            rclick_at = gh->mousePos;
         }
         break;
     case SDL_EVENT_MOUSE_BUTTON_UP:
         if (e->button.button == SDL_BUTTON_LEFT) {
-            hud_game_mouse_up((Vec2){ e->button.x, e->button.y });
+            Vec2 p = { e->button.x, e->button.y };
+            if (!radial_game_mouse_up(p)) hud_game_mouse_up(p);
             gh->LMBDown = false;
         } else if (e->button.button == SDL_BUTTON_RIGHT) {
             gh->RMBDown = false;
             if (gh->mode == DRAG_MODE) gh->hasDragStart = false;
+            if (rclick_pending && gh->mode == DRAG_MODE) radial_game_open(rclick_at);
+            rclick_pending = false;
         }
         break;
     case SDL_EVENT_MOUSE_MOTION: {
         Vec2 p = { e->motion.x, e->motion.y };
+        if (rclick_pending && (p.x - rclick_at.x) * (p.x - rclick_at.x) + (p.y - rclick_at.y) * (p.y - rclick_at.y) >
+                                  RCLICK_SLOP * RCLICK_SLOP)
+            rclick_pending = false; /* a drag, not a click */
+        if (radial_game_mouse_move(p)) { /* over the open menu: nothing under it is highlighted */
+            gh->mousePos = p;
+            gh->hasTileUnderMouse = false;
+            da_clear(&gh->entityPreviewTiles);
+            break;
+        }
         if (hud_game_mouse_move(p)) { /* dragging the HUD's slider */
             gh->mousePos = p;
             if (gh->hasDragStart) gh->dragStart = p; /* a right drag must not jump after a press on the HUD */
@@ -504,7 +529,7 @@ void io_handle_event(const SDL_Event *e) {
         int notches = -y; /* Java: positive rotation = towards the user */
         if (notches == 0 && gh->isShiftDown) notches = -x;
         gh->mousePos = (Vec2){ e->wheel.mouse_x, e->wheel.mouse_y };
-        if (hud_game_contains(gh->mousePos)) break;
+        if (hud_game_contains(gh->mousePos) || radial_game_contains(gh->mousePos)) break;
         mouse_wheel(notches);
         break;
     }
@@ -519,6 +544,7 @@ void io_handle_event(const SDL_Event *e) {
         break;
     case SDL_EVENT_WINDOW_MOUSE_LEAVE:
         hud_clear_hover(); /* a held slider press stays */
+        radial_clear_hover();
         break;
     case SDL_EVENT_WINDOW_FOCUS_LOST:
         /* avoid stuck keys (a known issue of the Java version) */
@@ -526,6 +552,8 @@ void io_handle_event(const SDL_Event *e) {
         gh->WDown = gh->ADown = gh->SDown = gh->DDown = false;
         gh->LMBDown = gh->RMBDown = false;
         hud_cancel_press(); /* a release we won't see */
+        radial_cancel_press();
+        rclick_pending = false;
         gh->hasDragStart = false;
         da_clear(&gh->entityPreviewTiles);
         break;

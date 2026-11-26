@@ -253,7 +253,7 @@ button.
 
 | Shortcut | Tool | Use |
 |---|---|---|
-| Alt + X | Drag | Hold the right mouse button and drag to move the view |
+| Alt + X | Drag | Hold the right mouse button and drag to move the view; a right click without moving opens the tile menu (below) |
 | Alt + S | Measure | Right click to start, right click to finish; several measurements add up (5 ft per tile, total shown at the mouse). Finishing on the start point clears all measurements. |
 | Alt + V | Line attack | Right click the start; the line follows the mouse and highlights the tiles it hits |
 | Alt + A | Area attack | Right click the centre; the radius follows the mouse |
@@ -262,6 +262,29 @@ button.
 Hold Ctrl while aiming to aim at the exact mouse position instead of a tile's middle. Switching tools removes the
 current attack and any unfinished measurement. In a session everyone sees your selection, measurements and attacks
 in your color (the GM is gold).
+
+### The tile menu
+
+With the Drag tool (the tool selected at start), **right click** a tile without moving the mouse (moving more than
+a few pixels is a drag): a ring menu opens around that tile. It stays on the tile when the view moves, and moves
+inside the window near the edges.
+
+| Input | Action |
+|---|---|
+| Left click an entry | Use it. The menu closes. |
+| Left click an entry with a small triangle | Open its submenu: the ring shrinks into an inner ring, the submenu's ring opens around it, and the entry that opened it stays highlighted |
+| Left click the centre | On the first ring: the menu's main action. In a submenu: back one level |
+| Left click the highlighted entry in the inner ring | Back one level |
+| Left click another triangle entry in the inner ring | Switch the outer ring to that submenu |
+| Hover an entry | Its name; a greyed-out entry can't be used right now and says why |
+| Esc, a left click outside, or a right click on the menu or its tile | Close the menu |
+| Right click another tile | Close the menu and open it on that tile |
+
+A tile with a character on it gets a slightly different menu than an empty one. The entries are placeholders:
+choosing one writes `Menu: <entry> on [row|col]` to the log. "Action 3" (and "Option A4" in Menu A) needs something
+on the tile, and "GM action" is only shown to you. While the menu is open, a left click never reaches the map (outside
+the menu it only closes it), and the mouse wheel and the pointer over the menu don't either. The menu needs a mouse:
+keyboard-only play can't open it.
 
 ## 11. Waypoints and teleport
 
@@ -406,7 +429,7 @@ Players can:
 - roll dice (at most 10 rolls in 10 seconds);
 - ask for existing characters with `:claim`, or for a new one of their own with `:c` (you answer y/n);
 - jump to waypoints and coordinates;
-- use the measure and attack tools;
+- use the measure and attack tools, and the tile menu (without the entries only you see);
 - save a copy of the table;
 - change the HP, stamina and name of their own characters (`:c hp`, `damage`, `heal`, `stamina`, `spend`, `recover`, `name`), and give max stamina in a request for a new character;
 - change their own camera, zoom, theme and HUD (`:hud`), and see the HP and stamina of their own characters and of the members of their parties (select them), and list their parties with `:party`.

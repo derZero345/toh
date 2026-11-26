@@ -11,6 +11,13 @@ const HudTheme HUD_THEME = {
     .unavailableAlpha = 0.35f, .cooldownFontScale = 1.3f, .closeInset = 0.28f, .closeLine = 2, .sliderTextPad = 4,
     .tabH = 28, .tabGap = 6, .tabPad = 8, .tabIcon = 18, .closeSize = 18,
     .shadowStep = 2, .shadowLayers = 3,
+    .radialCenterR = 24, .radialAloneIn = 30, .radialAloneOut = 82,
+    .radialInnerIn = 30, .radialInnerOut = 64, .radialOuterIn = 70, .radialOuterOut = 122,
+    .radialSegGap = 4, .radialBand = 3, .radialBandHover = 5, .radialHoverPop = 4,
+    .radialIcon = 26, .radialIconFill = 0.6f, .radialMarker = 5, .radialMargin = 8,
+    .radialTipPad = 6, .radialTipOffset = 18,
+    .radialDimAlpha = 0.45f, .radialDisabledAlpha = 0.35f, .radialOpenScale = 0.6f,
+    .radialOpenMs = 180, .radialMoveMs = 200, .radialCloseMs = 120,
     .panel = { 0x12, 0x12, 0x16, 217 }, /* about 85 % */
     .border = { 0xA0, 0x8A, 0x5A, 128 }, /* muted brass */
     .shadow = { 0, 0, 0, 40 },
@@ -25,6 +32,14 @@ const HudTheme HUD_THEME = {
     .veil = { 0x30, 0x30, 0x34, 170 },
     .hover = { 0xF0, 0xE6, 0xC8, 255 },
     .pressed = { 0xC8, 0xA4, 0x5A, 255 },
+    .radialSeg = { 0x16, 0x16, 0x1C, 225 },
+    .radialSegHover = { 0x2C, 0x2A, 0x30, 235 },
+    .radialSegPress = { 0x3A, 0x34, 0x2C, 240 },
+    .radialSegDim = { 0x0E, 0x0E, 0x12, 215 },
+    .radialSegDisabled = { 0x1A, 0x1A, 0x1E, 170 }, /* semi-transparent */
+    .radialCenter = { 0x12, 0x12, 0x16, 235 },
+    .radialDisabledBand = { 0x70, 0x70, 0x78, 255 },
+    .radialWhy = { 0xE8, 0xC8, 0x90, 230 }, /* the tooltip's "why disabled" line */
     .accent = {
         [HUD_ACCENT_RED] = { 200, 30, 30, 255 },    [HUD_ACCENT_GREEN] = { 40, 160, 60, 255 },
         [HUD_ACCENT_BLUE] = { 60, 120, 210, 255 },  [HUD_ACCENT_GOLD] = { 200, 160, 70, 255 },

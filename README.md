@@ -38,6 +38,7 @@ in the Java version.
 |---|---|
 | Left click (or Enter in keyboard mode) | select tile / entity |
 | Right click (or Right-Shift + Enter) | tool action (drag start, measure point, place attack) |
+| Right click without moving (Drag tool) | tile menu: a ring of entries around the tile; Esc / click outside closes |
 | Shift + left click | move the selected character inside its (green) range |
 | Hold Left Shift | preview footprint and path of the selected character |
 | Ctrl + click / drag | multi-select |
@@ -159,7 +160,7 @@ screenshot, which makes headless-ish regression checks possible:
 ```
 
 See the comment at the top of `src/main.c` for the full action list (including `@waitnet`, `@waitfile`,
-`@waitbars` (waits until the HUD bars stop moving), `@hudrect` / `@clickhud` (HUD part positions) and `@touch`, which `tests/e2e_net.sh` uses to synchronize a host and a client).
+`@waitbars` (waits until the HUD bars stop moving), `@hudrect` / `@clickhud` (HUD part positions), `@radialpoint` / `@clickradial` (radial menu parts), `@rdown` / `@rdrag` / `@rup` (a right drag) and `@touch`, which `tests/e2e_net.sh` uses to synchronize a host and a client).
 
 ## Differences from the Java version
 

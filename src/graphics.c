@@ -2,6 +2,7 @@
 #include "app.h"
 #include "draw.h"
 #include "hud_game.h"
+#include "radial_game.h"
 #include "image.h"
 #include "ops.h"
 #include "netmsg.h"
@@ -69,6 +70,7 @@ bool gfx_init(App *app, const char *resource_dir) {
     console_init(&gh->console);
     toolbox_init(&gh->toolbox, resource_dir);
     hud_game_init(resource_dir);
+    radial_game_init();
     gfx_change_theme("light");
     return true;
 }
@@ -98,6 +100,7 @@ void gfx_shutdown(void) {
     da_free(&gh->dialog.ids);
     da_free(&gh->confirm.tiles);
     vkr_texture_release(gh->backgroundImage);
+    radial_game_shutdown();
     hud_game_shutdown();
     toolbox_free(&gh->toolbox);
     console_free(&gh->console);
@@ -890,6 +893,20 @@ static void draw_hud(void) {
     hud_draw();
 }
 
+/* ---- radial menu (on top of everything) --------------------------------------------------------------------- */
+
+static Uint64 radial_last_ms;
+static bool radial_moving; /* the menu animated in the previous frame */
+
+static void draw_radial(void) {
+    Uint64 now = SDL_GetTicks();
+    float dt = radial_moving ? (float)(now - radial_last_ms) / 1000.0f : 0; /* idle: start at this frame */
+    if (dt > 0.1f) dt = 0.1f;
+    radial_last_ms = now;
+    radial_moving = radial_game_update(dt);
+    radial_draw();
+}
+
 bool gfx_draw_frame(const char *screenshot_path) {
     bool theme_fading = theme_fade_step();
     const Theme *t = gfx_theme();
@@ -908,7 +925,8 @@ bool gfx_draw_frame(const char *screenshot_path) {
     draw_toolbox();
     draw_hud();
     draw_console();
+    draw_radial();
 
     dr_end_and_render(t->primary, screenshot_path);
-    return bars_moving || theme_fading;
+    return bars_moving || theme_fading || radial_moving;
 }

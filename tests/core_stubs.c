@@ -98,6 +98,26 @@ void dr_fill_rect(float x, float y, float w, float h, Color c) {
     stub_fill_ring[stub_fills++ % 32] = (StubFill){ x, y, w, h, c };
 }
 void dr_polygon(const Vec2 *pts, int n, float th, Color c) { (void)pts, (void)n, (void)th, (void)c; }
+/* dr_fill_polygon only fills convex polygons: count the calls and the ones that aren't convex (or wind both ways) */
+int stub_polys, stub_bad_polys;
+void dr_fill_polygon(const Vec2 *pts, int n, Color c) {
+    (void)c;
+    stub_polys++;
+    int sign = 0;
+    for (int i = 0; i < n; i++) {
+        Vec2 a = pts[i], b = pts[(i + 1) % n], d = pts[(i + 2) % n];
+        double cross = (b.x - a.x) * (d.y - b.y) - (b.y - a.y) * (d.x - b.x);
+        int sg = cross > 1e-6 ? 1 : cross < -1e-6 ? -1 : 0;
+        if (sg && sign && sg != sign) {
+            stub_bad_polys++;
+            return;
+        }
+        if (sg) sign = sg;
+    }
+}
+void dr_stroke_oval(float x, float y, float w, float h, float th, Color c) {
+    (void)x, (void)y, (void)w, (void)h, (void)th, (void)c;
+}
 void dr_stroke_rect(float x, float y, float w, float h, float th, Color c) {
     (void)x, (void)y, (void)w, (void)h, (void)th, (void)c;
 }
