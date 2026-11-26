@@ -50,6 +50,19 @@ void vkr_texture_release(Texture *t) {
     if (--*r < 0) stub_bad_releases++;
 }
 
+/* Textures the code under test creates (HUD icons): distinct fake pointers with one reference each. */
+static char stub_created[8];
+static int stub_ncreated;
+Texture *vkr_texture_create(int w, int h, const uint8_t *pixels, bool alpha_only) {
+    (void)w;
+    (void)h;
+    (void)pixels;
+    (void)alpha_only;
+    Texture *t = (Texture *)&stub_created[stub_ncreated++ % 8];
+    vkr_texture_retain(t);
+    return t;
+}
+
 void gfx_grid_offset(int dx, int dy) {
     (void)dx;
     (void)dy;

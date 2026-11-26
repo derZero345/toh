@@ -2,6 +2,7 @@
  * op effects (ops_apply). Run with `make test`. Stubs: tests/core_stubs.c. */
 #include "app.h"
 #include "baranim.h"
+#include "hud.h"
 #include "image.h"
 #include "netmsg.h"
 #include "ops.h"
@@ -976,6 +977,16 @@ static void test_bar_anim(void) {
     CHECK(bar_fraction(10, 20) == 0.5f && bar_fraction(-30, 20) == -1.0f && bar_fraction(5, 0) == 0.0f);
 }
 
+static void test_hud_icons(void) {
+    CHECK(hud_icon("placeholder") == NULL); /* not loaded yet */
+    hud_icons_init("resources");
+    Texture *t = hud_icon("placeholder");
+    CHECK(t != NULL && stub_refs(t) == 1);
+    CHECK(hud_icon("nope") == NULL);
+    hud_icons_free();
+    CHECK(hud_icon("placeholder") == NULL && stub_refs(t) == 0);
+}
+
 int main(void) {
     test_split_args();
     test_entity_ids();
@@ -998,6 +1009,7 @@ int main(void) {
     test_health_and_names();
     test_stamina();
     test_bar_anim();
+    test_hud_icons();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
