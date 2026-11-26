@@ -120,7 +120,7 @@ TOH_JOINCODE_FILE="$out/code" timeout 90 ./toh --size 600x400 --port "$port" --a
     --exec "@touch $out/hp-set" --exec "@waitfile $out/hp-damaged" --exec "@wait 30" \
     --exec "@waitbars" --exec "@hudrect hp $out/host-hp.hp" --exec "@hudrect stamina $out/host-hp.st" \
     --exec "@shot $out/host-hp.png" \
-    --exec ":unhost" --exec "@wait 10" --exec ":q!" \
+    --exec ":unhost" --exec "@touch $out/unhosted" --exec "@wait 10" --exec ":q!" \
     > "$out/host.log" 2>&1 &
 host=$!
 
@@ -155,7 +155,7 @@ timeout 90 ./toh --size 600x400 --auto-file "$icon" \
     --exec "@wait 30" --exec "@waitbars" --exec "@hudrect hp $out/client-hp.hp" \
     --exec "@hudrect stamina $out/client-hp.st" --exec "@shot $out/client-hp.png" \
     --exec "@touch $out/hp-damaged" \
-    --exec "@wait 240" \
+    --exec "@waitfile $out/unhosted" --exec "@wait 60" \
     --exec ":q" --exec "@shot $out/client-quit-refused.png" --exec ":q!" \
     > "$out/client.log" 2>&1 || fail "the client exited with status $? (see $out/client.log)"
 wait "$host" || fail "the host exited with status $? (see $out/host.log)"
