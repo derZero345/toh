@@ -1106,6 +1106,71 @@ static void test_hud_widgets(void) {
     CHECK(!fill_seen(since, 240, 60, t->accent[HUD_ACCENT_RED]) && stub_fills > since);
 }
 
+static void test_hud_values(void) {
+    char err[128];
+    CHECK(hud_config_check(HUD_ROWS, HUD_NROWS, err, sizeof(err)) == 0);
+
+    static const HudElement twice[] = { { .type = HUD_PILL, .key = "a" }, { .type = HUD_PILL, .key = "a" } };
+    static const HudElement no_key[] = { { .type = HUD_PILL } };
+    static const HudElement big_hotbar[] = { { .type = HUD_HOTBAR, .key = "h", .slots = 11 } };
+    static const HudElement hotbar1[] = { { .type = HUD_HOTBAR, .key = "h1", .slots = 10 } };
+    static const HudElement hotbar2[] = { { .type = HUD_HOTBAR, .key = "h2", .slots = 2 } };
+    static const HudElement bad_type[] = { { .type = HUD_ELEMENT_COUNT, .key = "x" } };
+    static const HudElement bad_accent[] = { { .type = HUD_PILL, .key = "x", .accent = HUD_ACCENT_COUNT } };
+    static const HudElement other_a[] = { { .type = HUD_BAR, .key = "a" } };
+    const HudRow r_twice[] = { { twice, 2 } }, r_no_key[] = { { no_key, 1 } }, r_big[] = { { big_hotbar, 1 } };
+    const HudRow r_two_hotbars[] = { { hotbar1, 1 }, { hotbar2, 1 } }, r_bad_type[] = { { bad_type, 1 } };
+    const HudRow r_empty_row[] = { { hotbar1, 0 } }, r_across[] = { { twice, 1 }, { other_a, 1 } };
+    const HudRow r_bad_accent[] = { { bad_accent, 1 } };
+    CHECK(hud_config_check(r_twice, 1, err, sizeof(err)) != 0 && strstr(err, "twice"));
+    CHECK(hud_config_check(r_across, 2, err, sizeof(err)) != 0 && strstr(err, "twice")); /* across rows */
+    CHECK(hud_config_check(r_no_key, 1, err, sizeof(err)) != 0);
+    CHECK(hud_config_check(r_big, 1, err, sizeof(err)) != 0 && strstr(err, "slots"));
+    CHECK(hud_config_check(r_two_hotbars, 2, err, sizeof(err)) != 0 && strstr(err, "hotbars"));
+    CHECK(hud_config_check(r_bad_type, 1, err, sizeof(err)) != 0 && strstr(err, "type"));
+    CHECK(hud_config_check(r_bad_accent, 1, err, sizeof(err)) != 0 && strstr(err, "accent"));
+    CHECK(hud_config_check(r_empty_row, 1, err, sizeof(err)) != 0);
+    CHECK(hud_config_check(HUD_ROWS, HUD_MAX_ROWS + 1, err, sizeof(err)) != 0 && strstr(err, "rows"));
+
+    hud_begin_frame();
+    CHECK(hud_value("hp") == NULL && !hud_target()->shown);
+    HudBar b = { .solidHi = 0.5f, .text = "5/10" };
+    hud_set_bar("hp", &b);
+    hud_set_pill("pill.left", "STR", "3");
+    hud_set_slider("value", "Value", 40, 0, 100);
+    HudSlot sl = { HUD_SLOT_AVAILABLE, "placeholder", 2, 0 };
+    hud_set_slot("hotbar", 4, &sl);
+    hud_set_target("Mao", "+1", true);
+    const HudValue *v = hud_value("hp");
+    CHECK(v && v->type == HUD_BAR && v->bar.solidHi == 0.5f && !strcmp(v->bar.text, "5/10"));
+    CHECK(!strcmp(hud_value("pill.left")->pill.label, "STR") && !strcmp(hud_value("pill.left")->pill.value, "3"));
+    CHECK(hud_value("value")->slider.value == 40 && hud_value("value")->slider.max == 100);
+    v = hud_value("hotbar");
+    CHECK(v && v->type == HUD_HOTBAR && v->slots[4].count == 2 && v->slots[0].state == HUD_SLOT_EMPTY);
+    HudSlot sl0 = sl;
+    sl0.count = 0;
+    hud_set_slot("hotbar", 0, &sl0);
+    CHECK(hud_value("hotbar")->slots[4].count == 2 && hud_value("hotbar")->slots[0].state == HUD_SLOT_AVAILABLE);
+    hud_set_slot("hotbar", 10, &sl); /* out of range: ignored */
+    b.solidHi = 0.25f;
+    hud_set_bar("hp", &b); /* replaces the earlier value */
+    CHECK(hud_value("hp")->bar.solidHi == 0.25f);
+    hud_set_pill("hp", "", "x"); /* another type under the same key replaces it too */
+    CHECK(hud_value("hp")->type == HUD_PILL);
+    const HudTarget *tg = hud_target();
+    CHECK(tg->shown && !strcmp(tg->name, "Mao") && !strcmp(tg->extra, "+1") && tg->canClose);
+
+    /* at most HUD_MAX_VALUES values (4 are there already) */
+    for (int i = 0; i < HUD_MAX_VALUES; i++) {
+        char k[16];
+        snprintf(k, sizeof(k), "k%d", i);
+        hud_set_pill(k, "", "x");
+    }
+    CHECK(hud_value("k0") != NULL && hud_value("k27") != NULL && hud_value("k28") == NULL);
+    hud_begin_frame();
+    CHECK(hud_value("pill.left") == NULL && hud_value("k0") == NULL && !hud_target()->shown);
+}
+
 int main(void) {
     test_split_args();
     test_entity_ids();
@@ -1130,6 +1195,7 @@ int main(void) {
     test_bar_anim();
     test_hud_icons();
     test_hud_widgets();
+    test_hud_values();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
