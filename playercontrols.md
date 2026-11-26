@@ -32,7 +32,7 @@ Normal 3, Big 4. So a Small character can step onto a Normal one's tile, but two
 ## 3. Your HP and stamina
 
 The HUD at the bottom of the window shows your character: the selected one, or with nothing selected your oldest
-one. The tab above it shows the name; its ✕ clears the selection. The red HP bar shows `current/max`; the line
+one. The tab above it shows the name; while the character is selected, its ✕ clears the selection. The red HP bar shows `current/max`; the line
 in its middle marks where your character becomes injured. Below 0 HP your character is dying: the bar grows to
 the left out of its frame, and a tick shows where it becomes critical. When HP changes, the bar slides to the new
 value and briefly shows what was lost in a lighter red.
