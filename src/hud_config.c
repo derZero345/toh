@@ -13,15 +13,11 @@ static const HudElement STAMINA[] = {
     { .type = HUD_BAR, .key = "stamina", .accent = HUD_ACCENT_GREEN, .two_sided = true, .thin = true },
 };
 
-static const HudElement CONTROL[] = {
-    { .type = HUD_SLIDER, .key = "value", .accent = HUD_ACCENT_GOLD, .label = "Value" },
-};
-
 static const HudElement HOTBAR[] = {
     { .type = HUD_HOTBAR, .key = "hotbar", .accent = HUD_ACCENT_BLUE, .slots = 10 },
 };
 
 #define ROW(elements) { elements, (int)(sizeof(elements) / sizeof(elements[0])) }
 
-const HudRow HUD_ROWS[] = { ROW(RESOURCES), ROW(STAMINA), ROW(CONTROL), ROW(HOTBAR) };
+const HudRow HUD_ROWS[] = { ROW(RESOURCES), ROW(STAMINA), ROW(HOTBAR) };
 const int HUD_NROWS = (int)(sizeof(HUD_ROWS) / sizeof(HUD_ROWS[0]));

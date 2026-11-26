@@ -130,7 +130,7 @@ static void bar_draw(const HudElement *e, HudRect r, const HudValue *v, const Hu
         dr_line(mx, frame.y - over, mx, frame.y + frame.h + over, T->markerLine * s, T->marker);
     }
     dr_stroke_rect(frame.x, frame.y, frame.w, frame.h, line, T->barFrame);
-    if (b->text[0]) text_centered(FONT_PLAIN, (e->thin ? T->smallFont : T->font) * s, frame, T->text, b->text);
+    if (b->text[0]) text_centered(FONT_PLAIN, T->font * s, frame, T->text, b->text); /* thin bars too: readable */
 }
 
 /* ---- stat pill ---- */

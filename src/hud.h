@@ -19,9 +19,9 @@
  *                          hud_widgets.c and put it into HUD_COMPONENTS. If it shows a new kind of value, add the
  *                          struct to HudValue and a hud_set_* function in hud.c.
  *   Swap icons:            change the table in hud_icons.c; everything else refers to icons by key.
- *   Real content:          the placeholders (stat pills, the "Value" slider, the slot states) are published in
- *                          hud_game.c's publish_placeholders(); replace them with game data there, and react to slot
- *                          and slider events in hud_game.c's on_event().
+ *   Real content:          the placeholders (stat pills, the slot states) are published in hud_game.c's
+ *                          publish_placeholders(); replace them with game data there, and react to slot events in
+ *                          hud_game.c's on_event(). A slider (HUD_SLIDER) is available but not in the config.
  */
 #ifndef TOH_HUD_H
 #define TOH_HUD_H

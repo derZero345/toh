@@ -1182,7 +1182,7 @@ static void test_hud_layout(void) {
     hud_set_screen(&s);
     HudRect panel, hb, hp, st, s3, tab, close;
     float pw = 10 * t->slot + 9 * t->slotGap + 2 * t->padding; /* the hotbar is the widest row */
-    float ph = 2 * t->padding + t->barH + t->thinBarH + fmaxf(t->sliderKnob, t->font + t->sliderTextPad) + t->slot + 3 * t->rowGap;
+    float ph = 2 * t->padding + t->barH + t->thinBarH + t->slot + 2 * t->rowGap;
     CHECK(hud_part_rect("panel", &panel));
     CHECK(near(panel.w, pw, 0.01f) && near(panel.h, ph, 0.01f) && near(panel.x, (1000 - pw) / 2, 0.01f));
     CHECK(near(panel.y + panel.h, 700 - t->margin, 0.01f));
@@ -1246,8 +1246,21 @@ static void hud_record(const HudEvent *ev) {
     hud_nevents++;
 }
 
+/* The game's config has no slider; the input tests add one ("value") above the hotbar, the last row. */
+static void use_config_with_slider(void) {
+    static const HudElement slider[] = {
+        { .type = HUD_SLIDER, .key = "value", .accent = HUD_ACCENT_GOLD, .label = "Value" },
+    };
+    static HudRow rows[HUD_MAX_ROWS];
+    int n = 0;
+    for (int i = 0; i < HUD_NROWS - 1; i++) rows[n++] = HUD_ROWS[i];
+    rows[n++] = (HudRow){ slider, 1 };
+    rows[n++] = HUD_ROWS[HUD_NROWS - 1];
+    hud_use_config(rows, n);
+}
+
 static void test_hud_input(void) {
-    hud_use_config(NULL, 0);
+    use_config_with_slider();
     hud_set_visible(true);
     hud_set_event_handler(hud_record);
     HudScreen s = { 1000, 700, 700, 32, 1 };
@@ -1305,7 +1318,7 @@ static void test_hud_input(void) {
 
 static void test_hud_review(void) {
     const HudTheme *t = &HUD_THEME;
-    hud_use_config(NULL, 0);
+    use_config_with_slider();
     hud_set_visible(true);
     hud_set_event_handler(hud_record);
     HudScreen sc = { 1000, 700, 700, 32, 1 };
@@ -1427,7 +1440,7 @@ static void test_hud_game(void) {
     /* the GM with nothing selected: no character, but the placeholders */
     CHECK(hud_pick_character(&others, &sel) == NULL);
     hud_game_update(0);
-    CHECK(!hud_target()->shown && hud_value("hp") == NULL && hud_value("value") && hud_value("hotbar"));
+    CHECK(!hud_target()->shown && hud_value("hp") == NULL && hud_value("value") == NULL && hud_value("hotbar"));
     CHECK(hud_value("pill.left") == NULL);
 
     /* selected: the oldest visible one (duplicates count once), "+N" for the others */
@@ -1499,17 +1512,9 @@ static void test_hud_game(void) {
     app.isCtrlDown = false;
     app.debugMode = false;
 
-    /* the slider's value is kept for the next frames */
-    HudRect sl;
-    CHECK(hud_part_rect("value", &sl));
-    Vec2 q = { sl.x + sl.w - 1, sl.y + sl.h / 2 };
-    CHECK(hud_game_mouse_down(q) && hud_game_mouse_up(q));
-    hud_game_update(0);
-    CHECK(hud_value("value")->slider.value == 100);
-
     /* hidden: nothing published, nothing moving */
     hud_set_visible(false);
-    CHECK(!hud_game_update(0.016f) && hud_value("value") == NULL);
+    CHECK(!hud_game_update(0.016f) && hud_value("hotbar") == NULL);
     hud_set_visible(true);
     hud_game_shutdown();
     reset_table();

@@ -7,8 +7,7 @@
 #include <string.h>
 #include <strings.h>
 
-static int slider_value = 50; /* placeholder: the "Value" slider */
-static unsigned frame = 1;    /* counts updates; Entity.panelFrame 0 means never shown */
+static unsigned frame = 1; /* counts updates; Entity.panelFrame 0 means never shown */
 
 /* ---- which character ---- */
 
@@ -86,7 +85,6 @@ static void publish_placeholders(void) {
         { HUD_SLOT_AVAILABLE, "placeholder", 0, 2 },   /* on cooldown */
         { HUD_SLOT_UNAVAILABLE, "placeholder", 0, 0 },
     };
-    hud_set_slider("value", "Value", slider_value, 0, 100);
     for (int i = 0; i < (int)(sizeof(SLOTS) / sizeof(SLOTS[0])); i++) hud_set_slot("hotbar", i, &SLOTS[i]);
 }
 
@@ -126,9 +124,7 @@ static void on_event(const HudEvent *ev) {
     case HUD_EV_SLOT_USED: /* placeholder slots do nothing yet */
         if (gh->debugMode) console_log("HUD: slot %d used", ev->slot + 1);
         break;
-    case HUD_EV_SLIDER_CHANGED:
-        slider_value = ev->value;
-        if (gh->debugMode) console_log("HUD: Value %d", ev->value);
+    case HUD_EV_SLIDER_CHANGED: /* the config has no slider */
         break;
     }
 }

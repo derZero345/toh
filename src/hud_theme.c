@@ -4,7 +4,7 @@
 const HudTheme HUD_THEME = {
     .margin = 12, .padding = 10, .rowGap = 6, .elemGap = 8, .radius = 10, .minScale = 0.5f,
     .font = 13, .smallFont = 10,
-    .barH = 20, .thinBarH = 12, .barMinW = 160, .barFrameLine = 1.5f, .markerLine = 2, .tickOverhang = 3,
+    .barH = 20, .thinBarH = 16, .barMinW = 160, .barFrameLine = 1.5f, .markerLine = 2, .tickOverhang = 3,
     .pillW = 64, .pillH = 20, .pillEdge = 3, .pillPad = 5,
     .sliderTrack = 6, .sliderKnob = 14, .sliderLabelW = 72, .sliderMinW = 120,
     .slot = 44, .slotGap = 6, .slotRadius = 6, .slotIconPad = 7, .slotTextPad = 4,

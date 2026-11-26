@@ -341,9 +341,9 @@ still load; an armor class stored in them is ignored.
 | `:cl` | Clear the log and command history |
 | `:d` | Debug mode on / off (tile coordinates at the mouse) |
 
-The HUD at the bottom centre holds the character's tab, its HP and stamina bars, two stat fields (they show "—"), a
-"Value" slider and a hotbar of ten slots (keys 1–9 and 0). The stat fields, slider and hotbar have no effect yet; in
-debug mode (`:d`) using a slot or moving the slider writes a log line. The HUD is shown at every start; `:hud off`
+The HUD at the bottom centre holds the character's tab, its HP and stamina bars, two stat fields (they show "—") and
+a hotbar of ten slots (keys 1–9 and 0). The stat fields and hotbar have no effect yet; in debug mode (`:d`) using a
+slot writes a log line. The HUD is shown at every start; `:hud off`
 hides it until the next start. The map does not react to the pointer over the HUD: no tile is highlighted under it,
 and clicks, the mouse wheel and the right button there don't reach the map (a camera drag can cross it). The keyboard
 cursor scrolls the view when it would move under the HUD.
