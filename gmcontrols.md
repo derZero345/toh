@@ -26,7 +26,7 @@ Contents:
 
 ## 1. The console
 
-The console at the bottom of the window takes all commands.
+The console at the bottom of the window takes all commands. It is hidden when the game starts: press `:` or Ctrl + Enter to open it.
 
 | Input | Action |
 |---|---|
@@ -154,16 +154,18 @@ footprint (old large → Huge, old huge and gargantuan → Gigantic).
   - The log shows e.g. `Mao: stamina 9/9 -> 6/9`.
   - A character at full stamina stays full when you change its max stamina.
   - Players can also give `maxstamina` in a request for a new character; the GM's question shows " ST n".
-- **HP panel** in the top right corner: you see one for each selected character, and players see one for each
-  character they own. Each panel shows:
-  - the name, with "(dead)" at −max HP;
-  - a red bar with `current/max` inside it;
-  - under it, a green stamina bar with `current/max`, if the character has max stamina (below 0 it grows to the left out of its frame too);
-  - a line in the middle where the character becomes injured.
+- **HUD** at the bottom centre of the window (see [section 16](#16-display-and-comfort)). It shows one character:
+  - the selected one; if several are selected, the oldest, and the tab says `+N` for the others;
+  - with nothing selected, a player sees their own oldest character; you see none (the bars stay empty).
+  - The tab above the panel shows the name, with "(dead)" at −max HP or "(exhausted)" at 0 stamina or below.
+    Its ✕ clears the selection.
+  - A red HP bar with `current/max` and a line in the middle where the character becomes injured. Left of its
+    frame is the zone below 0 HP: while the character is dying the red fill grows into it from the frame's left
+    edge, and a tick in its middle shows where the character becomes critical.
+  - Under it a green stamina bar with `current/max`, if the character has max stamina (below 0 it grows to the
+    left in the same way).
   - When HP or stamina changes, the bar slides to the new value; a loss leaves a lighter part for a moment that
     shows how much was lost.
-- While a character is dying, the bar grows to the left out of its frame, and a second line shows where it
-  becomes critical. If the panels don't fit, the last line says `+N more`. Ctrl + `+` / `-` changes their size.
 
 ### Delete
 
@@ -332,9 +334,18 @@ still load; an armor class stored in them is ignored.
 |---|---|
 | `:t` | List the color themes |
 | `:t <name>` | Choose a theme: purple, red, green, yellow, light, dark, black |
-| Ctrl + `+` / Ctrl + `-` | Bigger / smaller console text and toolbox |
+| Ctrl + `+` / Ctrl + `-` | Bigger / smaller console text, toolbox and HUD |
+| `:hud [on\|off]` | Show / hide the HUD (without an argument it toggles; Tab completes `on` / `off`) |
+| 1 … 9, 0 (console closed) | Use hotbar slot 1–10 (once per key press; holding does not repeat) |
 | `:cl` | Clear the log and command history |
 | `:d` | Debug mode on / off (tile coordinates at the mouse) |
+
+The HUD at the bottom centre holds the character's tab, its HP and stamina bars, two stat fields (they show "—"), a
+"Value" slider and a hotbar of ten slots (keys 1–9 and 0). The stat fields, slider and hotbar have no effect yet; in
+debug mode (`:d`) using a slot or moving the slider writes a log line. The HUD is shown at every start; `:hud off`
+hides it until the next start. The map does not react to the pointer over the HUD: no tile is highlighted under it,
+and clicks, the mouse wheel and the right button there don't reach the map (a camera drag can cross it). The keyboard
+cursor scrolls the view when it would move under the HUD.
 
 ## 17. Keyboard-only play
 

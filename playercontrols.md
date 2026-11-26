@@ -3,7 +3,7 @@
 The basics for playing at someone else's table, most important first. The GM's full guide is
 [gmcontrols.md](gmcontrols.md).
 
-Commands are typed into the console at the bottom of the window. Press `:` (on a German keyboard: Shift + `.`)
+Commands are typed into the console at the bottom of the window. It is hidden at start: press `:` (on a German keyboard: Shift + `.`)
 to open it with a `:` already typed, write the command and press Enter.
 
 ## 1. Join the table
@@ -31,10 +31,11 @@ Normal 3, Big 4. So a Small character can step onto a Normal one's tile, but two
 
 ## 3. Your HP and stamina
 
-The top right corner shows a panel for each of your characters: its name and a red HP bar with
-`current/max` inside it. The line in the middle marks where your character becomes injured. Below 0 HP your
-character is dying: the bar grows to the left out of its frame, and a second line shows where it becomes
-critical. When HP changes, the bar slides to the new value and briefly shows what was lost in a lighter red.
+The HUD at the bottom of the window shows your character: the selected one, or with nothing selected your oldest
+one. The tab above it shows the name; its ✕ clears the selection. The red HP bar shows `current/max`; the line
+in its middle marks where your character becomes injured. Below 0 HP your character is dying: the bar grows to
+the left out of its frame, and a tick shows where it becomes critical. When HP changes, the bar slides to the new
+value and briefly shows what was lost in a lighter red.
 
 If your character has stamina, a green bar under the HP bar shows it (`current/max`). Type `:c spend <n>` to use
 stamina (refused with "Not enough stamina" if you don't have enough) and `:c recover <n>` to get it back, up to the
@@ -122,7 +123,8 @@ table sees your selection, measurements and attacks in your color.
 | Up / Down in the console | Earlier commands |
 | Tab in the console | Complete a command or argument (`:c` too); Tab again cycles |
 | Mouse wheel over the console | Scroll the log |
-| Ctrl + `+` / Ctrl + `-` | Bigger / smaller console text and toolbox |
+| Ctrl + `+` / Ctrl + `-` | Bigger / smaller console text, toolbox and HUD |
+| `:hud` | Show / hide the HUD |
 | `:t [name]` | List the color themes, or choose one |
 | `:cl` | Clear the log and command history |
 | Arrow keys, Enter | Play without a mouse: move a cursor, Enter = left click, Right Shift + Enter = right click, Right Shift + Up / Down = zoom |

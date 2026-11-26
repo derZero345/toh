@@ -45,18 +45,19 @@ in the Java version.
 | Shift + wheel | change the cone angle |
 | WASD | pan (Shift = fast, Ctrl = medium, Alt = paused) |
 | Arrow keys | move the keyboard cursor; Right Shift + Up/Down zooms |
-| Ctrl + Enter / Alt + Enter | toggle console / toggle log |
+| Ctrl + Enter / Alt + Enter | toggle console (hidden at start) / toggle log |
 | Up / Down / Tab (console) | history / auto-complete |
 | `:` (Shift + `.` on German layouts) | open the console with `:` typed |
 | Ctrl + C / V / A | copy / paste / select all entities |
-| Ctrl + `+` / `-` | console and toolbox size |
+| Ctrl + `+` / `-` | console, toolbox and HUD size |
+| 1 … 9, 0 | hotbar slots (console closed) |
 | Alt + X / S / A / C / V | drag / measure / area / cone / line tool |
 
 Console commands: `:q` quit, `:b [file.png]` background, `:d` debug, `:c` character
 (`delete`, `size n`, `maxhealth n`, `maxstamina n`, `stamina n`, `spend n`, `recover n`, `speed n`, `initiative n`, `icon`, `owner <player|none>`, `name <name>`,
-`hp n`, `damage n`, `heal n`; the panel in the top right corner shows your characters' HP and stamina),
+`hp n`, `damage n`, `heal n`; the HUD at the bottom shows the selected (or your own) character's HP and stamina),
 `:w [delete]` wall, `:e delete`, `:r 2d6+3` roll, `:g` grid orientation, `:gm` gamemaster,
-`:i [add|remove|clear|show|next]` initiative, `:cl` clear, `:t [name]` theme, `:h [command]` help,
+`:i [add|remove|clear|show|next]` initiative, `:cl` clear, `:t [name]` theme, `:h [command]` help, `:hud [on|off]` HUD on/off,
 `:save [file]` / `:load[!] [file]` save files (see below), `:q!` quit without saving,
 `:host`, `:join`, `:leave`, `:unhost`, `:players`, `:kick`, `:ban`, `:unban`, `:claim` multiplayer (see below).
 
@@ -157,7 +158,7 @@ screenshot, which makes headless-ish regression checks possible:
 ```
 
 See the comment at the top of `src/main.c` for the full action list (including `@waitnet`, `@waitfile`,
-`@waitbars` (waits until the HP panel bars stop moving) and `@touch`, which `tests/e2e_net.sh` uses to synchronize a host and a client).
+`@waitbars` (waits until the HUD bars stop moving), `@hudrect` / `@clickhud` (HUD part positions) and `@touch`, which `tests/e2e_net.sh` uses to synchronize a host and a client).
 
 ## Differences from the Java version
 
