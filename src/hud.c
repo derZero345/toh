@@ -3,12 +3,13 @@
 #include "hud.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-__attribute__((unused)) static const HudRow *rows = HUD_ROWS;
+static const HudRow *rows = HUD_ROWS;
 static int nrows = -1; /* -1: HUD_NROWS (not a constant expression, so it can't initialise this) */
 
-__attribute__((unused)) static int row_count(void) { return nrows < 0 ? HUD_NROWS : nrows; }
+static int row_count(void) { return nrows < 0 ? HUD_NROWS : nrows; }
 
 /* ---- config check ---- */
 
@@ -127,4 +128,190 @@ void hud_set_slot(const char *key, int index, const HudSlot *slot) {
     if (index < 0 || index >= HUD_MAX_SLOTS) return;
     HudValue *v = value_for(key, HUD_HOTBAR);
     if (v) v->slots[index] = *slot;
+}
+
+/* ---- screen, visibility and layout ---- */
+
+static HudScreen screen = { 800, 600, 600, 0, 1 };
+static bool visible = true;
+static HudUiState ui = { -1, -1, -1, -1, false, false };
+static bool pressActive; /* a left press started on the HUD and is still held */
+
+typedef struct {
+    bool valid;
+    /* what it was computed from */
+    const HudRow *rows;
+    int nrows;
+    HudScreen screen;
+    HudTarget target;
+    /* the result */
+    float scale;
+    HudRect panel, tab, close;
+    HudRect elems[HUD_MAX_ROWS][HUD_MAX_ROW_ELEMENTS];
+} Layout;
+
+static Layout layout;
+static int layout_count;
+
+static void ui_reset(void) {
+    ui = (HudUiState){ -1, -1, -1, -1, false, false };
+    pressActive = false;
+}
+
+void hud_use_config(const HudRow *r, int n) {
+    rows = r ? r : HUD_ROWS;
+    nrows = r ? n : -1;
+    layout.valid = false;
+    ui_reset();
+}
+
+void hud_set_screen(const HudScreen *s) { screen = *s; }
+bool hud_visible(void) { return visible; }
+
+void hud_set_visible(bool on) {
+    visible = on;
+    ui_reset();
+}
+
+__attribute__((unused)) static const HudElement *element(int idx) {
+    return &rows[idx / HUD_MAX_ROW_ELEMENTS].elements[idx % HUD_MAX_ROW_ELEMENTS];
+}
+__attribute__((unused)) static HudRect element_rect(int idx) {
+    return layout.elems[idx / HUD_MAX_ROW_ELEMENTS][idx % HUD_MAX_ROW_ELEMENTS];
+}
+static const HudComponent *component(const HudElement *e) { return HUD_COMPONENTS[e->type]; }
+
+static float row_min_width(const HudRow *row, float s) {
+    float w = 0;
+    for (int k = 0; k < row->count; k++) w += component(&row->elements[k])->min_width(&row->elements[k], s);
+    return w + (float)(row->count - 1) * HUD_THEME.elemGap * s;
+}
+
+static float panel_width(float s) {
+    float w = 0;
+    for (int i = 0; i < row_count(); i++) {
+        float rw = row_min_width(&rows[i], s);
+        if (rw > w) w = rw;
+    }
+    return w + 2 * HUD_THEME.padding * s;
+}
+
+static void layout_compute(void) {
+    const HudTheme *t = &HUD_THEME;
+    int n = row_count();
+    float s = screen.scale > 0 ? screen.scale : 1;
+    float w = panel_width(s), avail = screen.winW - screen.left - 2 * t->margin * s;
+    if (w > avail) { /* narrow window: shrink, but not below minScale */
+        float s2 = avail > 0 ? s * avail / w : 0;
+        s = s2 > s * t->minScale ? s2 : s * t->minScale;
+        w = panel_width(s);
+    }
+    float inner = w - 2 * t->padding * s, h = 2 * t->padding * s, rowh[HUD_MAX_ROWS];
+    for (int i = 0; i < n; i++) {
+        rowh[i] = 0;
+        for (int k = 0; k < rows[i].count; k++) {
+            float eh = component(&rows[i].elements[k])->height(&rows[i].elements[k], s);
+            if (eh > rowh[i]) rowh[i] = eh;
+        }
+        h += rowh[i] + (i > 0 ? t->rowGap * s : 0);
+    }
+    float x = (screen.winW - w) / 2;
+    if (x < screen.left + t->margin * s) x = screen.left + t->margin * s;
+    float y = screen.bottom - t->margin * s - h;
+    layout.panel = (HudRect){ x, y, w, h };
+
+    float ry = y + t->padding * s;
+    for (int i = 0; i < n; i++) {
+        const HudRow *row = &rows[i];
+        float free = inner - row_min_width(row, s);
+        int nflex = 0;
+        for (int k = 0; k < row->count; k++) nflex += component(&row->elements[k])->flex;
+        float ex = x + t->padding * s + (nflex == 0 ? free / 2 : 0); /* rows without flex elements are centred */
+        for (int k = 0; k < row->count; k++) {
+            const HudElement *e = &row->elements[k];
+            const HudComponent *c = component(e);
+            float ew = c->min_width(e, s) + (c->flex ? free / (float)nflex : 0), eh = c->height(e, s);
+            layout.elems[i][k] = (HudRect){ ex, ry + (rowh[i] - eh) / 2, ew, eh };
+            ex += ew + t->elemGap * s;
+        }
+        ry += rowh[i] + t->rowGap * s;
+    }
+
+    layout.tab = layout.close = (HudRect){ 0 };
+    if (target.shown) {
+        float tw = hud_tab_width(&target, s), th = t->tabH * s, cs = t->closeSize * s;
+        layout.tab = (HudRect){ x + (w - tw) / 2, y - t->tabGap * s - th, tw, th };
+        if (target.canClose)
+            layout.close = (HudRect){ layout.tab.x + tw - t->tabPad * s - cs, layout.tab.y + (th - cs) / 2, cs, cs };
+    }
+    layout.scale = s;
+    layout.rows = rows;
+    layout.nrows = n;
+    layout.screen = screen;
+    layout.target = target;
+    layout.valid = true;
+    layout_count++;
+}
+
+static bool same_target(const HudTarget *a, const HudTarget *b) {
+    return a->shown == b->shown && a->canClose == b->canClose && strcmp(a->name, b->name) == 0 &&
+           strcmp(a->extra, b->extra) == 0;
+}
+
+/* Recomputes only when something the layout depends on changed. */
+static void ensure_layout(void) {
+    if (layout.valid && layout.rows == rows && layout.nrows == row_count() &&
+        memcmp(&layout.screen, &screen, sizeof(screen)) == 0 && same_target(&layout.target, &target))
+        return;
+    layout_compute();
+}
+
+float hud_layout_scale(void) {
+    ensure_layout();
+    return layout.scale;
+}
+
+int hud_layout_count(void) { return layout_count; }
+
+bool hud_part_rect(const char *part, HudRect *out) {
+    if (!visible) return false;
+    ensure_layout();
+    if (strcmp(part, "panel") == 0) {
+        *out = layout.panel;
+        return true;
+    }
+    if (strcmp(part, "tab") == 0 || strcmp(part, "tab.close") == 0) {
+        if (!target.shown || (part[3] == '.' && !target.canClose)) return false;
+        *out = part[3] == '.' ? layout.close : layout.tab;
+        return true;
+    }
+    for (int i = 0; i < row_count(); i++)
+        for (int k = 0; k < rows[i].count; k++)
+            if (strcmp(rows[i].elements[k].key, part) == 0) {
+                *out = layout.elems[i][k];
+                return true;
+            }
+    /* "<hotbar key>.<slot>" with slot 1..slots */
+    const char *dot = strrchr(part, '.');
+    if (!dot || !dot[1]) return false;
+    char *end;
+    long slot = strtol(dot + 1, &end, 10);
+    if (*end) return false;
+    for (int i = 0; i < row_count(); i++)
+        for (int k = 0; k < rows[i].count; k++) {
+            const HudElement *e = &rows[i].elements[k];
+            if (e->type != HUD_HOTBAR || strncmp(e->key, part, (size_t)(dot - part)) != 0 ||
+                e->key[dot - part] != '\0')
+                continue;
+            if (slot < 1 || slot > e->slots) return false;
+            *out = hud_slot_rect(layout.elems[i][k], (int)slot - 1, layout.scale);
+            return true;
+        }
+    return false;
+}
+
+bool hud_contains(float x, float y) {
+    if (!visible) return false;
+    ensure_layout();
+    return hud_rect_contains(layout.panel, x, y) || (target.shown && hud_rect_contains(layout.tab, x, y));
 }

@@ -1171,6 +1171,72 @@ static void test_hud_values(void) {
     CHECK(hud_value("pill.left") == NULL && hud_value("k0") == NULL && !hud_target()->shown);
 }
 
+static void test_hud_layout(void) {
+    const HudTheme *t = &HUD_THEME;
+    hud_use_config(NULL, 0);
+    hud_set_visible(true);
+    hud_begin_frame();
+    HudScreen s = { 1000, 700, 700, 32, 1 };
+    hud_set_screen(&s);
+    HudRect panel, hb, hp, st, s3, tab, close;
+    float pw = 10 * t->slot + 9 * t->slotGap + 2 * t->padding; /* the hotbar is the widest row */
+    float ph = 2 * t->padding + t->barH + t->thinBarH + fmaxf(t->sliderKnob, t->font + t->sliderTextPad) + t->slot + 3 * t->rowGap;
+    CHECK(hud_part_rect("panel", &panel));
+    CHECK(near(panel.w, pw, 0.01f) && near(panel.h, ph, 0.01f) && near(panel.x, (1000 - pw) / 2, 0.01f));
+    CHECK(near(panel.y + panel.h, 700 - t->margin, 0.01f));
+    CHECK(hud_part_rect("hotbar", &hb) && near(hb.x, panel.x + t->padding, 0.01f));
+    CHECK(near(hb.y + hb.h, panel.y + panel.h - t->padding, 0.01f));
+    /* the HP bar takes the resources row's free width; the stamina bar the whole row */
+    CHECK(hud_part_rect("hp", &hp) && near(hp.w, pw - 2 * t->padding - 2 * t->pillW - 2 * t->elemGap, 0.01f));
+    CHECK(hud_part_rect("stamina", &st) && near(st.w, pw - 2 * t->padding, 0.01f));
+    CHECK(near(hp.x + hp.w / 2, st.x + st.w / 2, 0.01f)); /* the 0 points line up */
+    CHECK(hud_part_rect("hotbar.3", &s3) && near(s3.x, hb.x + 2 * (t->slot + t->slotGap), 0.01f));
+    CHECK(!hud_part_rect("hotbar.11", &s3) && !hud_part_rect("hotbar.0", &s3) && !hud_part_rect("nope", &s3));
+    CHECK(!hud_part_rect("tab", &tab)); /* no target */
+    CHECK(hud_contains(panel.x + 1, panel.y + 1) && !hud_contains(panel.x - 1, panel.y + 1));
+
+    /* the cache: same inputs, no new layout; a change recomputes */
+    int n = hud_layout_count();
+    CHECK(hud_part_rect("panel", &panel) && hud_layout_count() == n);
+    s.bottom = 600; /* the console opened */
+    hud_set_screen(&s);
+    CHECK(hud_part_rect("panel", &panel) && hud_layout_count() == n + 1);
+    CHECK(near(panel.y + panel.h, 600 - t->margin, 0.01f));
+
+    /* the tab: centred above the panel, the close button at its right end */
+    hud_set_target("Mao", "", true);
+    CHECK(hud_part_rect("tab", &tab) && hud_layout_count() == n + 2);
+    CHECK(near(tab.x + tab.w / 2, panel.x + panel.w / 2, 0.01f) && near(tab.y + tab.h, panel.y - t->tabGap, 0.01f));
+    CHECK(near(tab.w, hud_tab_width(hud_target(), 1), 0.01f));
+    CHECK(hud_part_rect("tab.close", &close) && near(close.x + close.w, tab.x + tab.w - t->tabPad, 0.01f));
+    CHECK(hud_contains(tab.x + 1, tab.y + 1));
+    hud_set_target("Mao", "", false);
+    CHECK(hud_part_rect("tab", &tab) && !hud_part_rect("tab.close", &close));
+
+    /* clear of the toolbox: centred it would start at 33, but toolbox + margin is 44 */
+    s = (HudScreen){ 580, 700, 700, 32, 1 };
+    hud_set_screen(&s);
+    CHECK(hud_part_rect("panel", &panel) && near(panel.x, 32 + t->margin, 0.01f) && hud_layout_scale() == 1);
+    /* narrow: shrinks to fit, but not below minScale */
+    s.winW = 400;
+    hud_set_screen(&s);
+    float want = (400 - 32 - 2 * t->margin) / pw;
+    CHECK(hud_part_rect("panel", &panel) && near(hud_layout_scale(), want, 0.001f));
+    CHECK(near(panel.w, pw * want, 0.05f));
+    s.winW = 200;
+    hud_set_screen(&s);
+    CHECK(hud_part_rect("panel", &panel) && near(hud_layout_scale(), t->minScale, 0.001f));
+    /* the scale follows the screen (Ctrl + / -) */
+    s = (HudScreen){ 2000, 1000, 1000, 32, 1.5f };
+    hud_set_screen(&s);
+    CHECK(hud_part_rect("panel", &panel) && near(panel.w, pw * 1.5f, 0.01f));
+    /* hidden: no parts */
+    hud_set_visible(false);
+    CHECK(!hud_part_rect("panel", &panel) && !hud_contains(1000, 990));
+    hud_set_visible(true);
+    hud_begin_frame();
+}
+
 int main(void) {
     test_split_args();
     test_entity_ids();
@@ -1196,6 +1262,7 @@ int main(void) {
     test_hud_icons();
     test_hud_widgets();
     test_hud_values();
+    test_hud_layout();
     CHECK(stub_bad_releases == 0);
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
