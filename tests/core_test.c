@@ -8,6 +8,7 @@
 #include "netmsg.h"
 #include "ops.h"
 #include "party.h"
+#include "textwrap.h"
 #include "savefmt.h"
 
 #include <limits.h>
@@ -1649,6 +1650,37 @@ static void test_hud_game(void) {
     reset_table();
 }
 
+/* Text wrapping; the stub's text is 0.5 em per byte, so at size 10 a line of width 50 holds 10 bytes. */
+static bool span_is(const char *s, TextSpan sp, const char *want) {
+    return sp.len == (int)strlen(want) && strncmp(s + sp.start, want, (size_t)sp.len) == 0;
+}
+
+static void test_text_wrap(void) {
+    TextSpan sp[8];
+    const char *a = "Heroes: Mao (anna), Kiri";
+    CHECK(text_wrap(FONT_PLAIN, 10, a, 50, sp, 8) == 4);
+    CHECK(span_is(a, sp[0], "Heroes:") && span_is(a, sp[1], "Mao") && span_is(a, sp[2], "(anna),") &&
+          span_is(a, sp[3], "Kiri"));
+    const char *b = "one two three four";
+    CHECK(text_wrap(FONT_PLAIN, 10, b, 50, sp, 8) == 2);
+    CHECK(span_is(b, sp[0], "one two") && span_is(b, sp[1], "three four"));
+    /* fits: one line; "" is one empty line */
+    CHECK(text_wrap(FONT_PLAIN, 10, "short", 50, sp, 8) == 1 && sp[0].start == 0 && sp[0].len == 5);
+    CHECK(text_wrap(FONT_PLAIN, 10, "", 50, sp, 8) == 1 && sp[0].len == 0);
+    /* a long word is split; never inside a UTF-8 sequence (\xc3\xa4 is one character) */
+    const char *c = "abcdefghij\xc3\xa4klm";
+    CHECK(text_wrap(FONT_PLAIN, 10, c, 50, sp, 8) == 2);
+    CHECK(span_is(c, sp[0], "abcdefghij") && span_is(c, sp[1], "\xc3\xa4klm"));
+    const char *d = "abcdefghi\xc3\xa4klm"; /* the 2-byte character does not fit after 9 bytes */
+    CHECK(text_wrap(FONT_PLAIN, 10, d, 50, sp, 8) == 2 && span_is(d, sp[0], "abcdefghi"));
+    /* line breaks; more lines than room: the count is still right */
+    const char *e = "a\n\nb";
+    CHECK(text_wrap(FONT_PLAIN, 10, e, 50, sp, 8) == 3 && span_is(e, sp[0], "a") && sp[1].len == 0 && span_is(e, sp[2], "b"));
+    CHECK(text_wrap(FONT_PLAIN, 10, "a b c d e f", 5, sp, 2) == 6);
+    /* narrower than one character: still one character per line */
+    CHECK(text_wrap(FONT_PLAIN, 10, "abc", 1, sp, 8) == 3 && span_is("abc", sp[2], "c"));
+}
+
 int main(void) {
     test_split_args();
     test_entity_ids();
@@ -1673,6 +1705,7 @@ int main(void) {
     test_party_ops();
     test_bar_anim();
     test_parties();
+    test_text_wrap();
     test_hud_icons();
     test_hud_widgets();
     test_hud_values();

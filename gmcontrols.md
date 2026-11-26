@@ -38,7 +38,7 @@ The console at the bottom of the window takes all commands. It is hidden when th
 | Tab | Complete a command or argument, long or short (`:c` offers `:c`, `:cl`, `:claim`; `:c ms` becomes `:c maxstamina`). After a command and a space it lists the arguments. Tab again cycles. |
 | Left / Right, Home / End, Backspace / Delete | Edit the line |
 | Ctrl + V | Paste text (line breaks become spaces) |
-| Mouse wheel over the console | Scroll the log |
+| Mouse wheel over the console | Scroll the log (long lines wrap to the console's width; a new message scrolls back to the newest line) |
 | `:h` / `:h <command>` | List the commands / help for one command |
 
 Most commands have a long and a short form (`character` / `:c`). Double quotes keep spaces inside one argument:

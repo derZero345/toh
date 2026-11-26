@@ -298,7 +298,7 @@ typedef struct {
     int suggestionIndex;
     char originalInput[CONSOLE_TEXT_MAX];
 
-    int scrollLog;
+    int logScroll; /* wrapped log lines scrolled back from the newest (0: the newest is at the bottom) */
     bool active;
     bool showLog;
     int fontSize;

@@ -6,6 +6,7 @@
 #include "ops.h"
 #include "netmsg.h"
 #include "session.h"
+#include "textwrap.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -21,6 +22,13 @@ static const Color LIGHT_SECONDARY = { 0, 0, 0, 255 };
 
 /* recorded grid / debug-overlay vertices, see draw_grid_lines */
 static DrCache grid_cache, debug_cache;
+
+/* The log's wrapped lines, newest first: entry k is the k-th line from the bottom. */
+typedef struct {
+    int msg;
+    TextSpan span;
+} LogLine;
+static DA(LogLine) log_lines; /* draw_log */
 
 static Color text_secondary(void) { return gh->darkMode ? DARK_SECONDARY : LIGHT_SECONDARY; }
 
@@ -68,6 +76,7 @@ bool gfx_init(App *app, const char *resource_dir) {
 void gfx_shutdown(void) {
     dr_cache_free(&grid_cache);
     dr_cache_free(&debug_cache);
+    da_free(&log_lines);
     for (int i = 0; i < gh->entities.count; i++) entity_free(gh->entities.items[i]);
     for (int i = 0; i < gh->clipboard.count; i++) entity_free(gh->clipboard.items[i]);
     for (int i = 0; i < gh->markers.count; i++) free(gh->markers.items[i]);
@@ -794,6 +803,34 @@ static void draw_toolbox(void) {
     dr_clear_clip();
 }
 
+/* Wraps the newest messages to width w (only as many as the view needs) and draws CONSOLE_LOG_LINES rows,
+ * bottom-aligned, scrolled back by con->logScroll lines. */
+static void draw_log(Console *con, float x, float y, float w, float line_h, Color c) {
+    float fs = (float)con->fontSize, ascent, descent;
+    dr_font_metrics(FONT_PLAIN, fs, &ascent, &descent);
+    int need = CONSOLE_LOG_LINES + con->logScroll;
+    TextSpan sp[128]; /* a 2 KiB message at a usable width has far fewer lines; any more are left out */
+    da_clear(&log_lines);
+    for (int m = con->logs.count - 1; m >= 0 && log_lines.count < need; m--) {
+        int n = text_wrap(FONT_PLAIN, fs, con->logs.items[m], w, sp, 128);
+        if (n > 128) n = 128;
+        for (int k = n - 1; k >= 0; k--) {
+            LogLine l = { m, sp[k] };
+            da_push(&log_lines, l);
+        }
+    }
+    int max_scroll = log_lines.count > CONSOLE_LOG_LINES ? log_lines.count - CONSOLE_LOG_LINES : 0;
+    if (con->logScroll > max_scroll) con->logScroll = max_scroll; /* scrolled past the oldest line */
+    for (int row = 0; row < CONSOLE_LOG_LINES; row++) {
+        int k = con->logScroll + CONSOLE_LOG_LINES - 1 - row;
+        if (k >= log_lines.count) continue;
+        const LogLine *l = &log_lines.items[k];
+        char text[2048];
+        snprintf(text, sizeof(text), "%.*s", l->span.len, con->logs.items[l->msg] + l->span.start);
+        dr_text(FONT_PLAIN, fs, x, y + row * line_h + (line_h + ascent - descent) / 2, c, text);
+    }
+}
+
 static void draw_console(void) {
     Console *con = &gh->console;
     if (!con->active) return;
@@ -810,12 +847,7 @@ static void draw_console(void) {
         dr_fill_rect(r.x, r.y, r.w, log_h, color_alpha(t->primary, 220));
         float line_h = (log_h - 10) / CONSOLE_LOG_LINES;
         dr_set_clip(r.x + 5, r.y, r.w - 10, log_h);
-        for (int i = 0; i < CONSOLE_LOG_LINES; i++) {
-            int idx = con->scrollLog + i;
-            if (idx < 0 || idx >= con->logs.count) continue;
-            float base = r.y + 5 + i * line_h + (line_h + ascent - descent) / 2;
-            dr_text(FONT_PLAIN, fs, r.x + 5, base, t->secondary, con->logs.items[idx]);
-        }
+        draw_log(con, r.x + 5, r.y + 5, r.w - 10, line_h, t->secondary);
         dr_clear_clip();
     }
 

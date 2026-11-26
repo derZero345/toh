@@ -174,19 +174,20 @@ void console_log(const char *fmt, ...) {
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
     da_push(&C->logs, str_dup(buf));
-    console_scroll_log(1); /* auto-scroll to the new message */
+    C->logScroll = 0; /* show the new message */
 }
 
+/* Positive notches scroll towards newer lines. How far back it can go depends on the wrapping at the current
+ * width, so draw_console clamps the other end. */
 void console_scroll_log(int notches) {
-    C->scrollLog += notches;
-    if (C->scrollLog < 0) C->scrollLog = 0;
-    /* may become negative with few messages: lines are then bottom-aligned */
-    if (C->scrollLog > C->logs.count - CONSOLE_LOG_LINES) C->scrollLog = C->logs.count - CONSOLE_LOG_LINES;
+    C->logScroll -= notches;
+    if (C->logScroll < 0) C->logScroll = 0;
 }
 
 void console_clear_logs(void) {
     for (int i = 0; i < C->logs.count; i++) free(C->logs.items[i]);
     da_clear(&C->logs);
+    C->logScroll = 0;
 }
 
 void console_toggle_log(void) { C->showLog = !C->showLog; }
