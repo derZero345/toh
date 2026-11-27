@@ -82,8 +82,9 @@ static bool create(Hex h) {
         memcpy(s.attr, C.attr, sizeof(s.attr));
         Op op = { .type = OP_SPAWN };
         da_push(&op.specs, s);
-        ops_submit(&op);
+        OpResult r = ops_submit(&op); /* logs why it was refused */
         op_free(&op);
+        if (r != OPR_OK) return false; /* keep the draft */
     }
     reset();
     return true;

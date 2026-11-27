@@ -1128,8 +1128,15 @@ static void test_char_create(void) {
     CHECK(c->active && c->placing);
     cc_cancel();
 
-    /* shutting down lets go of the draft's picture without a log line */
+    /* the GM's Create from the tile menu, refused (a tile past the map's limit): the draft stays on the summary */
     stub_client = false;
+    count = app.entities.count;
+    cc_to_summary(&(Hex){ SAVEFMT_MAX_COORD + 1, 0 }, "Far", TEX_A);
+    cc_next();
+    CHECK(c->active && c->step == CC_SUMMARY && app.entities.count == count && c->picture == TEX_A);
+    cc_cancel();
+
+    /* shutting down lets go of the draft's picture without a log line */
     refs = stub_refs(TEX_B);
     cc_to_summary(NULL, "Last", TEX_B);
     CHECK(stub_refs(TEX_B) == refs + 1);
