@@ -971,6 +971,7 @@ static void lost_sync(const char *what) {
         net_free(S.net);
         players_clear();
         cache_clear();
+        da_clear(&S.pending); /* the host drops a leaving player's requests: they won't be answered */
         S.role = ROLE_JOINING;
         S.net = start_join();
         if (!S.net) end_client();
