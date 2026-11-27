@@ -15,6 +15,7 @@
  *   @wait N          idle N frames       @quit
  *   @waitnet N       wait (at most 20 s) until N players joined (host) or the client joined
  *   @waitfile FILE   wait (at most 20 s) until FILE exists   @touch FILE  create FILE
+ *   @logfile FILE    write the console log (one line per message) to FILE
  *   @waitbars        wait (at most 20 s) until the HUD bars stopped moving; it only sees changes
  *                    already drawn, so wait a few frames first (e.g. @wait 2)
  *   @hudrect PART FILE  write "x y w h" of a HUD part (hud_part_rect: an element key, hotbar.N, panel, tab,
@@ -222,6 +223,14 @@ static int run_script_line(const char *line, const char **screenshot) {
                 fprintf(f, "%d %d\n", (int)px, (int)py);
                 fclose(f);
             }
+        }
+    } else if (!strcmp(cmd, "logfile")) { /* the console log, for checks */
+        FILE *f = fopen(arg, "w");
+        if (f) {
+            console_write_log(f);
+            fclose(f);
+        } else {
+            fprintf(stderr, "@logfile: cannot write \"%s\"\n", arg);
         }
     } else if (!strcmp(cmd, "touch")) {
         FILE *f = fopen(arg, "w");

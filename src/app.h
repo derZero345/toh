@@ -313,6 +313,7 @@ typedef struct {
 void console_init(Console *c);
 void console_free(Console *c);
 void console_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+void console_write_log(FILE *f); /* every log line, oldest first (scripts) */
 void console_scroll_log(int notches);
 void console_clear_logs(void);
 void console_toggle_log(void);

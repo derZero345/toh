@@ -32,6 +32,7 @@ static const ArgDef ARGS_CHARACTER[] = {
     { "initiative", "in" }, { "maxstamina", "ms" }, { "stamina", "st" },  { "spend", NULL },
     { "recover", NULL },   { "icon", "ic" },       { "owner", "ow" },    { "name", "nm" },
     { "hp", NULL },        { "damage", "dmg" },    { "heal", NULL },     { "party", "pt" },
+    { "str", NULL },       { "agi", NULL },        { "cog", NULL },      { "spi", NULL },
     { NULL, NULL },
 };
 static const ArgDef ARGS_ON_OFF[] = { { "on", NULL }, { "off", NULL }, { NULL, NULL } };
@@ -177,6 +178,10 @@ void console_log(const char *fmt, ...) {
     va_end(ap);
     da_push(&C->logs, str_dup(buf));
     C->logScroll = 0; /* show the new message */
+}
+
+void console_write_log(FILE *f) {
+    for (int i = 0; i < C->logs.count; i++) fprintf(f, "%s\n", C->logs.items[i]);
 }
 
 /* Positive notches scroll towards newer lines. How far back it can go depends on the wrapping at the current
@@ -442,6 +447,8 @@ static void cmd_character(Args *a) {
     bool has_name = false;
     char party[CHAR_NAME_MAX] = "";
     bool has_party = false;
+    int attr[ATTR_COUNT] = { 0 };
+    bool has_attr[ATTR_COUNT] = { 0 };
     struct { int mode, value; bool stamina; } res[8]; /* hp / stamina changes, in the order given */
     int nres = 0;
     for (int i = 1; i < a->argc;) {
@@ -518,6 +525,25 @@ static void cmd_character(Args *a) {
             i += 2;
             continue;
         }
+        int at = attr_by_name(key);
+        if (at >= 0) {
+            int v;
+            if (!parse_int_arg(val, &v)) {
+                console_log("Expected a number after \"%s\"", a->argv[i]);
+                return;
+            }
+            /* a player's request (nothing selected) can't make a stronger character than the creation steps */
+            bool request = session_is_client() && gh->selectedEntities.count == 0;
+            int lo = request ? ATTR_CREATE_MIN : ATTR_MIN, hi = request ? ATTR_CREATE_MAX : ATTR_MAX;
+            if (v < lo || v > hi) {
+                console_log("Attributes go from %d to %d", lo, hi);
+                return;
+            }
+            attr[at] = v;
+            has_attr[at] = true;
+            i += 2;
+            continue;
+        }
         int *target = NULL;
         int slot = -1;
         if      (!strcmp(key, "sz") || !strcmp(key, "size"))       { target = &size; slot = 0; }
@@ -550,8 +576,15 @@ static void cmd_character(Args *a) {
     if (gh->selectedEntities.count == 0) {
         /* a bare "party" leaves a party: nothing to create */
         if (has_owner || nres > 0 || (has_party && !party[0])) console_log("Select the characters first");
-        else gfx_spawn_character(size, max_health, speed, initiative, max_stamina, has_name ? name : NULL,
-                                 has_party ? party : NULL, NULL);
+        else {
+            AttrStats d = attr_derive(attr); /* the derived stats fill in unless given by hand */
+            if (has_attr[ATTR_STR] && !has[1]) max_health = d.maxHealth;
+            if (has_attr[ATTR_AGI] && !has[4]) max_stamina = d.maxStamina;
+            if (has_attr[ATTR_AGI] && !has[2]) speed = d.speed;
+            if (has_attr[ATTR_COG] && !has[3]) initiative = d.initiative;
+            gfx_spawn_character(size, max_health, speed, initiative, max_stamina, has_name ? name : NULL,
+                                has_party ? party : NULL, attr);
+        }
         return;
     }
 
@@ -559,6 +592,11 @@ static void cmd_character(Args *a) {
                  .initiative = initiative, .maxStamina = max_stamina };
     for (int s = 0; s < 5; s++)
         if (has[s]) stats.statMask |= 1 << s;
+    for (int at = 0; at < ATTR_COUNT; at++)
+        if (has_attr[at]) {
+            stats.statMask |= STAT_ATTR(at);
+            stats.attr[at] = attr[at];
+        }
     Op own = { .type = OP_SET_OWNER };
     snprintf(own.name, sizeof(own.name), "%s", owner);
     int icon_targets = 0;
@@ -629,6 +667,8 @@ static void cmd_help(Args *a) {
         console_log("  initiative <n> | icon | owner <player|none>");
         console_log("  name <name> (quotes for spaces) | hp <n> | damage <n> | heal <n>");
         console_log("  maxstamina <n> | stamina <n> | spend <n> | recover <n>");
+        console_log("  str <n> | agi <n> | cog <n> | spi <n> (-10..10): STR sets max HP (12 + 3 STR), AGI max");
+        console_log("  stamina (8 + AGI) and speed (AGI + 3, at least 2), COG initiative - GM only on a selection");
         console_log("  party <name> | party (last: leave the party) - GM only");
         console_log("  players: name, HP and stamina of your own characters; with nothing selected,");
         console_log("  asks the GM for a new character of your own");
