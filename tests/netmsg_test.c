@@ -58,7 +58,8 @@ static NetOp sample_op(int type) {
         break;
     case NOP_SPAWN:
         specs2[0] = (NetSpec){ .type = SAVE_ENT_CHARACTER, .row = 3, .col = -4, .size = 1, .max_health = 30,
-                               .health = 12, .attack = 5, .speed = 6, .initiative = -1 };
+                               .health = 12, .attack = 5, .speed = 6, .initiative = -1,
+                               .attr = { 1, 2, 0, -1 } };
         fill_hash(specs2[0].image, 1);
         strcpy(specs2[0].name, "Mao");
         strcpy(specs2[0].party, "Silver Hand");
@@ -74,7 +75,8 @@ static NetOp sample_op(int type) {
         break;
     case NOP_SET_STATS:
         o.ids = ids3; o.nids = 1;
-        o.stat_mask = 1 | 4 | 8 | 16; o.max_stamina = 7; o.size = -2; o.speed = 21; o.initiative = 4;
+        o.stat_mask = 1 | 4 | 8 | 16 | NSTAT_STR | NSTAT_SPI; o.max_stamina = 7; o.size = -2; o.speed = 21; o.initiative = 4;
+        o.attr[0] = 3; o.attr[3] = -2;
         break;
     case NOP_SET_ICON:
         o.ids = ids3; o.nids = 2;
@@ -154,11 +156,13 @@ static NetMsg sample_msg(int t, int op_type) {
     case NM_LOG: strcpy(m.text, "Alice rolled 2d6+3: 4 + 2 + 3 = 9"); break;
     case NM_CLOSE: m.reason = NET_CLOSE_KICKED; break;
     case NM_PRESENCE: m.player = 3; m.presence = sample_presence(); break;
+    case NM_CREATE_ANSWER: m.seq = 7; m.accepted = true; break;
     case NM_CREATE:
         m.seq = 7;
         m.spec = (NetSpec){ .type = SAVE_ENT_CHARACTER, .row = 3, .col = -4, .size = -2, .max_health = 20,
                             .health = 20, .speed = 6, .initiative = 1, .max_stamina = 8, .stamina = 8 };
         strcpy(m.spec.name, "Nina");
+        m.spec.attr[0] = 1; m.spec.attr[1] = 2; m.spec.attr[3] = -1;
         m.data = blob; m.data_len = sizeof(blob);
         break;
     }
@@ -277,7 +281,8 @@ static void test_fields_survive(void) {
     netmsg_free(&d);
 
     m = sample_msg(NM_OP, NOP_SET_STATS);
-    CHECK(round_trip(&m, &d) && d.seq == 99 && d.op.stat_mask == 29 && d.op.max_stamina == 7 && d.op.size == -2 && d.op.speed == 21 &&
+    CHECK(round_trip(&m, &d) && d.seq == 99 && d.op.stat_mask == (29 | NSTAT_STR | NSTAT_SPI) && d.op.attr[0] == 3 && d.op.attr[3] == -2 && d.op.attr[1] == 0 &&
+          d.op.max_stamina == 7 && d.op.size == -2 && d.op.speed == 21 &&
           d.op.initiative == 4 && d.op.max_health == 0);
     netmsg_free(&d);
 
@@ -432,7 +437,7 @@ static void test_encoder_refuses_invalid(void) {
     m = sample_msg(NM_OP, NOP_SPAWN); strcpy(specs2[1].party, "Heroes"); check_invalid(m, "wall with a party"); specs2[1].party[0] = '\0';
     m = sample_msg(NM_OP, NOP_SPAWN); strcpy(specs2[1].name, "wall"); check_invalid(m, "wall with a name"); specs2[1].name[0] = '\0';
     m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = 0; check_invalid(m, "empty stat mask");
-    m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = 32; check_invalid(m, "unknown stat bit");
+    m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = NSTAT_ALL + 1; check_invalid(m, "unknown stat bit");
     m = sample_msg(NM_OP, NOP_SET_STATS); m.op.max_stamina = SAVEFMT_MAX_HP + 1; check_invalid(m, "max stamina too big");
     m = sample_msg(NM_OP, NOP_SET_STATS); m.op.max_stamina = -1; check_invalid(m, "negative max stamina");
     m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = NSTAT_SPEED; m.op.speed = SAVEFMT_MAX_SPEED + 1; check_invalid(m, "stat speed too big");
@@ -450,6 +455,27 @@ static void test_encoder_refuses_invalid(void) {
 }
 
 /* Hand-made byte strings the decoder must refuse although each length is in bounds. */
+static void test_attr_limits(void) {
+    NetMsg m = sample_msg(NM_CREATE, 0);
+    m.spec.attr[2] = SAVEFMT_MAX_ATTR + 1;
+    check_invalid(m, "create with an attribute over the limit");
+    NetMsg op = sample_msg(NM_OP, NOP_SET_STATS);
+    op.op.stat_mask = NSTAT_ALL + 1;
+    check_invalid(op, "set stats with an unknown bit");
+    op = sample_msg(NM_OP, NOP_SET_STATS);
+    op.op.attr[0] = SAVEFMT_MIN_ATTR - 1;
+    check_invalid(op, "set stats with an attribute under the limit");
+    /* CREATE_ANSWER: "accepted" is 0 or 1 */
+    NetMsg a = sample_msg(NM_CREATE_ANSWER, 0);
+    uint8_t *buf;
+    size_t len;
+    CHECK(netmsg_encode(&a, &buf, &len));
+    buf[len - 1] = 2;
+    NetMsg d;
+    CHECK(!netmsg_decode(buf, len, &d));
+    free(buf);
+}
+
 static void test_decoder_refuses_bytes(void) {
     static const struct { const char *what; uint8_t bytes[16]; size_t len; } cases[] = {
         { "empty", { 0 }, 0 },
@@ -667,6 +693,7 @@ int main(int argc, char **argv) {
     test_truncated_and_trailing();
     test_encoder_refuses_invalid();
     test_decoder_refuses_bytes();
+    test_attr_limits();
     test_create();
     test_hello_no_quotes();
     test_image_hash();

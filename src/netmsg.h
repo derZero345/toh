@@ -21,7 +21,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define NET_PROTOCOL_VERSION 10
+#define NET_PROTOCOL_VERSION 11
+#define NETMSG_ATTRS 4 /* = ATTR_COUNT: STR, AGI, COG, SPI */
 #define NET_DEFAULT_PORT     41234
 #define NET_MAX_FRAME        (64u << 20)            /* one encrypted frame */
 #define NETMSG_MAX_BLOB      (NET_MAX_FRAME - 1024) /* SNAPSHOT / IMAGE payload */
@@ -62,6 +63,7 @@ typedef enum {
     NM_LOG,           /* H->C text */
     NM_CLOSE,         /* H->C reason (NET_CLOSE_*) */
     NM_CREATE,        /* C->H seq, spec (a character with optional name; no image hash), data: WebP bytes of its picture */
+    NM_CREATE_ANSWER, /* H->C seq (of the player's CREATE), accepted */
     NM_COUNT
 } NetMsgType;
 
@@ -76,7 +78,7 @@ typedef enum {
     NOP_MOVE,             /* id, row, col */
     NOP_SPAWN,            /* specs; ids: none (client) or one per spec (assigned by the host) */
     NOP_DELETE,           /* ids */
-    NOP_SET_STATS,        /* ids, stat_mask (STAT_* bits, 1..31), the masked values */
+    NOP_SET_STATS,        /* ids, stat_mask (NSTAT_* bits, 1..NSTAT_ALL), the masked values */
     NOP_SET_ICON,         /* ids, image */
     NOP_SET_BACKGROUND,   /* has_image, image */
     NOP_GRID_ORIENTATION,
@@ -102,7 +104,8 @@ typedef enum {
 } NetOpType;
 
 /* NetOp.stat_mask bits, the same values as STAT_* in ops.h. Values follow in this order. */
-enum { NSTAT_SIZE = 1, NSTAT_MAXHEALTH = 2, NSTAT_SPEED = 4, NSTAT_INITIATIVE = 8, NSTAT_MAXSTAMINA = 16, NSTAT_ALL = 31 };
+enum { NSTAT_SIZE = 1, NSTAT_MAXHEALTH = 2, NSTAT_SPEED = 4, NSTAT_INITIATIVE = 8, NSTAT_MAXSTAMINA = 16,
+       NSTAT_STR = 32, NSTAT_AGI = 64, NSTAT_COG = 128, NSTAT_SPI = 256, NSTAT_ALL = 511 };
 
 /* An entity created by NOP_SPAWN. Walls carry only type, image and tile. */
 typedef struct {
@@ -113,6 +116,7 @@ typedef struct {
     int32_t max_stamina, stamina;
     char name[SAVEFMT_CHAR_NAME_MAX]; /* characters: "" = no name */
     char party[SAVEFMT_CHAR_NAME_MAX]; /* characters: "" = no party */
+    int32_t attr[NETMSG_ATTRS];        /* characters: SAVEFMT_MIN_ATTR..SAVEFMT_MAX_ATTR */
 } NetSpec;
 
 typedef struct {
@@ -127,8 +131,9 @@ typedef struct {
     uint32_t nspecs;
     bool has_image;
     uint8_t image[NET_HASH_SIZE];
-    uint8_t stat_mask;
+    uint16_t stat_mask;
     int32_t size, max_health, speed, initiative, max_stamina;
+    int32_t attr[NETMSG_ATTRS];
     char name[SAVEFMT_NAME_MAX]; /* waypoint or player name */
     char dice[NETMSG_MAX_DICE];
     uint8_t health_mode; /* SET_HEALTH, SET_STAMINA: 0 = set, 1 = change, 2 = spend (stamina only) */
@@ -190,7 +195,7 @@ typedef struct {
     char name[SAVEFMT_OWNER_MAX];      /* HELLO */
     uint8_t player;                    /* WELCOME, OP_APPLIED */
     uint8_t reason;                    /* REJECT, OP_REJECTED, CLOSE */
-    uint32_t seq;                      /* OP, OP_REJECTED */
+    uint32_t seq;                      /* OP, OP_REJECTED, CREATE, CREATE_ANSWER */
     NetOp op;                          /* OP, OP_APPLIED */
     NetPlayer info;                    /* PLAYER_JOINED, PLAYER_LEFT */
     uint32_t *entity_ids;              /* SESSION, never 0 */
@@ -204,6 +209,7 @@ typedef struct {
     char text[NETMSG_MAX_TEXT];        /* LOG */
     NetPresence presence;              /* PRESENCE (with player) */
     NetSpec spec;                      /* CREATE: type character, health = max_health */
+    bool accepted;                     /* CREATE_ANSWER */
 } NetMsg;
 
 /* Encodes m into a new buffer (*out, free with free()). Returns false when m breaks a rule

@@ -29,13 +29,19 @@ static bool dice_ok(const char *s) {
     return true;
 }
 
+static bool attrs_ok(const int32_t *a) {
+    for (int i = 0; i < NETMSG_ATTRS; i++)
+        if (a[i] < SAVEFMT_MIN_ATTR || a[i] > SAVEFMT_MAX_ATTR) return false;
+    return true;
+}
+
 static bool spec_ok(const NetSpec *s) {
     if (s->type > SAVE_ENT_WALL || !coord_ok(s->row) || !coord_ok(s->col)) return false;
     if (s->name[0] && (s->type != SAVE_ENT_CHARACTER || !savefmt_char_name_valid(s->name))) return false;
     if (s->party[0] && (s->type != SAVE_ENT_CHARACTER || !savefmt_char_name_valid(s->party))) return false;
     if (s->type != SAVE_ENT_CHARACTER) return true;
     return s->speed <= SAVEFMT_MAX_SPEED && s->max_stamina >= 0 && s->max_stamina <= SAVEFMT_MAX_HP &&
-           s->stamina >= -SAVEFMT_MAX_HP && s->stamina <= SAVEFMT_MAX_HP;
+           s->stamina >= -SAVEFMT_MAX_HP && s->stamina <= SAVEFMT_MAX_HP && attrs_ok(s->attr);
 }
 
 static bool op_ok(const NetOp *o) {
@@ -54,6 +60,7 @@ static bool op_ok(const NetOp *o) {
     case NOP_SET_STATS:
         if (o->stat_mask == 0 || o->stat_mask > NSTAT_ALL) return false;
         if ((o->stat_mask & NSTAT_MAXSTAMINA) && (o->max_stamina < 0 || o->max_stamina > SAVEFMT_MAX_HP)) return false;
+        if ((o->stat_mask & (NSTAT_STR | NSTAT_AGI | NSTAT_COG | NSTAT_SPI)) && !attrs_ok(o->attr)) return false;
         return !(o->stat_mask & NSTAT_SPEED) || o->speed <= SAVEFMT_MAX_SPEED;
     case NOP_SET_ICON:
         return o->has_image;
@@ -148,6 +155,7 @@ static bool msg_ok(const NetMsg *m) {
     case NM_OP_APPLIED:    return op_ok(&m->op);
     case NM_LOG:           return text_ok(m->text, sizeof(m->text));
     case NM_PRESENCE:      return presence_ok(&m->presence);
+    case NM_CREATE_ANSWER: return true;
     case NM_CREATE:
         return m->spec.type == SAVE_ENT_CHARACTER && spec_ok(&m->spec) && m->spec.size >= SAVEFMT_MIN_SIZE && m->spec.size <= SAVEFMT_MAX_SIZE &&
                m->spec.health == m->spec.max_health && m->spec.stamina == m->spec.max_stamina && m->data && m->data_len >= 1 &&
@@ -242,6 +250,7 @@ static void put_op(Buf *b, const NetOp *o) {
                 put_sv(b, s->max_stamina);
                 put_sv(b, s->stamina);
                 put_str(b, s->party);
+                for (int a = 0; a < NETMSG_ATTRS; a++) put_sv(b, s->attr[a]);
             }
         }
         put_ids(b, o->ids, o->nids);
@@ -252,9 +261,10 @@ static void put_op(Buf *b, const NetOp *o) {
         break;
     case NOP_SET_STATS: {
         put_ids(b, o->ids, o->nids);
-        put_u8(b, o->stat_mask);
-        const int32_t v[5] = { o->size, o->max_health, o->speed, o->initiative, o->max_stamina };
-        for (int i = 0; i < 5; i++)
+        put_uv(b, o->stat_mask);
+        const int32_t v[9] = { o->size, o->max_health, o->speed, o->initiative, o->max_stamina,
+                               o->attr[0], o->attr[1], o->attr[2], o->attr[3] };
+        for (int i = 0; i < 9; i++)
             if (o->stat_mask & (1 << i)) put_sv(b, v[i]);
         break;
     }
@@ -392,7 +402,12 @@ bool netmsg_encode(const NetMsg *m, uint8_t **out, size_t *out_len) {
         put_sv(&b, m->spec.initiative);
         put_str(&b, m->spec.name);
         put_sv(&b, m->spec.max_stamina);
+        for (int a = 0; a < NETMSG_ATTRS; a++) put_sv(&b, m->spec.attr[a]);
         put_bytes(&b, m->data, m->data_len);
+        break;
+    case NM_CREATE_ANSWER:
+        put_uv(&b, m->seq);
+        put_u8(&b, m->accepted ? 1 : 0);
         break;
     }
     if (b.oom) {
@@ -530,6 +545,7 @@ static void get_op(Rd *r, NetOp *o) {
                 s->max_stamina = get_sv(r);
                 s->stamina = get_sv(r);
                 get_str(r, s->party, sizeof(s->party));
+                for (int a = 0; a < NETMSG_ATTRS; a++) s->attr[a] = get_sv(r);
             }
         }
         o->ids = get_ids(r, &o->nids);
@@ -541,15 +557,18 @@ static void get_op(Rd *r, NetOp *o) {
         break;
     case NOP_SET_STATS: {
         o->ids = get_ids(r, &o->nids);
-        o->stat_mask = get_u8(r);
-        int32_t v[5] = { 0 };
-        for (int i = 0; i < 5; i++)
+        uint32_t mask = get_uv(r);
+        if (mask > 0xFFFF) r->bad = true;
+        o->stat_mask = (uint16_t)mask;
+        int32_t v[9] = { 0 };
+        for (int i = 0; i < 9; i++)
             if (o->stat_mask & (1 << i)) v[i] = get_sv(r);
         o->size = v[0];
         o->max_health = v[1];
         o->speed = v[2];
         o->initiative = v[3];
         o->max_stamina = v[4];
+        for (int a = 0; a < NETMSG_ATTRS; a++) o->attr[a] = v[5 + a];
         break;
     }
     case NOP_SET_ICON:
@@ -711,10 +730,18 @@ bool netmsg_decode(const uint8_t *buf, size_t len, NetMsg *out) {
         out->spec.initiative = get_sv(&r);
         get_str(&r, out->spec.name, sizeof(out->spec.name));
         out->spec.max_stamina = get_sv(&r);
+        for (int a = 0; a < NETMSG_ATTRS; a++) out->spec.attr[a] = get_sv(&r);
         out->spec.stamina = out->spec.max_stamina;
         out->spec.health = out->spec.max_health;
         get_blob(&r, out);
         break;
+    case NM_CREATE_ANSWER: {
+        out->seq = get_uv(&r);
+        uint8_t a = get_u8(&r);
+        if (a > 1) r.bad = true;
+        out->accepted = a == 1;
+        break;
+    }
     default:
         r.bad = true;
         break;

@@ -39,6 +39,9 @@ _Static_assert((int)NOP_MOVE == (int)OP_MOVE && (int)NOP_SPAWN == (int)OP_SPAWN 
 _Static_assert((int)NSTAT_SIZE == (int)STAT_SIZE && (int)NSTAT_MAXHEALTH == (int)STAT_MAXHEALTH &&
                (int)NSTAT_SPEED == (int)STAT_SPEED && (int)NSTAT_INITIATIVE == (int)STAT_INITIATIVE, "stat bits must match");
 _Static_assert((int)NSTAT_MAXSTAMINA == (int)STAT_MAXSTAMINA, "stamina bit");
+_Static_assert((int)NSTAT_STR == (int)STAT_STR && (int)NSTAT_AGI == (int)STAT_AGI && (int)NSTAT_COG == (int)STAT_COG &&
+               (int)NSTAT_SPI == (int)STAT_SPI && (int)NSTAT_ALL == (int)STAT_ALL && NETMSG_ATTRS == ATTR_COUNT,
+               "attribute bits must match");
 _Static_assert(SIZE_MIN == SAVEFMT_MIN_SIZE && SIZE_MAX_CLASS == SAVEFMT_MAX_SIZE, "size limits must match");
 _Static_assert((int)OPR_LAST <= (int)NETMSG_MAX_REASON, "OpResult must fit OP_REJECTED");
 _Static_assert(PLAYER_NAME_MAX == SAVEFMT_OWNER_MAX && WAYPOINT_NAME_MAX == SAVEFMT_NAME_MAX, "name sizes");

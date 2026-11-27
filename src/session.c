@@ -291,7 +291,7 @@ static bool net_from_op(const Op *op, NetOp *o) {
     if (!o->ids || !o->values || !o->specs) abort();
     if (o->nids) memcpy(o->ids, op->ids.items, sizeof(uint32_t) * o->nids);
     if (o->nvalues) memcpy(o->values, op->values.items, sizeof(double) * o->nvalues);
-    o->stat_mask = (uint8_t)op->statMask;
+    o->stat_mask = (uint16_t)op->statMask;
     o->size = op->size;
     o->max_health = op->maxHealth;
     o->speed = op->speed;
