@@ -1704,6 +1704,42 @@ static void test_hud_controls(void) {
     hud_use_config(NULL, 0);
 }
 
+static void test_hud_plus(void) {
+    HudScreen scr = { 1000, 700, 700, 0, 1 };
+    hud_set_screen(&scr);
+    hud_use_config(NULL, 0);
+    hud_set_visible(true);
+    hud_set_event_handler(hud_record);
+    hud_nevents = 0;
+    hud_begin_frame();
+    HudRect plus, panel;
+    CHECK(!hud_part_rect("plus", &plus)); /* not published this frame */
+    hud_set_plus(true);
+    CHECK(hud_part_rect("plus", &plus) && hud_part_rect("panel", &panel));
+    CHECK(plus.x + plus.w < panel.x && near(plus.y + plus.h, panel.y + panel.h, 0.01f)); /* bottom left of the bar */
+    CHECK(hud_contains(plus.x + 2, plus.y + 2));
+    click_part("plus");
+    CHECK(hud_nevents == 1 && hud_events[0].type == HUD_EV_PLUS);
+    /* a press on "+" released elsewhere does nothing */
+    hud_mouse_down(plus.x + 2, plus.y + 2);
+    hud_mouse_up(5, 5);
+    CHECK(hud_nevents == 1);
+    /* the tab's tooltip */
+    hud_set_target("Mao", "", false);
+    hud_set_target_tip("COG 1 \xc2\xb7 SPI 0");
+    HudRect tab;
+    CHECK(hud_part_rect("tab", &tab));
+    hud_mouse_move(tab.x + 2, tab.y + 2);
+    CHECK(hud_tooltip() && !strcmp(hud_tooltip(), "COG 1 \xc2\xb7 SPI 0"));
+    hud_draw();
+    /* a narrow window: the bar moves right to make room for "+" */
+    HudScreen narrow = { 420, 700, 700, 32, 1 };
+    hud_set_screen(&narrow);
+    CHECK(hud_part_rect("plus", &plus) && plus.x >= 32);
+    hud_set_event_handler(NULL);
+    hud_begin_frame();
+}
+
 static void test_hud_game(void) {
     reset_table();
     app.winW = 1000;
@@ -2625,6 +2661,7 @@ int main(void) {
     test_hud_input();
     test_hud_review();
     test_hud_controls();
+    test_hud_plus();
     test_hud_game();
     test_radial_config();
     test_radial_menu();

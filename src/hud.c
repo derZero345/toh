@@ -100,10 +100,12 @@ int hud_config_check(const HudRow *r, int n, char *err, size_t cap) {
 static HudValue values[HUD_MAX_VALUES];
 static int nvalues;
 static HudTarget target;
+static bool plus;
 
 void hud_begin_frame(void) {
     nvalues = 0;
     memset(&target, 0, sizeof(target));
+    plus = false;
 }
 
 static HudValue *find_value(const char *key) {
@@ -134,6 +136,9 @@ void hud_set_target(const char *name, const char *extra, bool can_close) {
     snprintf(target.extra, sizeof(target.extra), "%s", extra ? extra : "");
     target.canClose = can_close;
 }
+
+void hud_set_target_tip(const char *tip) { snprintf(target.tip, sizeof(target.tip), "%s", tip ? tip : ""); }
+void hud_set_plus(bool shown) { plus = shown; }
 
 const HudTarget *hud_target(void) { return &target; }
 
@@ -229,6 +234,8 @@ typedef struct {
     /* the result */
     float scale;
     HudRect panel, tab, close;
+    bool plus;
+    HudRect plusRect;
     HudRect elems[HUD_MAX_ROWS][HUD_MAX_ROW_ELEMENTS];
 } Layout;
 
@@ -327,8 +334,12 @@ static void layout_compute(void) {
     }
     float x = (screen.winW - w) / 2;
     if (x < screen.left + t->margin * s) x = screen.left + t->margin * s;
+    float side = t->plusSize * s, gap = t->elemGap * s;
+    if (plus && x < screen.left + t->margin * s + side + gap) x = screen.left + t->margin * s + side + gap;
     float y = screen.bottom - t->margin * s - h;
     layout.panel = (HudRect){ x, y, w, h };
+    layout.plusRect = plus ? (HudRect){ x - gap - side, y + h - side, side, side } : (HudRect){ 0 };
+    layout.plus = plus;
 
     float ry = y + t->padding * s;
     for (int i = 0; i < n; i++) {
@@ -368,12 +379,12 @@ static void layout_compute(void) {
 
 static bool same_target(const HudTarget *a, const HudTarget *b) {
     return a->shown == b->shown && a->canClose == b->canClose && strcmp(a->name, b->name) == 0 &&
-           strcmp(a->extra, b->extra) == 0;
+           strcmp(a->extra, b->extra) == 0 && strcmp(a->tip, b->tip) == 0;
 }
 
 /* Recomputes only when something the layout depends on changed. */
 static void ensure_layout(void) {
-    if (layout.valid && layout.rows == rows && layout.nrows == row_count() &&
+    if (layout.valid && layout.rows == rows && layout.nrows == row_count() && layout.plus == plus &&
         memcmp(&layout.screen, &screen, sizeof(screen)) == 0 && same_target(&layout.target, &target))
         return;
     layout_compute();
@@ -397,6 +408,11 @@ bool hud_part_rect(const char *part, HudRect *out) {
     if (strcmp(part, "tab") == 0 || strcmp(part, "tab.close") == 0) {
         if (!target.shown || (part[3] == '.' && !target.canClose)) return false;
         *out = part[3] == '.' ? layout.close : layout.tab;
+        return true;
+    }
+    if (strcmp(part, "plus") == 0) {
+        if (!plus) return false;
+        *out = layout.plusRect;
         return true;
     }
     for (int i = 0; i < row_count(); i++)
@@ -442,7 +458,8 @@ bool hud_part_rect(const char *part, HudRect *out) {
 bool hud_contains(float x, float y) {
     if (!active()) return false;
     ensure_layout();
-    return hud_rect_contains(layout.panel, x, y) || (target.shown && hud_rect_contains(layout.tab, x, y));
+    return hud_rect_contains(layout.panel, x, y) || (target.shown && hud_rect_contains(layout.tab, x, y)) ||
+           (plus && hud_rect_contains(layout.plusRect, x, y));
 }
 
 /* ---- input and events ---- */
@@ -586,6 +603,8 @@ bool hud_text_key(HudEditKey k) {
 /* hover as if the pointer moved to x, y with no press held */
 static void refresh_hover(float x, float y) {
     ui.hoverClose = target.shown && target.canClose && hud_rect_contains(layout.close, x, y);
+    ui.hoverTab = target.shown && hud_rect_contains(layout.tab, x, y);
+    ui.hoverPlus = plus && hud_rect_contains(layout.plusRect, x, y);
     int idx = element_at(x, y);
     if (idx != ui.hover) {
         ui.hover = idx;
@@ -601,7 +620,7 @@ void hud_clear_hover(void) {
 
 void hud_cancel_press(void) {
     ui.press = ui.pressSub = -1;
-    ui.pressClose = false;
+    ui.pressClose = ui.pressPlus = false;
     pressActive = false;
 }
 
@@ -610,6 +629,12 @@ bool hud_mouse_down(float x, float y) {
     if (!active()) return false;
     ensure_layout();
     refresh_hover(x, y); /* the pressed element is the hovered one, so its hoverSub follows the held press */
+    if (plus && hud_rect_contains(layout.plusRect, x, y)) {
+        hud_blur();
+        ui.pressPlus = true;
+        pressActive = true;
+        return true;
+    }
     if (target.shown && hud_rect_contains(layout.tab, x, y)) {
         ui.pressClose = target.canClose && hud_rect_contains(layout.close, x, y);
         pressActive = true;
@@ -636,6 +661,7 @@ bool hud_mouse_move(float x, float y) {
     ensure_layout();
     if (pressActive) {
         ui.hoverClose = target.shown && target.canClose && hud_rect_contains(layout.close, x, y);
+        ui.hoverPlus = plus && hud_rect_contains(layout.plusRect, x, y);
         if (ui.press >= 0) element_mouse(ui.press, HUD_MOUSE_MOVE, x, y);
         return true;
     }
@@ -645,13 +671,14 @@ bool hud_mouse_move(float x, float y) {
 
 bool hud_mouse_up(float x, float y) {
     if (!pressActive) return false;
-    bool close = ui.pressClose;
+    bool close = ui.pressClose, plusPressed = ui.pressPlus;
     pressActive = false;
-    ui.pressClose = false;
+    ui.pressClose = ui.pressPlus = false;
     if (active()) {
         ensure_layout();
         if (close && target.shown && target.canClose && hud_rect_contains(layout.close, x, y))
             send(&(HudEvent){ .type = HUD_EV_TARGET_CLOSED });
+        if (plusPressed && plus && hud_rect_contains(layout.plusRect, x, y)) send(&(HudEvent){ .type = HUD_EV_PLUS });
         if (ui.press >= 0) element_mouse(ui.press, HUD_MOUSE_UP, x, y);
         ui.press = ui.pressSub = -1;
         refresh_hover(x, y);
@@ -679,6 +706,7 @@ bool hud_key(int slot) {
 const char *hud_tooltip(void) {
     if (!active()) return NULL;
     ensure_layout();
+    if (ui.hoverTab && target.shown && target.tip[0]) return target.tip;
     if (ui.hover < 0) return NULL;
     const HudElement *e = element(ui.hover);
     const HudComponent *c = component(e);
@@ -696,6 +724,14 @@ void hud_draw(void) {
             component(e)->draw(e, layout.elems[i][k], element_value(e), &ui, i * HUD_MAX_ROW_ELEMENTS + k, s);
         }
     hud_draw_tab(layout.tab, layout.close, &target, &ui, s);
+    if (plus) {
+        HudRect p = layout.plusRect;
+        hud_draw_panel(p, s);
+        Color c = ui.pressPlus && ui.hoverPlus ? HUD_THEME.pressed : ui.hoverPlus ? HUD_THEME.hover : HUD_THEME.text;
+        float fs = HUD_THEME.font * 2 * s, a, d;
+        dr_font_metrics(FONT_BOLD, fs, &a, &d);
+        dr_text(FONT_BOLD, fs, p.x + (p.w - dr_text_width(FONT_BOLD, fs, "+")) / 2, p.y + (p.h + a - d) / 2, c, "+");
+    }
     const char *tip = hud_tooltip();
     if (tip) {
         float fs = HUD_THEME.font * s, pad = HUD_THEME.tipPad * s;

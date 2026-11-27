@@ -140,6 +140,8 @@ typedef struct {
 
 void hud_begin_frame(void); /* forgets the previous frame's values and target */
 void hud_set_target(const char *name, const char *extra, bool can_close);
+void hud_set_target_tip(const char *tip);
+void hud_set_plus(bool shown); /* this frame: the "+" box at the bottom left of the panel (it sends HUD_EV_PLUS) */
 void hud_set_bar(const char *key, const HudBar *bar);
 void hud_set_pill(const char *key, const char *label, const char *value);
 void hud_set_slider(const char *key, const char *label, int value, int min, int max);
@@ -157,6 +159,7 @@ typedef struct {
     bool shown;
     char name[HUD_TEXT_MAX], extra[HUD_TEXT_MAX]; /* extra: e.g. "+2 (exhausted)" */
     bool canClose;
+    char tip[HUD_TEXT_MAX]; /* tooltip while the pointer is over the tab; "" = none */
 } HudTarget;
 const HudTarget *hud_target(void);
 
@@ -176,7 +179,7 @@ void hud_set_visible(bool on);
 void hud_set_border(Color c);
 Color hud_border(void);
 /* A part of the current layout: an element key, "<hotbar key>.<1..slots>", "<stepper key>.minus" / ".plus",
- * "panel", "tab" or "tab.close".
+ * "panel", "plus" (only while published with hud_set_plus), "tab" or "tab.close".
  * False if the HUD is hidden, there is no such part, or the tab (or its close button) is not shown. */
 bool hud_part_rect(const char *part, HudRect *out);
 bool hud_contains(float x, float y); /* over the panel or the tab; false while hidden */
