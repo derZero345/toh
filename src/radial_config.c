@@ -2,9 +2,9 @@
  * which menu a hex gets and handles the actions by id (see radial.h).
  *
  * "actions" is the menu of a character you control. "tile" and "character" (other hexes) are still placeholders,
- * except the tile menu's GM entry "Create character" (a real one), so the framework can be tried out: neutral ids and labels, the placeholder icon, a submenu
- * with a nested submenu, a second submenu to switch to, an entry that needs something on the tile (disabled on an
- * empty one) and one only the GM sees. */
+ * except the tile menu's GM entry "Create character" (a real one), so the framework can be tried out: neutral ids
+ * and labels, the placeholder icon, a submenu with a nested submenu, a second submenu to switch to, an entry that
+ * needs something on the tile (disabled on an empty one) and one only the GM sees. */
 #include "radial.h"
 
 #define ACTION(id_, label_, accent_, ...) \

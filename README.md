@@ -43,7 +43,7 @@ in the Java version.
 | Right click (or Right-Shift + Enter) | tool action (drag start, measure point, place attack) |
 | Right click without moving (Drag tool) | tile menu: a ring of entries around the tile; Esc / click outside closes; the GM's Create character on empty tiles |
 | Right click your character (Drag tool) | action menu: Minor / Info / Mental / Major; during initiative its move actions (Walk, Run, Crawl, Step, Sprint) move it on its turn, and Recover (1d4) / Full Recover restore its stamina |
-| + Create character (bar, when you have no character) / + box left of the bar (GM) | create a character in steps: name, size, attributes (STR / AGI shown beside the HP bar), picture, then place it (left click a green tile; Esc / right click back; Enter / Right-Shift + Enter in keyboard mode) |
+| + Create character (bar, when you have no character) / + box left of the bar (GM) | create a character in steps: name, size, attributes (STR / AGI shown beside the HP bar), picture, then place it (left click a green tile; Esc / right click back; Enter / Right-Shift + Enter in keyboard mode, but the steps need the mouse) |
 | Shift + left click | move the selected character inside its (green) range (players: outside initiative) |
 | Hold Left Shift | preview footprint and path of the selected character |
 | Ctrl + click / drag | multi-select |

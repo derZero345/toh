@@ -15,7 +15,8 @@ typedef enum {
     OP_MOVE,             /* id -> tile */
     OP_SPAWN,            /* specs; ops_apply stores the new entities' ids in ids */
     OP_DELETE,           /* ids */
-    OP_SET_STATS,        /* ids; statMask says which of the values below change; an attribute bit also sets the stats it gives (attrs.h) unless they are in the mask too */
+    OP_SET_STATS,        /* ids; statMask says which of the values below change; an attribute bit also sets the
+                          * stats it gives (attrs.h) unless they are in the mask too */
     OP_SET_ICON,         /* ids, image */
     OP_SET_BACKGROUND,   /* image, NULL = none */
     OP_GRID_ORIENTATION, /* toggles flat / pointy */

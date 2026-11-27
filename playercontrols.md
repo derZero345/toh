@@ -188,6 +188,6 @@ On other tiles the entries are placeholders: choosing one writes `Menu: <entry> 
 | `:hud` | Show / hide the HUD |
 | `:t [name]` | List the color themes, or choose one (remembered for the next start) |
 | `:cl` | Clear the log and command history |
-| Arrow keys, Enter | Play without a mouse: move a cursor, Enter = left click, Right Shift + Enter = right click, Right Shift + Up / Down = zoom. While placing a new character, Enter places it on the cursor's tile and Right Shift + Enter goes back to the summary |
+| Arrow keys, Enter | Play without a mouse: move a cursor, Enter = left click, Right Shift + Enter = right click, Right Shift + Up / Down = zoom. While placing a new character, Enter places it on the cursor's tile and Right Shift + Enter goes back to the summary; the creation steps need the mouse |
 
 Everything else (editing your characters' other stats and attributes, deleting characters, walls, initiative, the background) is the GM's job.

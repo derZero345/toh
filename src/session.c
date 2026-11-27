@@ -18,7 +18,8 @@
 
 #define MAX_PLAYERS (NET_MAX_CONNS + 1) /* the GM and every connection */
 #define ROLL_LIST_MAX 20                /* longer rolls only show the total in the log */
-#define CLAIMS_PER_PLAYER SESSION_REQUESTS_MAX             /* host: a player's requests (claims, new characters) waiting for the GM */
+/* host: a player's requests (claims, new characters) waiting for the GM */
+#define CLAIMS_PER_PLAYER SESSION_REQUESTS_MAX
 #define ROLL_WINDOW_MS 10000            /* host: a player rolls at most ROLLS_PER_WINDOW times in this */
 #define ROLLS_PER_WINDOW 10
 #define BAN_KEY_MAX 64

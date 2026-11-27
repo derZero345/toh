@@ -95,8 +95,9 @@ steps are shown inside the bar; the tab says `New character · 2/5`.
 **Placing.** After **Place** the log says `Click a tile to place Mao (Esc: back)` and the bar shows its normal
 content again. The picture follows the mouse, its tiles green where it fits (see **Sharing tiles**) and red where
 not. Left click a green tile to place it; on a red one the log says "No room on that tile". Esc, or a right click
-without moving, goes back to the summary (from there **Cancel** stops). The camera still works (W A S D, arrow
-keys, mouse wheel, and a right drag with the Drag tool), and clicks on the toolbox still choose tools.
+without moving, goes back to the summary (from there **Cancel** stops). The camera still works (W A S D, the mouse
+wheel, and a right drag with the Drag tool), the arrow keys move the keyboard cursor and the picture with it (Enter
+places it there, see section 17), and clicks on the toolbox still choose tools.
 
 Your new character has full HP and stamina and no owner; give it away with `:c owner`, put it into a party with
 `:c party`. A player's character made this way comes to you as a yes/no question (see section 14).
@@ -577,7 +578,8 @@ file is in `.gitignore`, so it never ends up in the repository.
 | Right Shift + Up / Down | Zoom in / out at the cursor |
 
 While placing a new character (section 4), Enter places it on the cursor's tile and Right Shift + Enter goes back to
-the summary.
+the summary. The creation steps themselves need the mouse: Enter on the cursor doesn't press the bar's buttons (only
+in the name field Enter = Next). `:c` creates a character without them.
 
 ## 18. Command-line options and environment variables
 
