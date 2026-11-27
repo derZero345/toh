@@ -1,7 +1,8 @@
 /* The radial menus: one tree of entries per menu. Edit these tables to change the menus; radial_game.c chooses
  * which menu a hex gets and handles the actions by id (see radial.h).
  *
- * "actions" is the menu of a character you control. "tile" and "character" (other hexes) are still placeholders,
+ * "actions" is the menu of a character you control, "direction" the one that picks an attack's direction on the
+ * attacked tile (attack_ui.h). "tile" and "character" (other hexes) are still placeholders,
  * except the tile menu's GM entry "Create character" (a real one), so the framework can be tried out: neutral ids
  * and labels, the placeholder icon, a submenu with a nested submenu, a second submenu to switch to, an entry that
  * needs something on the tile (disabled on an empty one) and one only the GM sees. */
@@ -71,11 +72,18 @@ static const RadialEntry MINOR[] = {
     MOVE("stamina.recover", "Recover: 1d4 stamina", HUD_ACCENT_MINOR),
 };
 
+/* Attacks (attacks.h): the ids are ATTACK_ACTIONS' ids, with a rule of the same key. "Test attack" is a placeholder
+ * until real attacks (weapons) exist. */
+static const RadialEntry MAJOR_ATTACKS[] = {
+    MOVE("attack.test", "Test attack (placeholder): range 1, 1d4 damage", HUD_ACCENT_MAJOR),
+};
+
 static const RadialEntry MAJOR[] = {
     MOVE("move.walk", "Walk: half your speed", HUD_ACCENT_MAJOR),
     MOVE("move.run", "Run: your speed, 2 stamina", HUD_ACCENT_MAJOR),
     MOVE("move.crawl", "Crawl: half your speed, 2 stamina", HUD_ACCENT_MAJOR),
     MOVE("stamina.full_recover", "Full Recover: all your stamina", HUD_ACCENT_MAJOR),
+    SUBMENU("attack.major", "Attack", HUD_ACCENT_MAJOR, MAJOR_ATTACKS),
 };
 
 /* clockwise from the top */
@@ -87,9 +95,19 @@ static const RadialEntry ACTIONS[] = {
     SUBMENU("major", "Major action", HUD_ACCENT_MAJOR, MAJOR),
 };
 
+/* an attack's direction (attacks.h), opened on the attacked tile; clockwise from the top. The ids are
+ * "dir." + ATTACK_DIR_NAMES. */
+static const RadialEntry DIRECTIONS[] = {
+    ACTION("dir.up", "Up: the tiles behind it, away from you", HUD_ACCENT_RED),
+    ACTION("dir.right", "Right: the tile on its right, as you see it", HUD_ACCENT_RED),
+    ACTION("dir.neutral", "Neutral: the tile itself", HUD_ACCENT_RED),
+    ACTION("dir.left", "Left: the tile on its left, as you see it", HUD_ACCENT_RED),
+};
+
 const RadialMenu RADIAL_MENUS[] = {
     MENU("tile", &CENTER, TILE),
     MENU("character", &CENTER, CHARACTER),
     MENU("actions", NULL, ACTIONS),
+    MENU("direction", NULL, DIRECTIONS),
 };
 const int RADIAL_NMENUS = (int)(sizeof(RADIAL_MENUS) / sizeof(RADIAL_MENUS[0]));

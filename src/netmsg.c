@@ -96,6 +96,16 @@ static bool op_ok(const NetOp *o) {
         return o->value == 0 || o->value == 1;
     case NOP_RECOVER_ACTION: /* ops_check checks the action and the roll's range */
         return o->id != 0 && o->value >= 0 && o->value <= NETMSG_MAX_DIE;
+    case NOP_ATTACK_ACTION: /* ops_check checks the action, the range and the rolls against the attack's dice */
+        if (o->id == 0 || !coord_ok(o->row) || !coord_ok(o->col)) return false;
+        if (o->value < 0 || o->value >= NETMSG_ATTACK_DIRS) return false;
+        if (o->nvalues != 0 && o->nvalues != NETMSG_ATTACK_ROLLS) return false;
+        if (o->nvalues && !o->values) return false;
+        for (uint32_t i = 0; i < o->nvalues; i++) {
+            double v = o->values[i];
+            if (!isfinite(v) || v != floor(v) || v < 0 || v > NETMSG_MAX_DAMAGE) return false;
+        }
+        return true;
     default: /* DELETE, INIT_REMOVE (ids only), SET_BACKGROUND, INIT_NEXT, GRID / CLEAR / SHOW */
         return true;
     }
@@ -327,6 +337,15 @@ static void put_op(Buf *b, const NetOp *o) {
         put_uv(b, o->id);
         put_u8(b, o->action);
         put_sv(b, o->value);
+        break;
+    case NOP_ATTACK_ACTION:
+        put_uv(b, o->id);
+        put_sv(b, o->row);
+        put_sv(b, o->col);
+        put_u8(b, o->action);
+        put_u8(b, (uint8_t)o->value);
+        put_uv(b, o->nvalues);
+        for (uint32_t i = 0; i < o->nvalues; i++) put_f64(b, o->values[i]);
         break;
     case NOP_ROLL:
         put_str(b, o->dice);
@@ -638,6 +657,18 @@ static void get_op(Rd *r, NetOp *o) {
         o->action = get_u8(r);
         o->value = get_sv(r);
         break;
+    case NOP_ATTACK_ACTION: {
+        o->id = get_uv(r);
+        o->row = get_sv(r);
+        o->col = get_sv(r);
+        o->action = get_u8(r);
+        o->value = get_u8(r);
+        uint32_t n = get_count(r, NETMSG_ATTACK_ROLLS, 8);
+        o->values = get_array(r, n, sizeof(double));
+        o->nvalues = o->values ? n : 0;
+        for (uint32_t i = 0; i < o->nvalues && !r->bad; i++) o->values[i] = get_f64(r);
+        break;
+    }
     case NOP_ROLL: {
         get_str(r, o->dice, sizeof(o->dice));
         uint32_t n = get_count(r, NETMSG_MAX_ROLLS, 8);

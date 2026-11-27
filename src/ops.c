@@ -1,5 +1,6 @@
 /* The op layer: rules for who may change what (ops_check) and the changes themselves (ops_apply). */
 #include "ops.h"
+#include "attacks.h"
 #include "moves.h"
 #include "recover.h"
 #include "savefmt.h"
@@ -52,7 +53,7 @@ const char *ops_result_text(OpResult r) {
     case OPR_TOO_FAST:      return "Too many rolls; wait a moment";
     case OPR_TILE_TAKEN:    return "No room on that tile";
     case OPR_NO_STAMINA:    return "Not enough stamina";
-    case OPR_NOT_IN_COMBAT: return "Move actions are only for initiative";
+    case OPR_NOT_IN_COMBAT: return "Actions are only for initiative";
     case OPR_ACTION_USED:   return "That action is used up this turn";
     case OPR_MOVE_FIRST:    return "Sprint needs another move action first";
     case OPR_CANT_MOVE:     return "That character can't move";
@@ -168,6 +169,20 @@ static OpResult check_structure(const Op *op) {
         if (op->action < 0 || op->action >= RECOVER_COUNT || op->value < 0 || op->value > RECOVER_DIE)
             return OPR_INVALID;
         return recover_check(entity_by_id(op->id), (RecoverAction)op->action);
+    case OP_ATTACK_ACTION: { /* like move actions, the rules hold for the GM too */
+        if (!tile_ok(op->tile) || op->action < 0 || op->action >= ATTACK_COUNT) return OPR_INVALID;
+        if (op->values.count != 0 && op->values.count != OUTCOME_COUNT) return OPR_INVALID;
+        if (op->values.count) { /* the host's rolls: whole numbers the attack's dice can give */
+            int rolled[OUTCOME_COUNT];
+            for (int o = 0; o < OUTCOME_COUNT; o++) {
+                double v = op->values.items[o];
+                if (!isfinite(v) || v != floor(v) || v < 0 || v > ATTACK_MAX_DAMAGE) return OPR_INVALID;
+                rolled[o] = (int)v;
+            }
+            if (!attack_rolls_ok((AttackAction)op->action, rolled)) return OPR_INVALID;
+        }
+        return attack_check_at(entity_by_id(op->id), (AttackAction)op->action, op->tile, op->value);
+    }
     case OP_SET_BACKGROUND:
     case OP_GRID_ORIENTATION:
     case OP_INIT_CLEAR:
@@ -198,6 +213,7 @@ static OpResult check_player(const Op *op, const OpAuthor *a) {
         return is_owner(gh->currentTurn, a) ? OPR_OK : OPR_NOT_YOUR_TURN;
     case OP_MOVE_ACTION:
     case OP_RECOVER_ACTION:
+    case OP_ATTACK_ACTION:
         return is_owner(entity_by_id(op->id), a) ? OPR_OK : OPR_NOT_YOURS;
     case OP_SET_HEALTH:
     case OP_SET_STAMINA:
@@ -214,7 +230,7 @@ OpResult ops_check(const Op *op, const OpAuthor *author) {
     if (!memchr(author->name, '\0', sizeof(author->name))) return OPR_INVALID;
     bool player_op = op->type == OP_MOVE || op->type == OP_INIT_NEXT || op->type == OP_SET_HEALTH ||
                      op->type == OP_SET_NAME || op->type == OP_SET_STAMINA || op->type == OP_MOVE_ACTION ||
-                     op->type == OP_RECOVER_ACTION;
+                     op->type == OP_RECOVER_ACTION || op->type == OP_ATTACK_ACTION;
     if (!author->gm && !player_op) return OPR_GM_ONLY;
     OpResult r = check_structure(op);
     if (r != OPR_OK || author->gm) return r;
@@ -521,6 +537,21 @@ void ops_apply(Op *op) {
         /* the host (or offline) rolls; clients apply the roll the host sent */
         if (!session_is_client()) op->value = recover_roll((RecoverAction)op->action);
         recover_apply(e, (RecoverAction)op->action, op->value);
+        break;
+    }
+    case OP_ATTACK_ACTION: {
+        Entity *e = entity_by_id(op->id);
+        if (!e) break;
+        /* the host (or offline) rolls the damage; clients apply the rolls the host sent */
+        int rolled[OUTCOME_COUNT] = { 0 };
+        if (!session_is_client()) {
+            attack_roll((AttackAction)op->action, rolled);
+            da_clear(&op->values);
+            for (int o = 0; o < OUTCOME_COUNT; o++) da_push(&op->values, rolled[o]);
+        } else {
+            for (int o = 0; o < OUTCOME_COUNT && o < op->values.count; o++) rolled[o] = (int)op->values.items[o];
+        }
+        attack_apply(e, (AttackAction)op->action, op->tile, (AttackDir)op->value, rolled);
         break;
     }
     case OP_SET_TEST_MODE:

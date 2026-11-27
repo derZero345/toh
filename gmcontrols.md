@@ -321,27 +321,67 @@ The log shows e.g. `Mao: Recover 1d4 = 3, stamina 5/8` or `Mao: Full Recover, st
   maximum.
 - In a session your game (the host) rolls the die and everyone sees the roll in the log.
 
+### Attacks (during initiative)
+
+In Tales of Honor an attack hits a **tile**, not a character, in one of four directions. The menu has the framework
+for attacks; the only attack in it so far is a placeholder:
+
+| Action | Type | Range | Damage (success / scrape / miss) | Stamina |
+|---|---|---|---|---|
+| Test attack (placeholder) | Major | 1 | 1d4 / 1 / 0 | 0 |
+
+Choose Major action, then **Attack**, then the attack. The tiles in range light up in the action's color (Major blue,
+Minor gold), and the tile under the mouse is drawn stronger. Left click a lit tile: a ring of four directions opens
+on it, clockwise from the top:
+
+| Direction | Points at, as seen from the attacker |
+|---|---|
+| Up | the tiles behind the target, away from the attacker |
+| Right | the target's neighbour on the attacker's right, at the same distance (next to an attacker: the one that also borders it) |
+| Neutral | the target tile itself |
+| Left | the same on the left |
+
+Choosing a direction attacks. Esc, a click outside the ring or a right click closes the ring and goes back to
+choosing a tile; then Esc, a right click or a left click outside the range cancels ("Attack cancelled"). The log
+shows e.g. `Mao: Test attack, range 1; click the tile to attack (Esc cancels)`, then `Mao: Test attack on [4|7] up`
+and one line per character on the tile: `  Bob: success, 3 damage, HP 7/10 (Injured)`.
+
+- Every character on the tile is hit, allies too. An empty tile gives `..., nobody there`. A character without max
+  HP takes no damage (`3 damage (no HP)`). HP can go below 0, down to −max HP, as with `:c damage`.
+- Each attack succeeds, scrapes or misses for each character. Blocks and dodges are not in the game yet, so every
+  attack succeeds for now.
+- The range counts tiles in a straight line from the attacker's nearest tile (big characters attack from the tile
+  closest to the target). Walls don't block it yet, and a character can't attack its own tiles.
+- The attack uses its Major or Minor action and its stamina, like the move actions (same turn rules; a Minor attack
+  can use the Major action). Using up the last stamina ends the turn.
+- The attacked tile gets a red mark for everyone: an arrow in the attack's direction, a ring for neutral. The marks
+  stay until the attacker's next turn starts, and all go when the initiative ends or a table is loaded. They are not
+  saved, and players who join in the middle of a round don't see the marks made before they joined.
+- In a session your game (the host) rolls the damage, so everyone sees the same result.
+
 ### Test mode
 
 | Command | Short | Action |
 |---|---|---|
 | `testmode [on\|off]` | `:tm` | Test mode on / off for the whole table (without an argument it toggles; Tab completes `on` / `off`) |
 
-Test mode is for trying things out without setting up turns and stamina first. While it is on, move actions and the
-recover actions (Recover, Full Recover) work for everyone at the table:
+Test mode is for trying things out without setting up turns and stamina first. While it is on, move actions, the
+recover actions (Recover, Full Recover) and attacks work for everyone at the table:
 - outside initiative, and for any character, not only the one whose turn it is;
 - when the Major or Minor action is already used this turn;
 - for Sprint without another move action before it;
-- with too little stamina (move actions).
+- with too little stamina (move actions and attacks).
 
 The actions still have their effects: they use up their Major or Minor action, and they spend stamina, but never
 below 0. A character whose stamina an action brings to 0 is exhausted and its turn ends, as usual; actions at 0
 stamina don't end the turn again.
 
-Still checked in test mode: players only act with their own characters, the move stays within the action's range,
-a character with speed 0 can only Step, and the recover actions need a character with max stamina whose stamina isn't
-full. Players' Shift + click moves keep their rules (refused during
-initiative). Roll and claim limits stay too.
+Still checked in test mode: players only act with their own characters, the move or attack stays within the
+action's range, a character with speed 0 can only Step, and the recover actions need a character with max stamina
+whose stamina isn't full. Players' Shift + click moves keep their rules (refused during initiative). Roll and claim
+limits stay too.
+
+Outside initiative an attack's marks stay until the same character attacks again (its new mark replaces them).
 
 - Only the GM can switch it. Everyone gets `Test mode on: actions ignore turns, used actions and stamina` or
   `Test mode off` in the log, and a gold **TEST MODE** label shows at the top of the map while it is on.
@@ -432,9 +472,9 @@ whose turn it is, else the first. Its four entries, clockwise from the top:
 | Minor action | gold (#84672B) | Step, Sprint, Recover |
 | Info | grey (#5E5E5E) | nothing yet; choosing it only closes the menu |
 | Mental action | violet (#80537E) | nothing yet: greyed out, "Nothing to choose here" |
-| Major action | blue (#355C85) | Walk, Run, Crawl, Full Recover |
+| Major action | blue (#355C85) | Walk, Run, Crawl, Full Recover, Attack (a submenu: Test attack) |
 
-The move and recover actions and their rules are in section 6. The centre button closes the menu.
+The move and recover actions, attacks and their rules are in section 6. The centre button closes the menu.
 
 ## 11. Waypoints and teleport
 
@@ -604,8 +644,8 @@ in the name field Enter = Next). `:c` creates a character without them.
 ## 19. What players can and cannot do
 
 Players can:
-- move their own characters (freely outside initiative; while it runs, with move actions on their turn), and
-  recover their stamina with Recover and Full Recover on their turn;
+- move their own characters (freely outside initiative; while it runs, with move actions on their turn),
+  recover their stamina with Recover and Full Recover, and attack with them, on their turn;
 - end their turn with `:i next`;
 - roll dice (at most 10 rolls in 10 seconds);
 - ask for existing characters with `:claim`, or for a new one of their own through the bar's **+ Create

@@ -1,5 +1,6 @@
 /* Entities (entities package) and markers (fx/Marker). */
 #include "app.h"
+#include "attacks.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -256,6 +257,7 @@ Entity *entity_by_id(uint32_t id) {
 
 void entity_delete(Entity *e) {
     if (game_is_in_initiative(e)) game_remove_from_initiative(e);
+    attack_marks_clear_of(e->id);
     da_remove_value(&gh->entities, e);
     entity_free(e);
 }

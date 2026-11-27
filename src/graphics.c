@@ -5,6 +5,8 @@
 #include "hud_game.h"
 #include "hud_theme.h"
 #include "move_ui.h"
+#include "attack_ui.h"
+#include "attacks.h"
 #include "moves.h"
 #include "radial_game.h"
 #include "settings.h"
@@ -137,6 +139,8 @@ void gfx_shutdown(void) {
     da_free(&gh->attackTiles);
     da_free(&gh->path);
     move_ui_cancel();
+    attack_ui_cancel();
+    da_free(&gh->attackMarks);
     cc_shutdown(); /* the draft's picture */
     da_free(&gh->moveMode.path);
     da_free(&gh->init);
@@ -695,6 +699,43 @@ static void draw_debug_labels(int r0, int r1, int c0, int c1) {
     debug_key = key;
 }
 
+/* The tiles attacked this round (attacks.h): an arrow from the tile's centre in the attack's direction (towards the
+ * tile or tiles the direction names), a ring for neutral. */
+static void draw_attack_marks(void) {
+    float hs = (float)gh->hexSize, th = (float)gh->thickness;
+    Color col = HUD_THEME.accent[HUD_ACCENT_RED];
+    for (int i = 0; i < gh->attackMarks.count; i++) {
+        const AttackMark *m = &gh->attackMarks.items[i];
+        if (!hex_visible(m->tile)) continue;
+        Vec2 c = hex_center(m->tile);
+        if (m->dir == DIR_NEUTRAL) {
+            float r = hs * 0.3f;
+            dr_stroke_oval(c.x - r, c.y - r, 2 * r, 2 * r, th * 2.5f, col);
+            continue;
+        }
+        Hex to[6];
+        int n = attack_dir_tiles(m->from, m->tile, (AttackDir)m->dir, to);
+        if (n == 0) continue;
+        double ux = 0, uy = 0; /* towards the middle of the tiles it points at */
+        for (int k = 0; k < n; k++) {
+            Vec2 p = hex_center(to[k]);
+            ux += p.x - c.x;
+            uy += p.y - c.y;
+        }
+        double len = sqrt(ux * ux + uy * uy);
+        if (len <= 0) continue;
+        ux /= len;
+        uy /= len;
+        float tail = hs * 0.35f, head = hs * 0.55f, wing = hs * 0.25f;
+        float ex = (float)(c.x + ux * head), ey = (float)(c.y + uy * head);
+        dr_line((float)(c.x - ux * tail), (float)(c.y - uy * tail), ex, ey, th * 2.5f, col);
+        for (int s = -1; s <= 1; s += 2) { /* the head: two strokes back at +-35 degrees */
+            double a = atan2(-uy, -ux) + s * 0.6;
+            dr_line(ex, ey, (float)(ex + cos(a) * wing), (float)(ey + sin(a) * wing), th * 2.5f, col);
+        }
+    }
+}
+
 static void draw_grid(void) {
     const Theme *t = gfx_theme();
     float th = (float)gh->thickness;
@@ -751,6 +792,25 @@ static void draw_grid(void) {
             }
         if (gh->moveMode.path.count > 0)
             draw_hex(gh->moveMode.path.items[gh->moveMode.path.count - 1], th + 4, HUD_THEME.accent[acc]);
+        dr_set_alpha(0.5f);
+    }
+
+    /* choosing where an attack goes: its range in the colour of its slot, the tile under the pointer (or the one the
+     * direction menu is open on) stronger */
+    attack_ui_update();
+    if (gh->attackMode.active) {
+        Entity *me = entity_by_id(gh->attackMode.id);
+        HudAccent acc = me && action_slot(me, ATTACK_ACTIONS[gh->attackMode.action].slot) == SLOT_MINOR
+                            ? HUD_ACCENT_MINOR : HUD_ACCENT_MAJOR;
+        dr_set_alpha(0.9f);
+        for (int r = r0; r <= r1; r++)
+            for (int c = c0; c <= c1; c++) {
+                Hex h = { r, c };
+                if (ts_has(&gh->attackMode.range, h)) draw_hex(h, th + 2, HUD_THEME.accentLight[acc]);
+            }
+        Hex focus = gh->attackMode.hasTarget ? gh->attackMode.target : gh->tileUnderMouse;
+        if ((gh->attackMode.hasTarget || gh->hasTileUnderMouse) && ts_has(&gh->attackMode.range, focus))
+            draw_hex(focus, th + 4, HUD_THEME.accent[acc]);
         dr_set_alpha(0.5f);
     }
 
@@ -887,6 +947,7 @@ static void draw_fx(void) {
         Vec2 a = hex_center(gh->moveMode.path.items[i]), b = hex_center(gh->moveMode.path.items[i + 1]);
         dr_line((int)a.x, (int)a.y, (int)b.x, (int)b.y, th * 3, rgb_hex(0xFFFFFF));
     }
+    draw_attack_marks();
 }
 
 static void draw_toolbox(void) {

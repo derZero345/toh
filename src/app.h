@@ -341,6 +341,8 @@ void console_key_edit(SDL_Keycode key); /* caret movement / deletion */
 typedef struct { char name[16]; Color primary, secondary; } Theme;
 
 typedef struct { Entity *entity; double value; } InitEntry;
+/* A tile an attack hit this round (attacks.h): dir is an AttackDir, from the attacker's tile nearest to it. */
+typedef struct { Hex tile, from; int dir; uint32_t attacker; } AttackMark;
 
 typedef enum {
     ACTION_NONE,
@@ -403,6 +405,17 @@ typedef struct App {
         TileSet range;
         HexList path;
     } moveMode;
+    /* choosing where an attack goes (attack_ui.c): its range, then the target while the direction menu is open */
+    struct {
+        bool active;
+        uint32_t id; /* the attacker */
+        int action;  /* AttackAction */
+        TileSet range;
+        bool hasTarget;
+        Hex target;
+    } attackMode;
+    /* the tiles attacked this round (attacks.h), one per attack, drawn by graphics.c; not saved */
+    DA(AttackMark) attackMarks;
 
     bool hasTileUnderMouse;
     Hex tileUnderMouse;

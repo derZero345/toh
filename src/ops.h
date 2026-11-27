@@ -35,6 +35,8 @@ typedef enum {
     OP_MOVE_ACTION,      /* id, action (MoveAction), tile: a move action on the character's turn (moves.h) */
     OP_SET_TEST_MODE,    /* value: 1 on, 0 off; GM only (moves.h: what test mode lifts) */
     OP_RECOVER_ACTION,   /* id, action (RecoverAction), value: the host's roll (recover.h) */
+    OP_ATTACK_ACTION,    /* id, action (AttackAction), tile, value: AttackDir, values: none from a client, else the
+                          * host's damage roll per outcome (attacks.h) */
     OP_COUNT
 } OpType;
 
@@ -62,7 +64,7 @@ typedef struct Op {
     uint32_t id; /* OP_MOVE */
     Hex tile;    /* OP_MOVE, OP_WAYPOINT_SET */
     DA(uint32_t) ids;
-    DA(double) values;    /* OP_INIT_ADD */
+    DA(double) values;    /* OP_INIT_ADD; OP_ATTACK_ACTION: damage rolls */
     DA(EntitySpec) specs; /* OP_SPAWN */
     Texture *image;       /* OP_SET_ICON, OP_SET_BACKGROUND; borrowed */
     int statMask;         /* OP_SET_STATS */
@@ -70,7 +72,8 @@ typedef struct Op {
     int attr[ATTR_COUNT]; /* OP_SET_STATS: the attribute bits' values */
     char name[WAYPOINT_NAME_MAX]; /* OP_WAYPOINT_*: waypoint name, OP_SET_OWNER: player name */
     int healthMode, value;        /* OP_SET_HEALTH, OP_SET_STAMINA; value: OP_SET_TEST_MODE, OP_RECOVER_ACTION */
-    int action;                   /* OP_MOVE_ACTION: MoveAction, OP_RECOVER_ACTION: RecoverAction */
+    int action;                   /* OP_MOVE_ACTION: MoveAction, OP_RECOVER_ACTION: RecoverAction,
+                                   * OP_ATTACK_ACTION: AttackAction */
     char charName[CHAR_NAME_MAX]; /* OP_SET_NAME */
     char party[CHAR_NAME_MAX];    /* OP_SET_PARTY: "" = no party */
     bool remote;  /* someone else's op: leave the local selection and path preview alone */

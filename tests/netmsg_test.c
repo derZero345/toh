@@ -22,6 +22,7 @@ static int failures, checks;
 
 static uint32_t ids3[3] = { 7, 300, 70000 };
 static double values3[3] = { 0.5, -2.25, 19.0 };
+static double rolls3[3] = { 4, 1, 0 }; /* NOP_ATTACK_ACTION: success, scrape, miss */
 static uint32_t entity_ids[4] = { 1, 2, 5, 1u << 31 };
 static NetPlayer players[2] = {
     { .id = 0, .role = NET_ROLE_GM, .color = 0xE0B000, .name = "GM" },
@@ -124,6 +125,10 @@ static NetOp sample_op(int type) {
         break;
     case NOP_RECOVER_ACTION:
         o.id = 9; o.action = 1; o.value = 4;
+        break;
+    case NOP_ATTACK_ACTION: /* as broadcast by the host: a damage roll per outcome */
+        o.id = 11; o.row = -4; o.col = 6; o.action = 0; o.value = 2;
+        o.values = rolls3; o.nvalues = 3;
         break;
     case NOP_ROLL:
         strcpy(o.dice, "2d6+3");
@@ -278,6 +283,13 @@ static void test_fields_survive(void) {
     netmsg_free(&d);
     m = sample_msg(NM_OP_APPLIED, NOP_RECOVER_ACTION);
     CHECK(round_trip(&m, &d) && d.op.id == 9 && d.op.action == 1 && d.op.value == 4);
+    netmsg_free(&d);
+    m = sample_msg(NM_OP_APPLIED, NOP_ATTACK_ACTION);
+    CHECK(round_trip(&m, &d) && d.op.id == 11 && d.op.row == -4 && d.op.col == 6 && d.op.action == 0 &&
+          d.op.value == 2 && d.op.nvalues == 3 && d.op.values[0] == 4 && d.op.values[1] == 1 && d.op.values[2] == 0);
+    netmsg_free(&d);
+    m = sample_msg(NM_OP, NOP_ATTACK_ACTION); m.op.nvalues = 0; /* a client sends no rolls */
+    CHECK(round_trip(&m, &d) && d.op.nvalues == 0 && d.op.value == 2);
     netmsg_free(&d);
 
     m = sample_msg(NM_OP, NOP_SET_STATS);
@@ -434,6 +446,12 @@ static void test_encoder_refuses_invalid(void) {
     m = sample_msg(NM_OP, NOP_RECOVER_ACTION); m.op.id = 0; check_invalid(m, "recover action without a character");
     m = sample_msg(NM_OP, NOP_RECOVER_ACTION); m.op.value = -1; check_invalid(m, "negative recovery roll");
     m = sample_msg(NM_OP, NOP_RECOVER_ACTION); m.op.value = NETMSG_MAX_DIE + 1; check_invalid(m, "recovery roll too big");
+    m = sample_msg(NM_OP, NOP_ATTACK_ACTION); m.op.id = 0; check_invalid(m, "attack without a character");
+    m = sample_msg(NM_OP, NOP_ATTACK_ACTION); m.op.value = NETMSG_ATTACK_DIRS; check_invalid(m, "attack direction past the end");
+    m = sample_msg(NM_OP, NOP_ATTACK_ACTION); m.op.nvalues = 2; check_invalid(m, "two damage rolls");
+    m = sample_msg(NM_OP, NOP_ATTACK_ACTION); rolls3[1] = -1; check_invalid(m, "negative damage"); rolls3[1] = 1;
+    m = sample_msg(NM_OP, NOP_ATTACK_ACTION); rolls3[1] = 1.5; check_invalid(m, "fractional damage"); rolls3[1] = 1;
+    m = sample_msg(NM_OP, NOP_ATTACK_ACTION); rolls3[0] = NETMSG_MAX_DAMAGE + 1; check_invalid(m, "damage too big"); rolls3[0] = 4;
     m = sample_msg(NM_OP, NOP_SPAWN); strcpy(specs2[1].party, "Heroes"); check_invalid(m, "wall with a party"); specs2[1].party[0] = '\0';
     m = sample_msg(NM_OP, NOP_SPAWN); strcpy(specs2[1].name, "wall"); check_invalid(m, "wall with a name"); specs2[1].name[0] = '\0';
     m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = 0; check_invalid(m, "empty stat mask");

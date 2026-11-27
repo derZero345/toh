@@ -21,7 +21,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define NET_PROTOCOL_VERSION 11
+#define NET_PROTOCOL_VERSION 12
 #define NETMSG_ATTRS 4 /* = ATTR_COUNT: STR, AGI, COG, SPI */
 #define NET_DEFAULT_PORT     41234
 #define NET_MAX_FRAME        (64u << 20)            /* one encrypted frame */
@@ -30,6 +30,9 @@
 #define NETMSG_MAX_PLAYERS   64                     /* players in SESSION */
 #define NETMSG_MAX_DICE      64                     /* ROLL spec, bytes incl. the terminating NUL */
 #define NETMSG_MAX_DIE       100                    /* RECOVER_ACTION: one die's roll */
+#define NETMSG_ATTACK_DIRS   4                      /* ATTACK_ACTION: directions (DIR_COUNT in attacks.h) */
+#define NETMSG_ATTACK_ROLLS  3                      /* ATTACK_ACTION: damage rolls, one per outcome */
+#define NETMSG_MAX_DAMAGE    1000                   /* ATTACK_ACTION: one damage roll (ATTACK_MAX_DAMAGE) */
 #define NETMSG_MAX_REASON    31                     /* OP_REJECTED reason codes are 1..31 */
 #define NETMSG_MAX_ROLLS     1001                   /* NOP_ROLL values: up to 1000 dice and the total */
 #define NET_CREATE_MAX_BLOB  (1u << 20)          /* CREATE: the picture's WebP bytes */
@@ -97,6 +100,8 @@ typedef enum {
     NOP_MOVE_ACTION,      /* id, row, col, action (MoveAction in moves.h; ops_check checks the range) */
     NOP_SET_TEST_MODE,    /* value: 1 on, 0 off */
     NOP_RECOVER_ACTION,   /* id, action (RecoverAction in recover.h), value: 0 from a client, the host's roll */
+    NOP_ATTACK_ACTION,    /* id, row, col, action (AttackAction in attacks.h), value: the direction (0..3), values:
+                           * none from a client, else the host's damage roll per outcome (NETMSG_ATTACK_ROLLS) */
     NOP_ROLL,             /* dice: "NdM[+K|-K]" (characters 0-9 d D + -); values: none (client) or
                            * the host's result, every die then the total (at most NETMSG_MAX_ROLLS) */
     NOP_CLAIM,            /* id */
@@ -140,7 +145,7 @@ typedef struct {
     int32_t value;       /* SET_HEALTH, at most SAVEFMT_MAX_HP either way; SET_TEST_MODE: 0 or 1 */
     char char_name[SAVEFMT_CHAR_NAME_MAX]; /* SET_NAME */
     char party[SAVEFMT_CHAR_NAME_MAX]; /* SET_PARTY: "" = no party */
-    uint8_t action;                    /* MOVE_ACTION, RECOVER_ACTION */
+    uint8_t action;                    /* MOVE_ACTION, RECOVER_ACTION, ATTACK_ACTION */
 } NetOp;
 
 typedef struct {

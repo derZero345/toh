@@ -15,6 +15,8 @@
 #include "ops.h"
 #include "moves.h"
 #include "recover.h"
+#include "attacks.h"
+#include "attack_ui.h"
 #include "move_ui.h"
 #include "party.h"
 #include "session.h"
@@ -37,6 +39,8 @@ _Static_assert((int)NOP_MOVE == (int)OP_MOVE && (int)NOP_SPAWN == (int)OP_SPAWN 
                (int)NOP_SET_NAME == (int)OP_SET_NAME && (int)NOP_SET_STAMINA == (int)OP_SET_STAMINA &&
                (int)NOP_SET_PARTY == (int)OP_SET_PARTY && (int)NOP_MOVE_ACTION == (int)OP_MOVE_ACTION &&
                (int)NOP_SET_TEST_MODE == (int)OP_SET_TEST_MODE && (int)NOP_RECOVER_ACTION == (int)OP_RECOVER_ACTION &&
+               (int)NOP_ATTACK_ACTION == (int)OP_ATTACK_ACTION && (int)NETMSG_ATTACK_DIRS == (int)DIR_COUNT &&
+               (int)NETMSG_ATTACK_ROLLS == (int)OUTCOME_COUNT && (int)NETMSG_MAX_DAMAGE == (int)ATTACK_MAX_DAMAGE &&
                (int)NOP_ROLL == (int)OP_COUNT,
                "NetOpType must match OpType");
 _Static_assert((int)NSTAT_SIZE == (int)STAT_SIZE && (int)NSTAT_MAXHEALTH == (int)STAT_MAXHEALTH &&
@@ -2299,6 +2303,27 @@ static void test_test_mode(void) {
     Op free_move = move_op(hero, steps_from(hero->tile, 7));
     CHECK_R(ops_check(&free_move, &alice), OPR_OUT_OF_RANGE);
 
+    /* attacks outside initiative, with the Major action used; the newest replaces the attacker's marks */
+    Op atk = { .type = OP_ATTACK_ACTION, .id = hero->id, .action = ATTACK_TEST,
+               .tile = hex_neighbor_raw(hero->tile, 0), .value = DIR_UP };
+    CHECK_R(ops_check(&atk, &alice), OPR_OK);
+    ops_apply(&atk);
+    atk.tile = hex_neighbor_raw(hero->tile, 3);
+    CHECK_R(ops_check(&atk, &alice), OPR_OK);
+    ops_apply(&atk);
+    CHECK(gh->attackMarks.count == 1 && hex_eq(gh->attackMarks.items[0].tile, atk.tile));
+    /* the range, ownership and the direction still hold */
+    Op far_atk = atk;
+    far_atk.tile = steps_from(hero->tile, 2);
+    CHECK_R(ops_check(&far_atk, &alice), OPR_OUT_OF_RANGE);
+    far_atk = atk;
+    far_atk.value = DIR_COUNT;
+    CHECK_R(ops_check(&far_atk, &alice), OPR_INVALID);
+    Op orc_atk = { .type = OP_ATTACK_ACTION, .id = orc->id, .action = ATTACK_TEST,
+                   .tile = hex_neighbor_raw(orc->tile, 0), .value = DIR_NEUTRAL };
+    CHECK_R(ops_check(&orc_atk, &alice), OPR_NOT_YOURS);
+    op_free(&atk);
+
     /* during initiative: off-turn, Sprint first, too little stamina */
     Entity *order[2] = { hero, orc };
     double values[2] = { 0.9, 0.1 };
@@ -2319,11 +2344,16 @@ static void test_test_mode(void) {
     ops_apply(&step);
     CHECK(hero->stamina == 0 && gh->currentTurn == hero); /* already exhausted: the turn doesn't end again */
 
+    /* an attack off-turn */
+    orc_atk.tile = hex_neighbor_raw(orc->tile, 0); /* it stepped */
+    CHECK_R(ops_check(&orc_atk, &GM), OPR_OK);
+
     /* off again: the rules are back */
     ops_apply(&off);
     CHECK(!gh->testMode && strstr(stub_last_log, "Test mode off"));
     CHECK_R(ops_check(&step, &alice), OPR_NO_STAMINA);
     CHECK_R(ops_check(&orc_step, &GM), OPR_NOT_YOUR_TURN);
+    CHECK_R(ops_check(&orc_atk, &GM), OPR_NOT_YOUR_TURN);
     game_clear_initiative();
 }
 
@@ -2379,6 +2409,35 @@ static void test_action_menu(void) {
     CHECK(rad_click("ring.4") && rad_click("ring.4") && !radial_is_open() && !move_ui_active());
     CHECK(hero->stamina == 8 && (hero->turnUsed & TURN_MAJOR) && strstr(stub_last_log, "Full Recover"));
     rad_settle();
+
+    /* Major -> Attack -> Test attack: the range shows; a tile in it opens the direction menu there */
+    hero->turnUsed = 0;
+    Entity *orc = add_character(hex_neighbor_raw(hero->tile, 2), 4, "Bob");
+    CHECK(radial_game_open(hex_center(hero->tile)));
+    CHECK(rad_click("ring.4") && rad_click("ring.5") && !strcmp(radial_submenu_id(), "attack.major"));
+    CHECK(rad_click("ring.1") && !radial_is_open() && attack_ui_active() && gh->attackMode.id == hero->id);
+    CHECK(ts_has(&gh->attackMode.range, orc->tile) && !ts_has(&gh->attackMode.range, hero->tile));
+    rad_settle();
+    CHECK(attack_ui_click(orc->tile) && gh->attackMode.hasTarget && !strcmp(radial_menu_id(), "direction"));
+    CHECK(radial_part_point("ring.4", &x, &y) && !radial_part_point("ring.5", &x, &y)); /* four directions */
+    /* closing it goes back to choosing a tile */
+    radial_close();
+    rad_settle();
+    CHECK(attack_ui_active() && !gh->attackMode.hasTarget);
+    /* Right (the second entry) attacks the tile */
+    CHECK(attack_ui_click(orc->tile) && rad_click("ring.2") && !attack_ui_active());
+    CHECK(orc->health < 10 && (hero->turnUsed & TURN_MAJOR) && gh->attackMarks.count == 1 &&
+          gh->attackMarks.items[0].dir == DIR_RIGHT && hex_eq(gh->attackMarks.items[0].tile, orc->tile));
+    rad_settle();
+    /* used up: the entry is disabled */
+    CHECK(radial_game_open(hex_center(hero->tile)));
+    CHECK(rad_click("ring.4") && rad_click("ring.5") && rad_click("ring.1") && radial_is_open() && !attack_ui_active());
+    radial_close();
+    rad_settle();
+    /* a click outside the range cancels */
+    hero->turnUsed = 0;
+    CHECK(attack_ui_start(hero->id, ATTACK_TEST) && attack_ui_click(steps_from(hero->tile, 3)) && !attack_ui_active());
+    CHECK(strstr(stub_last_log, "Attack cancelled"));
     game_clear_initiative();
     radial_game_shutdown();
 }
@@ -2478,6 +2537,230 @@ static void test_recover_actions(void) {
     ops_apply(&off);
     CHECK_R(ops_check(&rec, &alice), OPR_NOT_IN_COMBAT);
     CHECK(!strcmp(ops_result_text(OPR_STAMINA_FULL), "Stamina is already full"));
+}
+
+/* Attacks (attacks.h): tiles and directions, range, the checks, the contests, damage to every character on the
+ * tile, the host's rolls and the tile marks */
+static Op attack_op(const Entity *e, Hex tile, int dir) {
+    return (Op){ .type = OP_ATTACK_ACTION, .id = e->id, .action = ATTACK_TEST, .tile = tile, .value = dir };
+}
+
+static void set_rolls(Op *op, double success, double scrape, double miss) {
+    da_clear(&op->values);
+    da_push(&op->values, success);
+    da_push(&op->values, scrape);
+    da_push(&op->values, miss);
+}
+
+static bool adjacent(Hex a, Hex b) { return hex_distance(a, b) == 1; }
+
+static void test_attack_directions(void) {
+    reset_table();
+    Hex a = { 10, 10 }, out[6];
+    for (int flat = 1; flat >= 0; flat--) {
+        app.isFlat = flat;
+        for (int k = 0; k < 6; k++) {
+            Hex t = hex_neighbor_raw(a, k);
+            CHECK(attack_dir_tiles(a, t, DIR_NEUTRAL, out) == 1 && hex_eq(out[0], t));
+            int n = attack_dir_tiles(a, t, DIR_UP, out);
+            CHECK(n == 3);
+            for (int i = 0; i < n; i++) CHECK(adjacent(out[i], t) && hex_distance(a, out[i]) == 2);
+            /* left and right: the two tiles bordering both, one each */
+            Hex l[6], r[6];
+            CHECK(attack_dir_tiles(a, t, DIR_LEFT, l) == 1 && attack_dir_tiles(a, t, DIR_RIGHT, r) == 1);
+            CHECK(!hex_eq(l[0], r[0]) && adjacent(l[0], a) && adjacent(l[0], t) && adjacent(r[0], a) &&
+                  adjacent(r[0], t));
+            /* as seen from the attacker: left is counter-clockwise on the screen (y points down) */
+            Vec2 pa = hex_center(a), pt = hex_center(t), pl = hex_center(l[0]);
+            CHECK((pt.x - pa.x) * (pl.y - pt.y) - (pt.y - pa.y) * (pl.x - pt.x) < 0);
+        }
+        /* at range: up is farther away, left and right stay at the same distance */
+        Hex t = a;
+        for (int s = 0; s < 3; s++) t = hex_neighbor_raw(t, 1);
+        t = hex_neighbor_raw(t, 2); /* not on a straight line */
+        int dist = hex_distance(a, t);
+        CHECK(dist == 4);
+        int n = attack_dir_tiles(a, t, DIR_UP, out);
+        CHECK(n >= 2 && n <= 3);
+        for (int i = 0; i < n; i++) CHECK(adjacent(out[i], t) && hex_distance(a, out[i]) == dist + 1);
+        Hex l[6], r[6];
+        CHECK(attack_dir_tiles(a, t, DIR_LEFT, l) == 1 && attack_dir_tiles(a, t, DIR_RIGHT, r) == 1);
+        CHECK(!hex_eq(l[0], r[0]) && hex_distance(a, l[0]) == dist && hex_distance(a, r[0]) == dist);
+        /* no direction from the tile itself, except neutral */
+        CHECK(attack_dir_tiles(a, a, DIR_UP, out) == 0 && attack_dir_tiles(a, a, DIR_LEFT, out) == 0);
+        CHECK(attack_dir_tiles(a, a, DIR_NEUTRAL, out) == 1);
+    }
+    app.isFlat = true;
+
+    /* range: the neighbours, not the own tile; a Gigantic character attacks from its nearest tile */
+    Entity *hero = add_character(a, 6, "Alice");
+    TileSet range = { 0 };
+    attack_range(hero, ATTACK_TEST, &range);
+    int count = 0;
+    for (int r = 0; r < 20; r++)
+        for (int c = 0; c < 20; c++) count += ts_has(&range, (Hex){ r, c });
+    CHECK(count == 6 && !ts_has(&range, a) && ts_has(&range, hex_neighbor_raw(a, 3)));
+    Hex two = hex_neighbor_raw(hex_neighbor_raw(a, 3), 3);
+    CHECK(!attack_in_range(hero, ATTACK_TEST, two) && !attack_in_range(hero, ATTACK_TEST, a));
+    hero->size = SIZE_GIGANTIC; /* its tile and the 6 around it */
+    attack_range(hero, ATTACK_TEST, &range);
+    count = 0;
+    for (int r = 0; r < 20; r++)
+        for (int c = 0; c < 20; c++) count += ts_has(&range, (Hex){ r, c });
+    CHECK(count == 12 && ts_has(&range, two) && !ts_has(&range, hex_neighbor_raw(a, 3)));
+    CHECK(hex_eq(attack_origin(hero, two), hex_neighbor_raw(a, 3)));
+    ts_free(&range);
+}
+
+static void test_attack_contests(void) {
+    /* block: the right direction (neutral is always covered) wins with BV >= AV, else scrapes; a wrong one fails */
+    CHECK(attack_block_contest(DIR_BIT(DIR_UP), 5, DIR_UP, 5) == OUTCOME_MISS);
+    CHECK(attack_block_contest(DIR_BIT(DIR_UP), 4, DIR_UP, 5) == OUTCOME_SCRAPE);
+    CHECK(attack_block_contest(DIR_BIT(DIR_UP), 9, DIR_LEFT, 5) == OUTCOME_SUCCESS);
+    CHECK(attack_block_contest(DIR_BIT(DIR_LEFT) | DIR_BIT(DIR_RIGHT), 6, DIR_RIGHT, 5) == OUTCOME_MISS);
+    CHECK(attack_block_contest(0, 6, DIR_NEUTRAL, 5) == OUTCOME_MISS);
+    CHECK(attack_block_contest(DIR_BIT(DIR_UP), 2, DIR_NEUTRAL, 5) == OUTCOME_SCRAPE);
+    /* dodge: won when DV >= AV + Evasion Threshold */
+    CHECK(attack_dodge_contest(DIR_LEFT, 8, 3, DIR_UP, 5) == OUTCOME_MISS);    /* won, another direction */
+    CHECK(attack_dodge_contest(DIR_UP, 8, 3, DIR_UP, 5) == OUTCOME_SCRAPE);    /* won, the same direction */
+    CHECK(attack_dodge_contest(DIR_LEFT, 7, 3, DIR_UP, 5) == OUTCOME_SCRAPE);  /* lost, another direction */
+    CHECK(attack_dodge_contest(DIR_UP, 7, 3, DIR_UP, 5) == OUTCOME_SUCCESS);   /* lost, the same direction */
+    /* no blocks or dodges exist yet: every attack succeeds */
+    for (int d = 0; d < DIR_COUNT; d++) CHECK(attack_resolve(NULL, (Hex){ 1, 1 }, (AttackDir)d, 0) == OUTCOME_SUCCESS);
+
+    /* damage dice */
+    CHECK(damage_min((Damage){ 1, 4, 0 }) == 1 && damage_max((Damage){ 1, 4, 0 }) == 4);
+    CHECK(damage_min((Damage){ 2, 6, 3 }) == 5 && damage_max((Damage){ 2, 6, 3 }) == 15);
+    CHECK(damage_min((Damage){ 0, 0, 1 }) == 1 && damage_max((Damage){ 0, 0, 1 }) == 1);
+    CHECK(damage_min((Damage){ 0, 0, -3 }) == 0 && damage_max((Damage){ 1, 4, -9 }) == 0); /* never below 0 */
+    CHECK(damage_max((Damage){ 1000, 1000, 0 }) == ATTACK_MAX_DAMAGE);
+    for (int i = 0; i < 50; i++) {
+        int rolled[OUTCOME_COUNT];
+        attack_roll(ATTACK_TEST, rolled);
+        CHECK(attack_rolls_ok(ATTACK_TEST, rolled) && rolled[OUTCOME_SCRAPE] == 1 && rolled[OUTCOME_MISS] == 0);
+    }
+    CHECK(!attack_rolls_ok(ATTACK_TEST, (int[]){ 5, 1, 0 }) && !attack_rolls_ok(ATTACK_TEST, (int[]){ 0, 1, 0 }));
+    CHECK(!attack_rolls_ok(ATTACK_COUNT, (int[]){ 1, 1, 0 }));
+
+    /* every row of the table */
+    for (int i = 0; i < ATTACK_COUNT; i++) {
+        const AttackActionDef *d = &ATTACK_ACTIONS[i];
+        CHECK(attack_action_by_id(d->id) == i && d->range >= 1 && d->stamina >= 0);
+        for (int o = 0; o < OUTCOME_COUNT; o++)
+            CHECK(d->damage[o].num >= 0 && d->damage[o].num <= ATTACK_MAX_DICE && d->damage[o].sides >= 0);
+    }
+    CHECK(attack_action_by_id("move.walk") == -1 && attack_action_by_id(NULL) == -1);
+}
+
+static void test_attack_actions(void) {
+    reset_table();
+    stub_client = false;
+    Hex a = { 10, 10 };
+    Entity *hero = add_character(a, 6, "Alice");
+    Hex target = hex_neighbor_raw(a, 2), empty = hex_neighbor_raw(a, 4);
+    Entity *orc = add_character(target, 5, "Bob");
+    Entity *wolf = add_character(target, 5, ""); /* a second character on the same tile */
+    hero->maxStamina = hero->stamina = 4;
+    OpAuthor alice = player("Alice"), bob = player("Bob");
+
+    Op atk = attack_op(hero, target, DIR_LEFT);
+    CHECK_R(ops_check(&atk, &alice), OPR_NOT_IN_COMBAT);
+    CHECK_R(ops_check(&atk, &GM), OPR_NOT_IN_COMBAT); /* the rules hold for the GM too */
+    Entity *order[2] = { hero, orc };
+    double values[2] = { 0.9, 0.1 };
+    game_initiative_list(order, values, 2);
+    CHECK_R(ops_check(&atk, &alice), OPR_NOT_YOUR_TURN);
+    game_next_turn();
+    CHECK(gh->currentTurn == hero);
+
+    /* who, and invalid ops */
+    CHECK_R(ops_check(&atk, &bob), OPR_NOT_YOURS);
+    Op bad = atk;
+    bad.action = ATTACK_COUNT;
+    CHECK_R(ops_check(&bad, &alice), OPR_INVALID);
+    bad = atk;
+    bad.value = DIR_COUNT;
+    CHECK_R(ops_check(&bad, &alice), OPR_INVALID);
+    bad.value = -1;
+    CHECK_R(ops_check(&bad, &alice), OPR_INVALID);
+    bad = attack_op(hero, hex_neighbor_raw(target, 2), DIR_UP);
+    CHECK_R(ops_check(&bad, &alice), OPR_OUT_OF_RANGE);
+    bad = attack_op(hero, a, DIR_NEUTRAL);
+    CHECK_R(ops_check(&bad, &alice), OPR_OUT_OF_RANGE); /* not its own tile */
+    bad = attack_op(hero, target, DIR_UP);
+    da_push(&bad.values, 2);
+    CHECK_R(ops_check(&bad, &alice), OPR_INVALID); /* rolls: none or one per outcome */
+    set_rolls(&bad, 5, 1, 0);
+    CHECK_R(ops_check(&bad, &alice), OPR_INVALID); /* 1d4 can't roll 5 */
+    set_rolls(&bad, 2.5, 1, 0);
+    CHECK_R(ops_check(&bad, &alice), OPR_INVALID);
+    set_rolls(&bad, 3, 1, 0);
+    CHECK_R(ops_check(&bad, &alice), OPR_OK);
+    op_free(&bad);
+
+    /* the host rolls; every character on the tile takes the damage of its outcome (a success) */
+    CHECK_R(ops_check(&atk, &alice), OPR_OK);
+    ops_apply(&atk);
+    CHECK(atk.values.count == OUTCOME_COUNT && atk.values.items[0] >= 1 && atk.values.items[0] <= 4);
+    int dmg = (int)atk.values.items[0];
+    CHECK(orc->health == 10 - dmg && wolf->health == 10 - dmg && hero->health == 10);
+    CHECK(hero->turnUsed == TURN_MAJOR && hero->stamina == 4); /* the Major slot; the test attack is free */
+    CHECK(strstr(stub_last_log, ": success, ") && strstr(stub_last_log, " damage, HP "));
+    CHECK(gh->attackMarks.count == 1 && hex_eq(gh->attackMarks.items[0].tile, target) &&
+          gh->attackMarks.items[0].dir == DIR_LEFT && gh->attackMarks.items[0].attacker == hero->id &&
+          hex_eq(gh->attackMarks.items[0].from, a));
+    CHECK_R(ops_check(&atk, &alice), OPR_ACTION_USED); /* a Major attack can't use the Minor slot */
+
+    /* a client applies the host's rolls; HP may go below 0 */
+    hero->turnUsed = 0;
+    orc->health = 2;
+    set_rolls(&atk, 3, 1, 0);
+    stub_client = true;
+    ops_apply(&atk);
+    stub_client = false;
+    CHECK(orc->health == -1 && atk.values.items[0] == 3 && gh->attackMarks.count == 2); /* the marks add up */
+    stub_client = true;
+    CHECK(strstr(stub_last_log, ": success, 3 damage, HP ")); /* the last line is the wolf's */
+    wolf->health = 1;
+    hero->turnUsed = 0;
+    ops_apply(&atk);
+    stub_client = false;
+    CHECK(strstr(stub_last_log, "HP -2/10 (Dying)") && orc->health == -4 && gh->attackMarks.count == 3);
+
+    /* a character without max HP has nothing to lose */
+    wolf->maxHealth = 0;
+    wolf->health = 0;
+    hero->turnUsed = 0;
+    ops_apply(&atk);
+    CHECK(wolf->health == 0 && strstr(stub_last_log, " damage (no HP)"));
+
+    /* an empty tile: nobody is hurt */
+    hero->turnUsed = 0;
+    Op miss = attack_op(hero, empty, DIR_NEUTRAL);
+    CHECK_R(ops_check(&miss, &alice), OPR_OK);
+    ops_apply(&miss);
+    CHECK(strstr(stub_last_log, "Test attack on [") && strstr(stub_last_log, "] neutral, nobody there"));
+    op_free(&miss);
+
+    /* the marks go when the attacker's next turn starts */
+    game_next_turn();
+    CHECK(gh->currentTurn == orc && gh->attackMarks.count == 5);
+    Op orc_atk = attack_op(orc, a, DIR_RIGHT);
+    CHECK_R(ops_check(&orc_atk, &bob), OPR_OK);
+    ops_apply(&orc_atk);
+    CHECK(hero->health < 10 && gh->attackMarks.count == 6);
+    game_next_turn();
+    CHECK(gh->currentTurn == hero && gh->attackMarks.count == 1 && gh->attackMarks.items[0].attacker == orc->id);
+    /* ...when the attacker is deleted, and when the initiative ends */
+    ops_apply(&atk);
+    CHECK(gh->attackMarks.count == 2);
+    entity_delete(wolf);
+    entity_delete(orc);
+    CHECK(gh->attackMarks.count == 1);
+    game_clear_initiative();
+    CHECK(gh->attackMarks.count == 0);
+    op_free(&atk);
+    op_free(&orc_atk);
 }
 
 static void test_radial_config(void) {
@@ -3062,6 +3345,9 @@ int main(void) {
     test_move_actions();
     test_test_mode();
     test_recover_actions();
+    test_attack_directions();
+    test_attack_contests();
+    test_attack_actions();
     test_action_menu();
     test_settings();
     CHECK(stub_bad_releases == 0);

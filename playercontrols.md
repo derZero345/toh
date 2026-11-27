@@ -46,9 +46,14 @@ nothing.
 To get stamina back on your turn, choose **Recover** (Minor action: 1d4 stamina) or **Full Recover** (Major action:
 all of it) in the same menus. They work at once and are greyed out when your stamina is already full.
 
-While a gold **TEST MODE** label shows at the top, the GM has turned on test mode: you can use move actions and
-Recover / Full Recover at any time, even when it isn't your turn or you lack the action or stamina. They still use
-up the action and stamina.
+To **attack** on your turn, choose Major action, then **Attack**, then the attack (so far only a placeholder, Test
+attack: 1 tile, 1d4 damage). Left click a lit tile in range, then its direction in the ring that opens on it (Up:
+away from you, Right, Neutral: the tile itself, Left). An attack hits the tile: **every character on it**, your
+friends too. The tile gets a red arrow (a ring for neutral) until your next turn. Esc goes back one step.
+
+While a gold **TEST MODE** label shows at the top, the GM has turned on test mode: you can use move actions,
+Recover / Full Recover and attacks at any time, even when it isn't your turn or you lack the action or stamina.
+They still use up the action and stamina.
 
 **Outside initiative** you move freely:
 

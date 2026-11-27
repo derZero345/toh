@@ -88,24 +88,33 @@ void move_apply(Entity *e, MoveAction a, Hex tile, HexList *path, bool log) {
     e->turnUsed |= TURN_MOVED;
     if (path) astar_path_within(e->tile, tile, move_distance(e, a), e, path);
     e->tile = tile;
-    bool spent = tracks_stamina(e) && d->stamina > 0;
-    int before = e->stamina;
-    if (spent) {
-        long long left = (long long)e->stamina - d->stamina;
-        if (left < 0) left = before < 0 ? before : 0; /* test mode: spends what there is, never below 0 */
-        e->stamina = hp_clamp(left, e->maxStamina);
-    }
+    int before;
+    bool spent = action_spend_stamina(e, d->stamina, &before);
     char name[CHAR_NAME_MAX + 16];
     entity_display_name(e, name, sizeof(name));
     if (log) {
         if (spent) console_log("%s: %s, stamina %d/%d", name, d->name, e->stamina, e->maxStamina);
         else console_log("%s: %s", name, d->name);
     }
+    action_end_if_exhausted(e, before, spent);
+}
+
+bool action_spend_stamina(Entity *e, int cost, int *before) {
+    *before = e->stamina;
+    if (!tracks_stamina(e) || cost <= 0) return false;
+    long long left = (long long)e->stamina - cost;
+    if (left < 0) left = *before < 0 ? *before : 0; /* test mode: spends what there is, never below 0 */
+    e->stamina = hp_clamp(left, e->maxStamina);
+    return true;
+}
+
+void action_end_if_exhausted(Entity *e, int before, bool spent) {
     /* exhausted: the turn ends (everyone sees it); only when this action used up the last stamina */
-    if (spent && before > 0 && e->stamina <= 0 && gh->currentTurn == e) {
-        console_log("%s is exhausted; the turn ends", name);
-        game_next_turn();
-    }
+    if (!spent || before <= 0 || e->stamina > 0 || gh->currentTurn != e) return;
+    char name[CHAR_NAME_MAX + 16];
+    entity_display_name(e, name, sizeof(name));
+    console_log("%s is exhausted; the turn ends", name);
+    game_next_turn();
 }
 
 const char *move_result_text(OpResult r) {

@@ -73,7 +73,7 @@ FUZZ_CC     ?= clang
 CORE_SRC    := src/ops.c src/entity.c src/game.c src/hex.c src/astar.c src/util.c src/savefmt.c src/image.c src/baranim.c src/party.c src/textwrap.c \
                src/hud_theme.c src/hud_icons.c src/hud_widgets.c src/hud_config.c src/hud.c src/hud_game.c \
                src/radial.c src/radial_widgets.c src/radial_config.c src/radial_game.c src/settings.c \
-               src/moves.c src/move_ui.c src/recover.c src/dice.c src/attrs.c src/charcreate.c src/hud_create.c
+               src/moves.c src/move_ui.c src/recover.c src/attacks.c src/attack_ui.c src/dice.c src/attrs.c src/charcreate.c src/hud_create.c
 CORE_LIBS   := $(shell pkg-config --libs sdl3 $(SAVE_PKGS)) -lm
 
 build/save_test: tests/save_test.c src/savefmt.c src/savefmt.h src/wire.h | build
@@ -136,6 +136,7 @@ e2e: $(BIN) build/toh-relay
 	./tests/e2e_radial.sh
 	./tests/e2e_settings.sh
 	./tests/e2e_moves.sh
+	./tests/e2e_attack.sh
 	./tests/e2e_create.sh
 	./tests/e2e_net.sh
 	TOH_E2E_RELAY=1 ./tests/e2e_net.sh

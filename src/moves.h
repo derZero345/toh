@@ -14,7 +14,8 @@
  * the character's turn, a free slot (action_turn_check, also for recover actions), Sprint's earlier move and enough
  * stamina never block. The effects stay: the slot
  * is marked used, stamina is spent down to 0 at most, and the turn ends only when an action uses up the last
- * stamina. Ownership, the range and speed 0 still hold. Keep this list in the guides when a requirement is added.
+ * stamina. Ownership, the range and speed 0 still hold (attacks.h: the same for attacks). Keep this list in the guides
+ * when a requirement is added.
  *
  * Add an action: a MoveAction value (before MOVE_COUNT) and its row in MOVE_ACTIONS; the radial menu entry with the
  * same id goes into radial_config.c. Nothing else changes.
@@ -51,6 +52,12 @@ int action_slot(const Entity *e, ActionSlot s);
 OpResult action_turn_check(const Entity *e, ActionSlot s);
 /* Marks the slot action_slot names (its own if none is free: test mode) as used. */
 void action_use_slot(Entity *e, ActionSlot s);
+/* Spends cost stamina; a character without a stamina stat (max 0) pays nothing, and test mode spends what there is
+ * (never below 0). *before = the stamina before. True if stamina was spent. */
+bool action_spend_stamina(Entity *e, int cost, int *before);
+/* After an action: if it used up the last stamina (spent, before > 0, now <= 0) on e's turn, logs that e is exhausted
+ * and ends the turn. */
+void action_end_if_exhausted(Entity *e, int before, bool spent);
 
 int move_action_by_id(const char *id); /* -1 if none */
 /* Tiles the action may move e: 1, half its speed rounded up, or its speed. */

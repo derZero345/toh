@@ -1,5 +1,6 @@
 /* Game loop tick, character movement and initiative tracking (main/GameHandler). */
 #include "app.h"
+#include "attacks.h"
 
 /* Called at ~60 Hz: camera panning with WASD. */
 void game_tick(void) {
@@ -98,6 +99,7 @@ void game_next_turn(void) {
     else gh->currentTurnIndex %= gh->init.count;
     gh->currentTurn = gh->init.items[gh->currentTurnIndex].entity;
     gh->currentTurn->turnUsed = 0; /* a new turn: its Major and Minor actions are free again (moves.h) */
+    attack_marks_clear_of(gh->currentTurn->id); /* and the tiles it attacked last round are no longer marked */
     game_update_initiative_markers();
 }
 
@@ -123,10 +125,12 @@ void game_remove_from_initiative(Entity *e) {
             gh->currentTurnIndex = idx % gh->init.count;
             gh->currentTurn = gh->init.items[gh->currentTurnIndex].entity;
             gh->currentTurn->turnUsed = 0; /* its turn starts */
+            attack_marks_clear_of(gh->currentTurn->id);
         }
     } else if (gh->currentTurnIndex > 0 && init_index(gh->currentTurn) < gh->currentTurnIndex) {
         gh->currentTurnIndex--;
     }
+    if (gh->init.count == 0) attack_marks_clear(); /* the initiative ended */
     game_update_initiative_markers();
 }
 
@@ -141,6 +145,7 @@ void game_clear_initiative(void) {
     da_clear(&gh->init);
     gh->currentTurn = NULL;
     gh->currentTurnIndex = 0;
+    attack_marks_clear(); /* marks last a round; without initiative there are none */
 }
 
 void game_restore_initiative(Entity **entities, const double *values, int n, int current, bool turn_started,

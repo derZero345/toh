@@ -1,6 +1,8 @@
 /* The radial menu adapter: which menu a hex gets, the rules the conditions name, and what the actions do. This is
  * the only radial menu file that touches game state (see radial.h). */
 #include "radial_game.h"
+#include "attack_ui.h"
+#include "attacks.h"
 #include "charcreate.h"
 #include "move_ui.h"
 #include "moves.h"
@@ -44,6 +46,14 @@ static const char *rule_recover(const RadialTarget *t, int arg) {
 }
 #define RECOVER_RULE(key_, action_) { key_, NULL, NULL, "Not possible", rule_recover, action_ }
 
+/* Can the actor use attack arg now? */
+static const char *rule_attack(const RadialTarget *t, int arg) {
+    (void)t;
+    OpResult r = attack_check(entity_by_id(actor), (AttackAction)arg);
+    return r == OPR_OK ? NULL : move_result_text(r);
+}
+#define ATTACK_RULE(key_, action_) { key_, NULL, NULL, "Not possible", rule_attack, action_ }
+
 static const RadialRule RULES[] = {
     { "gm", rule_gm, "Only the GM can do this", "The GM can't do this", NULL, 0 },
     { "occupied", rule_occupied, "Needs something on the tile", "Needs an empty tile", NULL, 0 },
@@ -57,6 +67,8 @@ static const RadialRule RULES[] = {
     /* one per recover action; the keys are RECOVER_ACTIONS' ids */
     RECOVER_RULE("stamina.recover", RECOVER_SMALL),
     RECOVER_RULE("stamina.full_recover", RECOVER_FULL),
+    /* one per attack; the keys are ATTACK_ACTIONS' ids */
+    ATTACK_RULE("attack.test", ATTACK_TEST),
 };
 #define NRULES ((int)(sizeof(RULES) / sizeof(RULES[0])))
 
@@ -99,12 +111,29 @@ uint32_t radial_game_actor(void) {
 
 /* ---- events ---- */
 
+/* The direction menu's entry id "dir.<name>" -> AttackDir, -1 if none. */
+static int direction_of(const char *id) {
+    if (strncmp(id, "dir.", 4) != 0) return -1;
+    for (int d = 0; d < DIR_COUNT; d++)
+        if (strcmp(id + 4, ATTACK_DIR_NAMES[d]) == 0) return d;
+    return -1;
+}
+
 static void on_event(const RadialEvent *ev) {
+    bool directions = ev->menu && strcmp(ev->menu, "direction") == 0;
     switch (ev->type) {
     case RADIAL_EV_ACTION: {
+        if (directions) {
+            int d = direction_of(ev->id);
+            if (d >= 0) attack_ui_choose(d);
+            break;
+        }
         int move = move_action_by_id(ev->id), recover = recover_action_by_id(ev->id);
+        int attack = attack_action_by_id(ev->id);
         if (move >= 0) {
             move_ui_start(actor, move);
+        } else if (attack >= 0) {
+            attack_ui_start(actor, attack);
         } else if (recover >= 0) { /* nothing to choose: done at once */
             Op op = { .type = OP_RECOVER_ACTION, .id = actor, .action = recover };
             ops_submit(&op);
@@ -119,6 +148,7 @@ static void on_event(const RadialEvent *ev) {
         break;
     }
     case RADIAL_EV_CLOSED:
+        if (directions) attack_ui_back(); /* no direction chosen: choose the tile again */
         break;
     }
 }
@@ -153,8 +183,16 @@ bool radial_game_open(Vec2 p) {
     RadialTarget t = { h.row, h.col };
     Vec2 c = hex_center(h);
     move_ui_cancel(); /* a new menu replaces choosing a tile */
+    attack_ui_cancel();
     actor = actor_on(h);
     return radial_open(radial_game_menu_for(h), &t, (float)c.x, (float)c.y);
+}
+
+bool radial_game_open_directions(Hex h) {
+    radial_game_refresh_screen();
+    RadialTarget t = { h.row, h.col };
+    Vec2 c = hex_center(h);
+    return radial_open("direction", &t, (float)c.x, (float)c.y);
 }
 
 bool radial_game_right_down(Vec2 p) {
