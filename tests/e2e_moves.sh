@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # End-to-end check of move actions: during initiative a right click on your character opens its action menu (four
 # entries), Major action -> Walk shows the action's range, a click on a tile in it moves the character, and its
-# action menu then opens on the new tile while the old tile gets the plain tile menu. Opens a window (needs Wayland
+# action menu then opens on the new tile while the old tile gets the plain tile menu. Then test mode (:tm): Walk
+# without initiative, and the TEST MODE label. Opens a window (needs Wayland
 # or X11) and uses ImageMagick.
 # Usage: tests/e2e_moves.sh   (or: make e2e)
 set -euo pipefail
@@ -41,5 +42,22 @@ differ "$out/before.png" "$out/moved.png" 300 220 || fail "the character is stil
 differ "$out/before.png" "$out/moved.png" 300 150 || fail "the character did not appear on the new tile"
 [ -s "$out/b4" ] && [ ! -s "$out/b5" ] || fail "the character's action menu did not open on its new tile"
 [ -s "$out/t6" ] || fail "the old tile did not get the tile menu (the character did not move)"
+
+# test mode (:tm): without initiative, Walk works and the TEST MODE label shows at the top of the map
+timeout 60 ./toh --size 600x500 --auto-file "$icon" \
+    --exec "@click 300 220" --exec ":c speed 4 maxstamina 8" --exec "@wait 5" --exec "@click 500 60" \
+    --exec "@wait 5" --exec "@shot $out/tm-off.png" --exec ":tm" --exec "@wait 5" --exec "@shot $out/tm-on.png" \
+    --exec "@rclick 300 220" --exec "@wait 20" --exec "@clickradial ring.4" --exec "@wait 20" \
+    --exec "@clickradial ring.1" --exec "@wait 20" \
+    --exec "@click 300 150" --exec "@wait 5" --exec "@click 500 60" --exec "@wait 5" --exec "@shot $out/tm-moved.png" \
+    --exec ":tm off" --exec "@wait 5" --exec "@shot $out/tm-back.png" \
+    --exec "@quit" > "$out/toh-tm.log" 2>&1 || fail "toh exited with status $? (see $out/toh-tm.log)"
+
+# the label is centred over the map (right of the 32 px toolbox); a tiling window manager may resize the window
+lx=$(( (32 + $(magick identify -format '%w' "$out/tm-on.png")) / 2 ))
+differ "$out/tm-off.png" "$out/tm-on.png" "$lx" 30 || fail ":tm shows no TEST MODE label"
+! differ "$out/tm-off.png" "$out/tm-back.png" "$lx" 30 || fail ":tm off leaves the TEST MODE label"
+differ "$out/tm-on.png" "$out/tm-moved.png" 300 220 || fail "in test mode Walk did not move the character outside initiative"
+differ "$out/tm-on.png" "$out/tm-moved.png" 300 150 || fail "in test mode the character did not appear on the new tile"
 
 echo "e2e move actions: OK"

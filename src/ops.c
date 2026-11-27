@@ -153,6 +153,8 @@ static OpResult check_structure(const Op *op) {
     case OP_MOVE_ACTION: /* the rules of the action hold for the GM too; only free moves (OP_MOVE) ignore them */
         if (!tile_ok(op->tile) || op->action < 0 || op->action >= MOVE_COUNT) return OPR_INVALID;
         return move_check_to(entity_by_id(op->id), (MoveAction)op->action, op->tile);
+    case OP_SET_TEST_MODE:
+        return op->value == 0 || op->value == 1 ? OPR_OK : OPR_INVALID;
     case OP_SET_BACKGROUND:
     case OP_GRID_ORIENTATION:
     case OP_INIT_CLEAR:
@@ -450,6 +452,12 @@ void ops_apply(Op *op) {
         if (op->remote && was_selected) entities_clear_highlights(); /* the range shown belonged to the old tile */
         break;
     }
+    case OP_SET_TEST_MODE:
+        if (gh->testMode == (op->value != 0)) break;
+        gh->testMode = op->value != 0;
+        console_log(gh->testMode ? "Test mode on: actions ignore turns, used actions and stamina"
+                                 : "Test mode off");
+        break;
     case OP_COUNT:
         break;
     }

@@ -243,6 +243,7 @@ mouse is drawn in white. Left click a lit tile to move there; Esc, a right click
   character without max stamina pays nothing.
 - Speed 0: Walk, Run, Crawl and Sprint are greyed out ("This character can't move (speed 0)"); Step still moves 1 tile.
 - Outside initiative the move actions are greyed out ("Only during initiative"); characters move freely then.
+  Test mode (`:tm`, below) lifts this and the other requirements.
 - Greyed-out actions say why when hovered: "Not this character's turn", "No action of that kind left this turn",
   "Needs another move action first this turn", "Not enough stamina".
 - The rules hold for you too when you use a move action. Your Shift + click and `:gm` moves stay free and use no
@@ -251,6 +252,32 @@ mouse is drawn in white. Left click a lit tile to move there; Esc, a right click
   right click your character".
 - Levels, terrain and conditions are not part of the map yet, so Jump, Long Jump, Climb, Swimming, Glide, Hang and
   Turn Around are not in the menu, and nothing checks whether a character is prone or falling.
+
+### Test mode
+
+| Command | Short | Action |
+|---|---|---|
+| `testmode [on\|off]` | `:tm` | Test mode on / off for the whole table (without an argument it toggles; Tab completes `on` / `off`) |
+
+Test mode is for trying things out without setting up turns and stamina first. While it is on, move actions work for
+everyone at the table:
+- outside initiative, and for any character, not only the one whose turn it is;
+- when the Major or Minor action is already used this turn;
+- for Sprint without another move action before it;
+- with too little stamina.
+
+The actions still have their effects: they use up their Major or Minor action, and they spend stamina, but never
+below 0. A character whose stamina an action brings to 0 is exhausted and its turn ends, as usual; actions at 0
+stamina don't end the turn again.
+
+Still checked in test mode: players only act with their own characters, the move stays within the action's range,
+and a character with speed 0 can only Step. Players' Shift + click moves keep their rules (refused during
+initiative). Roll and claim limits stay too.
+
+- Only the GM can switch it. Everyone gets `Test mode on: actions ignore turns, used actions and stamina` or
+  `Test mode off` in the log, and a gold **TEST MODE** label shows at the top of the map while it is on.
+- Players who join while it is on get it too. It is not saved, and it is off at every start. `:tm off` when it is
+  already off says `Test mode is already off`.
 
 ## 7. Copy and paste
 
@@ -502,6 +529,6 @@ Everything else is yours, including:
 - giving characters to players, and putting characters into parties (`:c party`);
 - the initiative order (apart from `:i next`);
 - waypoints, the background and the grid;
-- `:gm`, `:load`, kicking and banning.
+- `:gm`, `:tm` (test mode), `:load`, kicking and banning.
 
 If a player tries any of these, they get "Only the GM can do that".

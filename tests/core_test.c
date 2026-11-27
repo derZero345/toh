@@ -31,6 +31,7 @@ _Static_assert((int)NOP_MOVE == (int)OP_MOVE && (int)NOP_SPAWN == (int)OP_SPAWN 
                (int)NOP_INIT_NEXT == (int)OP_INIT_NEXT && (int)NOP_SET_OWNER == (int)OP_SET_OWNER && (int)NOP_SET_HEALTH == (int)OP_SET_HEALTH &&
                (int)NOP_SET_NAME == (int)OP_SET_NAME && (int)NOP_SET_STAMINA == (int)OP_SET_STAMINA &&
                (int)NOP_SET_PARTY == (int)OP_SET_PARTY && (int)NOP_MOVE_ACTION == (int)OP_MOVE_ACTION &&
+               (int)NOP_SET_TEST_MODE == (int)OP_SET_TEST_MODE &&
                (int)NOP_ROLL == (int)OP_COUNT,
                "NetOpType must match OpType");
 _Static_assert((int)NSTAT_SIZE == (int)STAT_SIZE && (int)NSTAT_MAXHEALTH == (int)STAT_MAXHEALTH &&
@@ -81,6 +82,7 @@ static void reset_table(void) {
     da_clear(&app.waypoints);
     app.hexSize = 40;
     app.isFlat = true;
+    app.testMode = false;
 }
 
 static Entity *add_character(Hex tile, int speed, const char *owner) {
@@ -1857,6 +1859,75 @@ static void test_move_actions(void) {
     radial_game_shutdown();
 }
 
+/* :tm lifts the requirements of move actions for the whole table; the effects stay */
+static void test_test_mode(void) {
+    reset_table();
+    stub_client = false;
+    Entity *hero = add_character((Hex){ 10, 10 }, 6, "Alice");
+    Entity *orc = add_character((Hex){ 30, 30 }, 5, "Bob");
+    hero->maxStamina = hero->stamina = 4;
+    OpAuthor alice = player("Alice");
+
+    /* only the GM switches it; 0 or 1 */
+    Op on = { .type = OP_SET_TEST_MODE, .value = 1 }, off = { .type = OP_SET_TEST_MODE, .value = 0 };
+    Op two = { .type = OP_SET_TEST_MODE, .value = 2 };
+    CHECK_R(ops_check(&on, &alice), OPR_GM_ONLY);
+    CHECK_R(ops_check(&two, &GM), OPR_INVALID);
+    CHECK_R(ops_check(&on, &GM), OPR_OK);
+    Op walk = action_op(hero, MOVE_WALK, steps_from(hero->tile, 3));
+    CHECK_R(ops_check(&walk, &alice), OPR_NOT_IN_COMBAT);
+    ops_apply(&on);
+    CHECK(gh->testMode && strstr(stub_last_log, "Test mode on"));
+
+    /* outside initiative: move actions work; the slot is still marked */
+    CHECK_R(ops_check(&walk, &alice), OPR_OK);
+    ops_apply(&walk);
+    CHECK(hero->turnUsed == (TURN_MAJOR | TURN_MOVED));
+    Op run = action_op(hero, MOVE_RUN, steps_from(hero->tile, 6)); /* the Major action is used: still allowed */
+    CHECK_R(ops_check(&run, &alice), OPR_OK);
+    ops_apply(&run);
+    CHECK(hero->stamina == 2 && hero->turnUsed == (TURN_MAJOR | TURN_MOVED));
+
+    /* ownership, range and speed 0 still hold */
+    Op not_hers = action_op(orc, MOVE_WALK, steps_from(orc->tile, 1));
+    CHECK_R(ops_check(&not_hers, &alice), OPR_NOT_YOURS);
+    Op far = action_op(hero, MOVE_STEP, steps_from(hero->tile, 2));
+    CHECK_R(ops_check(&far, &alice), OPR_OUT_OF_RANGE);
+    orc->speed = 0;
+    CHECK(move_check(orc, MOVE_STEP) == OPR_OK && move_check(orc, MOVE_WALK) == OPR_CANT_MOVE);
+    orc->speed = 5;
+    /* players' free moves keep their rules */
+    Op free_move = move_op(hero, steps_from(hero->tile, 7));
+    CHECK_R(ops_check(&free_move, &alice), OPR_OUT_OF_RANGE);
+
+    /* during initiative: off-turn, Sprint first, too little stamina */
+    Entity *order[2] = { hero, orc };
+    double values[2] = { 0.9, 0.1 };
+    game_initiative_list(order, values, 2);
+    game_next_turn();
+    CHECK(gh->currentTurn == hero && hero->turnUsed == 0);
+    Op orc_step = action_op(orc, MOVE_STEP, steps_from(orc->tile, 1));
+    CHECK_R(ops_check(&orc_step, &GM), OPR_OK); /* not its turn */
+    ops_apply(&orc_step);
+    CHECK(gh->currentTurn == hero);
+    Op sprint = action_op(hero, MOVE_SPRINT, steps_from(hero->tile, 6));
+    CHECK_R(ops_check(&sprint, &alice), OPR_OK); /* no move before it, 2 stamina for 3 */
+    ops_apply(&sprint);
+    CHECK(hero->stamina == 0 && gh->currentTurn == orc && strstr(stub_last_log, "exhausted")); /* not below 0 */
+    while (gh->currentTurn != hero) game_next_turn();
+    Op step = action_op(hero, MOVE_STEP, steps_from(hero->tile, 1));
+    CHECK_R(ops_check(&step, &alice), OPR_OK); /* at 0 stamina */
+    ops_apply(&step);
+    CHECK(hero->stamina == 0 && gh->currentTurn == hero); /* already exhausted: the turn doesn't end again */
+
+    /* off again: the rules are back */
+    ops_apply(&off);
+    CHECK(!gh->testMode && strstr(stub_last_log, "Test mode off"));
+    CHECK_R(ops_check(&step, &alice), OPR_NO_STAMINA);
+    CHECK_R(ops_check(&orc_step, &GM), OPR_NOT_YOUR_TURN);
+    game_clear_initiative();
+}
+
 /* the action menu: opened on a character you control, the actions run through the real adapter */
 static void test_action_menu(void) {
     reset_table();
@@ -2221,6 +2292,7 @@ int main(void) {
     test_radial_config();
     test_radial_menu();
     test_move_actions();
+    test_test_mode();
     test_action_menu();
     test_settings();
     CHECK(stub_bad_releases == 0);

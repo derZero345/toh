@@ -547,6 +547,10 @@ static void welcome(Player *p, const char *name) {
     send_table(p, snap, len, &hashes);
     da_free(&hashes);
     free(snap);
+    if (gh->testMode) { /* not part of the table: sent like the op that turned it on */
+        NetMsg tm = { .type = NM_OP_APPLIED, .player = 0, .op = { .type = NOP_SET_TEST_MODE, .value = 1 } };
+        net_send(S.net, p->conn, &tm);
+    }
 
     NetMsg j = { .type = NM_PLAYER_JOINED, .info = net_player(p) };
     broadcast(&j, p);
@@ -912,6 +916,7 @@ static void end_client(void) {
     net_free(S.net);
     S.net = NULL;
     S.role = ROLE_OFFLINE;
+    gh->testMode = false; /* it was the host's */
     players_clear();
     cache_clear();
     if (was_joined) save_mark_modified(); /* the table is now an unsaved offline table */
@@ -999,6 +1004,7 @@ static void client_message(const NetMsg *m) {
     switch (m->type) {
     case NM_WELCOME:
         S.myId = m->player;
+        gh->testMode = false; /* the host sends its own when it is on */
         break;
     case NM_SNAPSHOT: {
         if (!save_apply_snapshot(m->data, m->data_len)) {

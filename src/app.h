@@ -419,6 +419,8 @@ typedef struct App {
     bool isRShiftDown, isShiftDown, isCtrlDown, isAltDown;
     bool LMBDown, RMBDown, ADown, DDown, SDown, WDown;
     bool hasSelectedEntity, gameMaster, mouseActive;
+    /* :tm (OP_SET_TEST_MODE, the whole table): action requirements never block (moves.c); not saved */
+    bool testMode;
     Vec2 mousePos;
 
     /* GameHandler */

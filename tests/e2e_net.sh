@@ -78,6 +78,12 @@ green() {
     awk -v s="$rgb" 'BEGIN { split(s, c, " "); exit !(c[2] > 0.5 && c[1] < 0.35 && c[3] < 0.4) }'
 }
 
+# Is the gold "TEST MODE" label (:tm) at the top of the map? Scans row 10 (the whole width) for gold pixels.
+test_label() {
+    magick "$1" -crop x1+0+10 +repage -depth 8 txt:- |
+        awk -F'[(),]' 'NR > 1 && $3 > 170 && $4 > 130 && $4 < 190 && $5 < 110 { n++ } END { exit !(n > 20) }'
+}
+
 # Pixels on the HUD's bars, from the rectangles @hudrect wrote ("x y w h"). Both bars are two-sided: the right
 # half of the element is the frame (0..max), the left half the zone below 0.
 # "hp_at FILE OFFSET": OFFSET px right of the frame's left edge (negative: into the zone below 0), mid-height.
@@ -99,7 +105,7 @@ D="440 140"; D2="440 200"    # Bob asks for a new character on D, the GM agrees,
 TOH_JOINCODE_FILE="$out/code" timeout 90 ./toh --size 600x400 --port "$port" --auto-file "$icon" \
     --exec ":hud" --exec "@click $A" --exec ":c speed 6" --exec "@click $A" --exec ":c owner Bob" --exec "@click $A" \
     --exec "@click $B" --exec ":c speed 6" --exec "@click $B" \
-    --exec "$host_cmd" \
+    --exec ":tm" --exec "$host_cmd" \
     --exec "@waitnet 1" \
     --exec "@waitfile $out/client-joined" --exec "@click $P" --exec "@touch $out/host-selected" \
     --exec "@waitfile $out/client-selected" --exec "@wait 30" --exec "@shot $out/host-presence.png" \
@@ -108,7 +114,7 @@ TOH_JOINCODE_FILE="$out/code" timeout 90 ./toh --size 600x400 --port "$port" --a
     --exec "@shot $out/host-moved.png" \
     --exec "@click $B" --exec "@down lshift" --exec "@click $B3" --exec "@up lshift" \
     --exec "@click $C" --exec ":c speed 6" \
-    --exec ":r 2d6" --exec ":r 0d6" \
+    --exec ":r 2d6" --exec ":r 0d6" --exec ":tm off" \
     --exec "@touch $out/host-changed" \
     --exec "@waitfile $out/claimed" --exec "@wait 30" --exec "y" --exec "@touch $out/granted" \
     --exec "@waitfile $out/client-checked" --exec "@wait 30" \
@@ -173,6 +179,9 @@ wait "$host" || fail "the host exited with status $? (see $out/host.log)"
 # the client got the host's table
 occupied "$out/client-joined.png" $A || fail "the client does not show Bob's character"
 occupied "$out/client-joined.png" $B || fail "the client does not show the GM's character"
+# test mode: on before Bob joined, so he got it with the table; the GM turned it off later
+test_label "$out/client-joined.png" || fail "Bob does not see the TEST MODE label the GM turned on before he joined"
+! test_label "$out/client-changed.png" || fail "Bob still sees the TEST MODE label after the GM turned it off"
 # presence: each side sees the other's selected tile in their color, and nothing on the others
 [ "$(tint "$out/client-joined.png" $P)" = none ] || fail "tile P is tinted before the GM selected it"
 [ "$(tint "$out/client-presence.png" $P)" = gold ] || fail "Bob does not see the GM's selection in gold"

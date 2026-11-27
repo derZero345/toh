@@ -42,11 +42,13 @@ static bool tracks_stamina(const Entity *e) { return e->maxStamina > 0; }
 OpResult move_check(const Entity *e, MoveAction a) {
     if (!e || e->type != ENTITY_CHARACTER) return OPR_NO_ENTITY;
     if (!valid(a)) return OPR_INVALID;
-    if (gh->init.count == 0) return OPR_NOT_IN_COMBAT;
-    if (gh->currentTurn != e) return OPR_NOT_YOUR_TURN;
-    if (move_slot(e, a) < 0) return OPR_ACTION_USED;
-    if (MOVE_ACTIONS[a].afterMove && !(e->turnUsed & TURN_MOVED)) return OPR_MOVE_FIRST;
-    if (tracks_stamina(e) && e->stamina < MOVE_ACTIONS[a].stamina) return OPR_NO_STAMINA;
+    if (!gh->testMode) { /* test mode: these requirements never block (moves.h) */
+        if (gh->init.count == 0) return OPR_NOT_IN_COMBAT;
+        if (gh->currentTurn != e) return OPR_NOT_YOUR_TURN;
+        if (move_slot(e, a) < 0) return OPR_ACTION_USED;
+        if (MOVE_ACTIONS[a].afterMove && !(e->turnUsed & TURN_MOVED)) return OPR_MOVE_FIRST;
+        if (tracks_stamina(e) && e->stamina < MOVE_ACTIONS[a].stamina) return OPR_NO_STAMINA;
+    }
     if (move_distance(e, a) <= 0) return OPR_CANT_MOVE;
     return OPR_OK;
 }
@@ -69,18 +71,25 @@ OpResult move_check_to(const Entity *e, MoveAction a, Hex tile) {
 void move_apply(Entity *e, MoveAction a, Hex tile, HexList *path, bool log) {
     const MoveActionDef *d = &MOVE_ACTIONS[a];
     int slot = move_slot(e, a);
+    if (slot < 0) slot = (int)d->slot; /* test mode: none is free; mark its own */
     e->turnUsed |= (slot == SLOT_MINOR ? TURN_MINOR : TURN_MAJOR) | TURN_MOVED;
     if (path) astar_path_within(e->tile, tile, move_distance(e, a), e, path);
     e->tile = tile;
     bool spent = tracks_stamina(e) && d->stamina > 0;
-    if (spent) e->stamina = hp_clamp((long long)e->stamina - d->stamina, e->maxStamina);
+    int before = e->stamina;
+    if (spent) {
+        long long left = (long long)e->stamina - d->stamina;
+        if (left < 0) left = before < 0 ? before : 0; /* test mode: spends what there is, never below 0 */
+        e->stamina = hp_clamp(left, e->maxStamina);
+    }
     char name[CHAR_NAME_MAX + 16];
     entity_display_name(e, name, sizeof(name));
     if (log) {
         if (spent) console_log("%s: %s, stamina %d/%d", name, d->name, e->stamina, e->maxStamina);
         else console_log("%s: %s", name, d->name);
     }
-    if (spent && e->stamina <= 0 && gh->currentTurn == e) { /* exhausted: the turn ends (everyone sees it) */
+    /* exhausted: the turn ends (everyone sees it); only when this action used up the last stamina */
+    if (spent && before > 0 && e->stamina <= 0 && gh->currentTurn == e) {
         console_log("%s is exhausted; the turn ends", name);
         game_next_turn();
     }

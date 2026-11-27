@@ -85,6 +85,8 @@ static bool op_ok(const NetOp *o) {
         return dice_ok(o->dice);
     case NOP_CLAIM:
         return o->id != 0;
+    case NOP_SET_TEST_MODE:
+        return o->value == 0 || o->value == 1;
     default: /* DELETE, INIT_REMOVE (ids only), SET_BACKGROUND, INIT_NEXT, GRID / CLEAR / SHOW */
         return true;
     }
@@ -305,6 +307,9 @@ static void put_op(Buf *b, const NetOp *o) {
         put_sv(b, o->row);
         put_sv(b, o->col);
         put_u8(b, o->action);
+        break;
+    case NOP_SET_TEST_MODE:
+        put_u8(b, (uint8_t)o->value);
         break;
     case NOP_ROLL:
         put_str(b, o->dice);
@@ -598,6 +603,9 @@ static void get_op(Rd *r, NetOp *o) {
         o->row = get_sv(r);
         o->col = get_sv(r);
         o->action = get_u8(r);
+        break;
+    case NOP_SET_TEST_MODE:
+        o->value = get_u8(r);
         break;
     case NOP_ROLL: {
         get_str(r, o->dice, sizeof(o->dice));

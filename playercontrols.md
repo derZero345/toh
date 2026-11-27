@@ -43,6 +43,9 @@ Sprint) can take the Major one instead. An action that can't be used right now i
 why. When your character's stamina reaches 0 it is exhausted and its turn ends. A character without stamina pays
 nothing.
 
+While a gold **TEST MODE** label shows at the top, the GM has turned on test mode: you can use move actions at any
+time, even when it isn't your turn or you lack the action or stamina. They still use up the action and stamina.
+
 **Outside initiative** you move freely:
 
 1. **Left click** your character to select it. A green area shows how far it can move. If several characters

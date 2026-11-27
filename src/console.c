@@ -34,7 +34,7 @@ static const ArgDef ARGS_CHARACTER[] = {
     { "hp", NULL },        { "damage", "dmg" },    { "heal", NULL },     { "party", "pt" },
     { NULL, NULL },
 };
-static const ArgDef ARGS_HUD[] = { { "on", NULL }, { "off", NULL }, { NULL, NULL } };
+static const ArgDef ARGS_ON_OFF[] = { { "on", NULL }, { "off", NULL }, { NULL, NULL } };
 static const ArgDef ARGS_DELETE[] = { { "delete", "d" }, { NULL, NULL } };
 static const ArgDef ARGS_HELP[]   = {
     { "quit", ":q" },        { "background", ":b" }, { "debug", ":d" },      { "character", ":c" },
@@ -43,7 +43,8 @@ static const ArgDef ARGS_HELP[]   = {
     { "theme", ":t" },       { "teleport", "tp" },   { "save", ":save" },    { "load", ":load" },
     { "host", ":host" },     { "unhost", ":unhost" }, { "join", ":join" },   { "leave", ":leave" },
     { "players", ":players" }, { "kick", ":kick" },  { "ban", ":ban" },      { "unban", ":unban" },
-    { "claim", ":claim" },   { "hud", ":hud" },   { "party", ":party" },   { NULL, NULL },
+    { "claim", ":claim" },   { "hud", ":hud" },   { "party", ":party" },   { "testmode", ":tm" },
+    { NULL, NULL },
 };
 static const ArgDef ARGS_INIT[]  = { { "add", "a" }, { "remove", "r" }, { "clear", "c" }, { "show", "s" },
                                      { "next", "n" }, { NULL, NULL } };
@@ -61,8 +62,8 @@ static const CommandDef COMMANDS[] = {
     { "save", ":save", NULL },            { "load", ":load", NULL },
     { "host", ":host", NULL },            { "unhost", ":unhost", NULL }, { "join", ":join", NULL },
     { "leave", ":leave", NULL },          { "players", ":players", NULL }, { "kick", ":kick", NULL },
-    { "ban", ":ban", NULL },              { "unban", ":unban", NULL },  { "claim", ":claim", NULL },  { "hud", ":hud", ARGS_HUD },
-    { "party", ":party", NULL },
+    { "ban", ":ban", NULL },              { "unban", ":unban", NULL },  { "claim", ":claim", NULL },  { "hud", ":hud", ARGS_ON_OFF },
+    { "party", ":party", NULL },          { "testmode", ":tm", ARGS_ON_OFF },
 };
 #define NCOMMANDS ((int)(sizeof(COMMANDS) / sizeof(COMMANDS[0])))
 
@@ -688,6 +689,10 @@ static void cmd_help(Args *a) {
         console_log(":party # List the parties (players: the parties of their own characters)");
     } else if (!strcmp(arg, "hud") || !strcmp(arg, ":hud")) {
         console_log(":hud [on|off] # Show or hide the HUD at the bottom of the window");
+    } else if (!strcmp(arg, "testmode") || !strcmp(arg, ":tm")) {
+        console_log(":tm or testmode [on|off] # GM: test mode for the whole table (no argument: switch)");
+        console_log("  move actions work outside initiative and off-turn, and used actions or too little");
+        console_log("  stamina don't stop them; they still use the action and spend stamina (not below 0)");
     } else {
         console_log("Available commands:");
         console_log(":q  or quit       # Quit the application");
@@ -713,6 +718,7 @@ static void cmd_help(Args *a) {
         console_log(":claim            # Ask the GM for the selected character");
         console_log(":party            # List the parties");
         console_log(":hud [on|off]     # Show or hide the HUD");
+        console_log(":tm or testmode   # GM: test actions without their requirements");
     }
 }
 
@@ -1039,6 +1045,21 @@ void console_command(const char *raw) {
         else if (a.argc == 2 && !strcmp(a.argv[1], "on")) hud_set_visible(true);
         else if (a.argc == 2 && !strcmp(a.argv[1], "off")) hud_set_visible(false);
         else console_log("Usage: :hud [on|off]");
+    }
+    else if (!strcmp(cmd, "testmode") || !strcmp(cmd, ":tm")) {
+        bool on = !gh->testMode;
+        if (a.argc == 2 && !strcmp(a.argv[1], "on")) on = true;
+        else if (a.argc == 2 && !strcmp(a.argv[1], "off")) on = false;
+        if (a.argc > 2 || (a.argc == 2 && strcmp(a.argv[1], "on") && strcmp(a.argv[1], "off"))) {
+            console_log("Usage: :tm [on|off]");
+        } else if (session_is_client()) {
+            console_log("%s", ops_result_text(OPR_GM_ONLY));
+        } else if (on == gh->testMode) {
+            console_log("Test mode is already %s", on ? "on" : "off");
+        } else {
+            Op tm = { .type = OP_SET_TEST_MODE, .value = on };
+            ops_submit(&tm);
+        }
     }
     else if (!strcmp(cmd, "init") || !strcmp(cmd, ":i"))        cmd_init(&a);
     else if (!strcmp(cmd, "teleport") || !strcmp(cmd, "tp"))    cmd_teleport(&a);

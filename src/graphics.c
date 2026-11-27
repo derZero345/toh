@@ -924,6 +924,18 @@ static void draw_hud(void) {
     hud_draw();
 }
 
+/* ":tm": a label at the top of the map while test mode is on, so nobody forgets it */
+static void draw_test_mode(void) {
+    if (!gh->testMode) return;
+    const char *text = "TEST MODE";
+    float fs = 16, pad = 8, ascent, descent;
+    dr_font_metrics(FONT_BOLD, fs, &ascent, &descent);
+    float w = dr_text_width(FONT_BOLD, fs, text) + 2 * pad, h = ascent + descent + pad;
+    float left = (float)gh->toolbox.size, x = left + ((float)gh->winW - left - w) / 2, y = 8;
+    dr_fill_round_rect(x, y, w, h, 8, 8, HUD_THEME.accent[HUD_ACCENT_GOLD]);
+    dr_text(FONT_BOLD, fs, x + pad, y + pad / 2 + ascent, HUD_THEME.panel, text);
+}
+
 /* ---- radial menu (on top of everything) --------------------------------------------------------------------- */
 
 static Uint64 radial_last_ms;
@@ -955,6 +967,7 @@ bool gfx_draw_frame(const char *screenshot_path) {
     draw_fx();
     draw_toolbox();
     draw_hud();
+    draw_test_mode();
     draw_console();
     draw_radial();
 
