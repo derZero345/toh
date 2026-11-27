@@ -1810,6 +1810,18 @@ static void test_hud_controls(void) {
     hud_set_visible(true);
     CHECK(!hud_focused());
 
+    /* a label is clipped only when its text is wider than the element */
+    clips = stub_clip_sets;
+    hud_draw(); /* the text field clips; the short label does not */
+    int short_clips = stub_clip_sets - clips;
+    char longline[HUD_LABEL_MAX];
+    memset(longline, 'W', sizeof(longline) - 1);
+    longline[sizeof(longline) - 1] = '\0';
+    hud_set_label("line", longline);
+    clips = stub_clip_sets;
+    hud_draw();
+    CHECK(stub_clip_sets - clips == short_clips + 1 && !stub_clip_on);
+
     hud_draw(); /* every component draws with and without values */
     hud_begin_frame();
     hud_draw();
@@ -2799,12 +2811,13 @@ static void test_hud_create(void) {
     click_part("cc.next");
     hud_game_update(0);
     CHECK(c->step == CC_SUMMARY && !strcmp(hud_value("cc.next")->button.label, "Place"));
-    CHECK(strstr(hud_value("cc.summary")->label.text, "Mao · Normal · STR 1 AGI 0 COG 0 SPI 0 · HP 15 ST 8 SPD 3 INI 0"));
-    cc_set_name("WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW"); /* 32 bytes: the summary is cut at the label's edge */
-    hud_game_update(0);
-    int clips = stub_clip_sets;
-    hud_draw();
-    CHECK(stub_clip_sets > clips && !stub_clip_on);
+    CHECK(!strcmp(hud_value("cc.summary")->label.text, "Mao · Normal"));
+    CHECK(!strcmp(hud_value("cc.stats")->label.text,
+                  "STR 1 AGI 0 COG 0 SPI 0 · HP 15 · Stamina 8 · Speed 3 · Initiative 0"));
+    /* the stats line is below the picture's row, as wide as the panel */
+    HudRect pic, stats, panel;
+    CHECK(hud_part_rect("cc.preview", &pic) && hud_part_rect("cc.stats", &stats) && stats.y >= pic.y + pic.h);
+    CHECK(hud_part_rect("panel", &panel) && stats.w >= panel.w - 2 * HUD_THEME.padding - 0.5f);
     cc_set_name("Mao");
     click_part("cc.back"); /* Back keeps the draft */
     hud_game_update(0);

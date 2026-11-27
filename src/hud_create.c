@@ -35,14 +35,17 @@ static const HudElement PICTURE[] = {
     { .type = HUD_BUTTON, .key = "cc.picture", .accent = HUD_ACCENT_BLUE, .label = "Choose picture…", .width = 160 },
     { .type = HUD_LABEL, .key = "cc.picname", .width = 120 },
 };
-static const HudElement SUMMARY[] = { PREVIEW, { .type = HUD_LABEL, .key = "cc.summary", .width = 440 } };
+/* the picture with "name · size" beside it, the attributes and stats below: as wide as the normal bar, so a
+ * 32-byte name and every stat fit */
+static const HudElement SUMMARY[] = { PREVIEW, { .type = HUD_LABEL, .key = "cc.summary", .width = 442 } };
+static const HudElement STATS[] = { { .type = HUD_LABEL, .key = "cc.stats", .width = 494 } };
 
 #define ROW(e) { (e), (int)(sizeof(e) / sizeof((e)[0])) }
 static const HudRow ROWS_NAME[] = { ROW(NAME), ROW(BUTTONS_FIRST) };
 static const HudRow ROWS_SIZE[] = { ROW(SIZE), ROW(BUTTONS) };
 static const HudRow ROWS_ATTRS[] = { ROW(ATTRS), ROW(DERIVED), ROW(BUTTONS) };
 static const HudRow ROWS_PICTURE[] = { ROW(PICTURE), ROW(BUTTONS) };
-static const HudRow ROWS_SUMMARY[] = { ROW(SUMMARY), ROW(BUTTONS) };
+static const HudRow ROWS_SUMMARY[] = { ROW(SUMMARY), ROW(STATS), ROW(BUTTONS) };
 #define STEP(r) { (r), (int)(sizeof(r) / sizeof((r)[0])) }
 static const struct { const HudRow *rows; int n; } STEPS[CC_STEPS] = {
     [CC_NAME] = STEP(ROWS_NAME),       [CC_SIZE] = STEP(ROWS_SIZE),       [CC_ATTRS] = STEP(ROWS_ATTRS),
@@ -115,10 +118,12 @@ void hud_create_publish(void) {
         break;
     case CC_SUMMARY:
         hud_set_image("cc.preview", c->picture);
-        snprintf(line, sizeof(line), "%s · %s · STR %d AGI %d COG %d SPI %d · HP %d ST %d SPD %d INI %d", c->name,
-                 SIZE_NAMES[c->size - SIZE_MIN], c->attr[ATTR_STR], c->attr[ATTR_AGI], c->attr[ATTR_COG],
-                 c->attr[ATTR_SPI], d.maxHealth, d.maxStamina, d.speed, d.initiative);
+        snprintf(line, sizeof(line), "%s · %s", c->name, SIZE_NAMES[c->size - SIZE_MIN]);
         hud_set_label("cc.summary", line);
+        snprintf(line, sizeof(line), "STR %d AGI %d COG %d SPI %d · HP %d · Stamina %d · Speed %d · Initiative %d",
+                 c->attr[ATTR_STR], c->attr[ATTR_AGI], c->attr[ATTR_COG], c->attr[ATTR_SPI], d.maxHealth,
+                 d.maxStamina, d.speed, d.initiative);
+        hud_set_label("cc.stats", line);
         break;
     case CC_STEPS:
         break;
