@@ -1,5 +1,6 @@
 /* The creation draft and its steps (see charcreate.h). */
 #include "charcreate.h"
+#include "move_ui.h"
 #include "netmsg.h"
 #include "ops.h"
 #include "savefmt.h"
@@ -21,6 +22,7 @@ static void reset(void) {
 
 void cc_start(const Hex *tile) {
     reset();
+    move_ui_cancel(); /* choosing a move's tile would take the placing click */
     C.active = true;
     C.step = CC_NAME;
     C.size = SIZE_NORMAL;
@@ -90,6 +92,7 @@ void cc_next(void) {
     } else if (C.hasTile) {
         create(C.tile);
     } else {
+        move_ui_cancel(); /* also when the move was chosen during the steps */
         C.placing = true;
         console_log("Click a tile to place %s (Esc: back)", C.name);
     }

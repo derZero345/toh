@@ -23,7 +23,9 @@ typedef struct {
 } CharCreate;
 
 const CharCreate *cc_state(void);
-void cc_start(const Hex *tile); /* tile: from the tile menu, else NULL. Drops a running draft. */
+/* tile: from the tile menu, else NULL. Drops a running draft and ends choosing a move's tile (move_ui.h), as
+ * placing does. */
+void cc_start(const Hex *tile);
 void cc_cancel(void);           /* logs "Character creation cancelled" */
 bool cc_can_next(const char **why);
 void cc_next(void);             /* the next step; on the summary: place (or create on the chosen tile) */

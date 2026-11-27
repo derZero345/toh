@@ -277,8 +277,8 @@ or Minor action, then the move:
 
 The tiles the action can reach light up in its color (Major blue, Minor gold) and the way to the tile under the
 mouse is drawn in white. Left click a lit tile to move there; Esc, a right click or a left click elsewhere cancels
-("Move cancelled"). The log shows e.g. `Mao: Walk up to 3 tiles; click where to go (Esc cancels)` and then
-`Mao: Run, stamina 6/8`.
+("Move cancelled"). Starting to create a character, or placing one, also ends it (without a log line). The log
+shows e.g. `Mao: Walk up to 3 tiles; click where to go (Esc cancels)` and then `Mao: Run, stamina 6/8`.
 
 - Each turn a character has one Major and one Minor action; both are free again when its turn starts. When the
   Minor one is used, a Minor action uses the Major one instead.

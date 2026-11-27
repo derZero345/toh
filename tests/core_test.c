@@ -1050,6 +1050,24 @@ static void test_char_create(void) {
     cc_next();
     CHECK(!c->active && !c->placing && !strcmp(last_entity()->name, "Orc") && hex_eq(last_entity()->tile, (Hex){ 7, 7 }));
 
+    /* choosing a move's tile ends when creation starts, and when placing starts: it would take the click */
+    gh->testMode = true;
+    Entity *walker = add_character((Hex){ 12, 12 }, 3, "");
+    CHECK(move_ui_start(walker->id, MOVE_WALK) && move_ui_active());
+    cc_start(NULL);
+    CHECK(!move_ui_active());
+    cc_set_name("Pip");
+    cc_next();
+    cc_next();
+    cc_next();
+    cc_set_picture(TEX_B, (Image){ 0 });
+    cc_next();
+    CHECK(move_ui_start(walker->id, MOVE_WALK) && move_ui_active()); /* chosen from the menu during the steps */
+    cc_next();
+    CHECK(c->placing && !move_ui_active());
+    cc_cancel();
+    gh->testMode = false;
+
     /* Cancel throws the draft away */
     cc_start(NULL);
     cc_set_name("Gone");
