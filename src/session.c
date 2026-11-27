@@ -18,7 +18,7 @@
 
 #define MAX_PLAYERS (NET_MAX_CONNS + 1) /* the GM and every connection */
 #define ROLL_LIST_MAX 20                /* longer rolls only show the total in the log */
-#define CLAIMS_PER_PLAYER 3             /* host: a player's requests (claims, new characters) waiting for the GM */
+#define CLAIMS_PER_PLAYER SESSION_REQUESTS_MAX             /* host: a player's requests (claims, new characters) waiting for the GM */
 #define ROLL_WINDOW_MS 10000            /* host: a player rolls at most ROLLS_PER_WINDOW times in this */
 #define ROLLS_PER_WINDOW 10
 #define BAN_KEY_MAX 64
@@ -52,6 +52,7 @@ typedef struct {
     uint8_t player;
     uint32_t entity; /* REQ_CLAIM: the character */
     EntitySpec spec; /* REQ_CREATE: the new character; spec.image holds one texture reference */
+    uint32_t seq;    /* REQ_CREATE: the player's CREATE seq, for the answer */
 } Request;
 
 /* host: someone the GM banned. A join is turned away when its name or its address matches. */
@@ -64,6 +65,12 @@ typedef struct {
     Hash hash;
     Texture *tex; /* one reference held by the cache */
 } CachedImage;
+
+/* client: a create request the GM has not answered yet */
+typedef struct {
+    uint32_t seq;
+    char name[CHAR_NAME_MAX];
+} PendingCreate;
 
 typedef enum { ROLE_OFFLINE, ROLE_HOST, ROLE_JOINING, ROLE_CLIENT } Role;
 
@@ -89,6 +96,7 @@ static struct {
     char relay[NET_RELAY_ADDR_MAX]; /* "" = no relay */
     /* client */
     uint32_t seq;
+    DA(PendingCreate) pending; /* our create requests the GM hasn't answered, oldest first */
     bool rejoined;
     /* own presence */
     bool presenceDirty;
@@ -297,6 +305,7 @@ static bool net_from_op(const Op *op, NetOp *o) {
     o->speed = op->speed;
     o->initiative = op->initiative;
     o->max_stamina = op->maxStamina;
+    memcpy(o->attr, op->attr, sizeof(o->attr));
     snprintf(o->name, sizeof(o->name), "%s", op->name);
     o->health_mode = (uint8_t)op->healthMode;
     o->value = op->value;
@@ -322,6 +331,7 @@ static bool net_from_op(const Op *op, NetOp *o) {
         n->initiative = s->initiative;
         n->max_stamina = s->maxStamina;
         n->stamina = s->stamina;
+        memcpy(n->attr, s->attr, sizeof(n->attr));
         snprintf(n->name, sizeof(n->name), "%s", s->name);
         snprintf(n->party, sizeof(n->party), "%s", s->party);
         if (!s->image || !texture_hash(s->image, SAVE_IMG_LOSSLESS, n->image)) return false;
@@ -344,6 +354,7 @@ static bool op_from_net(const NetOp *o, Op *op) {
     op->speed = o->speed;
     op->initiative = o->initiative;
     op->maxStamina = o->max_stamina;
+    memcpy(op->attr, o->attr, sizeof(op->attr));
     snprintf(op->name, sizeof(op->name), "%s", o->name);
     op->healthMode = o->health_mode;
     op->value = o->value;
@@ -358,6 +369,7 @@ static bool op_from_net(const NetOp *o, Op *op) {
                          .maxHealth = n->max_health, .health = n->health, .attack = n->attack,
                          .speed = n->speed, .initiative = n->initiative,
                          .maxStamina = n->max_stamina, .stamina = n->stamina };
+        memcpy(s.attr, n->attr, sizeof(s.attr));
         if (!s.image) return false;
         snprintf(s.name, sizeof(s.name), "%s", n->name);
         snprintf(s.party, sizeof(s.party), "%s", n->party);
@@ -591,6 +603,11 @@ static int requests_of(uint8_t player) {
 /* The new character fits there (Tales of Honor: tiles hold TILE_BULK, walls are full). */
 static bool tiles_free(Hex tile, int size) { return character_fits(tile, size, NULL); }
 
+static void send_create_answer(Player *p, uint32_t seq, bool accepted) {
+    NetMsg a = { .type = NM_CREATE_ANSWER, .seq = seq, .accepted = accepted };
+    net_send(S.net, p->conn, &a);
+}
+
 /* NM_CREATE: a player asks for a new character of their own. */
 static void host_create(Player *p, const NetMsg *m) {
     NetMsg rej = { .type = NM_OP_REJECTED, .seq = m->seq };
@@ -602,9 +619,12 @@ static void host_create(Player *p, const NetMsg *m) {
     else if (!savefmt_decode_image(m->data, m->data_len, &w, &h, &rgba) || w > NET_CREATE_MAX_DIM ||
              h > NET_CREATE_MAX_DIM)
         rej.reason = OPR_INVALID;
+    for (int a = 0; a < NETMSG_ATTRS && !rej.reason; a++)
+        if (m->spec.attr[a] < ATTR_CREATE_MIN || m->spec.attr[a] > ATTR_CREATE_MAX) rej.reason = OPR_INVALID;
     if (rej.reason) {
         free(rgba);
         net_send(S.net, p->conn, &rej);
+        send_create_answer(p, m->seq, false);
         return;
     }
     Texture *t = vkr_texture_create_kept(w, h, rgba); /* takes rgba */
@@ -613,10 +633,12 @@ static void host_create(Player *p, const NetMsg *m) {
     memcpy(blob, m->data, m->data_len);
     vkr_texture_set_blob(t, blob, m->data_len, SAVE_IMG_LOSSLESS, w, h);
     Request r = { .kind = REQ_CREATE, .player = p->id };
+    r.seq = m->seq;
     r.spec = (EntitySpec){ .type = ENTITY_CHARACTER, .image = t, .tile = tile, .size = m->spec.size,
                            .maxHealth = m->spec.max_health, .health = m->spec.max_health,
                            .speed = m->spec.speed, .initiative = m->spec.initiative,
                            .maxStamina = m->spec.max_stamina, .stamina = m->spec.max_stamina };
+    memcpy(r.spec.attr, m->spec.attr, sizeof(r.spec.attr));
     snprintf(r.spec.name, sizeof(r.spec.name), "%s", m->spec.name);
     da_push(&S.requests, r);
     console_log("%s asks for a new character.", p->name);
@@ -804,6 +826,7 @@ static void answer_create(const Request *r, Player *p, bool yes) {
     if (!p || !p->welcomed || p->leaving) return;
     if (!yes) {
         send_log(p, "The GM declined your character.");
+        send_create_answer(p, r->seq, false);
         return;
     }
     if (!tiles_free(r->spec.tile, r->spec.size)) {
@@ -811,6 +834,7 @@ static void answer_create(const Request *r, Player *p, bool yes) {
                     r->spec.tile.col, p->name);
         NetMsg rej = { .type = NM_OP_REJECTED, .reason = OPR_TILE_TAKEN };
         net_send(S.net, p->conn, &rej);
+        send_create_answer(p, r->seq, false);
         return;
     }
     Op spawn = { .type = OP_SPAWN };
@@ -822,6 +846,7 @@ static void answer_create(const Request *r, Player *p, bool yes) {
         ops_submit(&own);
         op_free(&own);
         send_log(p, "The GM accepted your character.");
+        send_create_answer(p, r->seq, true);
         console_log("Created %s's character.", p->name);
     }
     op_free(&spawn);
@@ -859,9 +884,12 @@ static void ask_next_request(void) {
             if (c->spec.name[0]) snprintf(named, sizeof(named), " %s", c->spec.name);
             char st[24] = "";
             if (c->spec.maxStamina > 0) snprintf(st, sizeof(st), " ST %d", c->spec.maxStamina);
-            snprintf(q, sizeof(q), "%s: new character%s [%d|%d] size %d HP %d speed %d init %d%s. Allow? (y/n)",
+            char at[40];
+            snprintf(at, sizeof(at), " STR %d AGI %d COG %d SPI %d", c->spec.attr[ATTR_STR], c->spec.attr[ATTR_AGI],
+                     c->spec.attr[ATTR_COG], c->spec.attr[ATTR_SPI]);
+            snprintf(q, sizeof(q), "%s: new character%s [%d|%d] size %d HP %d speed %d init %d%s%s. Allow? (y/n)",
                      p->name, named, c->spec.tile.row, c->spec.tile.col, c->spec.size, c->spec.maxHealth,
-                     c->spec.speed, c->spec.initiative, st);
+                     c->spec.speed, c->spec.initiative, st, at);
         }
         gfx_set_console_visibility(true);
         S.claimAsked = console_confirm(q, request_answer, NULL);
@@ -881,7 +909,8 @@ void session_draw_request_preview(void) {
 }
 
 void session_request_character(const Image *pic, Hex tile, int size, int maxHealth, int speed,
-                               int initiative, int maxStamina, const char *name) {
+                               int initiative, int maxStamina, const char *name,
+                               const int attr[ATTR_COUNT]) {
     if (S.role != ROLE_CLIENT) {
         console_log("Wait until you have joined the table");
         return;
@@ -897,10 +926,21 @@ void session_request_character(const Image *pic, Hex tile, int size, int maxHeal
                         .speed = speed > MAX_SPEED ? MAX_SPEED : speed, .initiative = initiative,
                         .max_stamina = maxStamina, .stamina = maxStamina };
     snprintf(m.spec.name, sizeof(m.spec.name), "%s", name ? name : "");
+    if (attr) memcpy(m.spec.attr, attr, sizeof(m.spec.attr));
     if (b.len > NET_CREATE_MAX_BLOB) console_log("The picture is too large");
     else if (!net_send(S.net, 1, &m)) console_log("Could not send that to the host");
-    else console_log("Asked the GM to create your character.");
+    else {
+        console_log("Asked the GM to create your character.");
+        PendingCreate pc = { .seq = m.seq };
+        snprintf(pc.name, sizeof(pc.name), "%s", name ? name : "");
+        da_push(&S.pending, pc);
+    }
     free(b.webp);
+}
+
+int session_pending_count(void) { return S.role == ROLE_CLIENT ? S.pending.count : 0; }
+const char *session_pending_name(int i) {
+    return i >= 0 && i < session_pending_count() ? S.pending.items[i].name : "";
 }
 
 void session_prompt_free(void) { ask_next_request(); }
@@ -917,6 +957,7 @@ static void end_client(void) {
     S.net = NULL;
     S.role = ROLE_OFFLINE;
     gh->testMode = false; /* it was the host's */
+    da_clear(&S.pending);
     players_clear();
     cache_clear();
     if (was_joined) save_mark_modified(); /* the table is now an unsaved offline table */
@@ -1059,6 +1100,13 @@ static void client_message(const NetMsg *m) {
         break;
     case NM_OP_REJECTED:
         console_log("%s", ops_result_text(m->reason <= OPR_LAST ? (OpResult)m->reason : OPR_INVALID));
+        break;
+    case NM_CREATE_ANSWER:
+        for (int i = 0; i < S.pending.count; i++)
+            if (S.pending.items[i].seq == m->seq) {
+                da_remove_at(&S.pending, i); /* keeps the order */
+                break;
+            }
         break;
     case NM_IMAGE:
         client_image(m);

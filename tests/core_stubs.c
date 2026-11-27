@@ -88,6 +88,32 @@ void session_send_op(const Op *op) {
     (void)op;
     stub_sent_ops++;
 }
+
+/* the file dialog and the player's request (graphics.c, session.c are not in the core tests) */
+int stub_file_requests;
+ActionKind stub_file_kind;
+void gfx_request_file(ActionKind kind, const HexList *tiles, int size, int maxHealth, int speed, int initiative,
+                      int maxStamina, const char *name, const char *party, const int *attr) {
+    (void)tiles, (void)size, (void)maxHealth, (void)speed, (void)initiative, (void)maxStamina, (void)name,
+        (void)party, (void)attr;
+    stub_file_requests++;
+    stub_file_kind = kind;
+}
+int stub_requests, stub_request_max_health, stub_request_attr[ATTR_COUNT];
+char stub_request_name[CHAR_NAME_MAX];
+Hex stub_request_tile;
+void session_request_character(const Image *pic, Hex tile, int size, int maxHealth, int speed, int initiative,
+                               int maxStamina, const char *name, const int attr[ATTR_COUNT]) {
+    (void)pic, (void)size, (void)speed, (void)initiative, (void)maxStamina;
+    stub_requests++;
+    stub_request_tile = tile;
+    stub_request_max_health = maxHealth;
+    snprintf(stub_request_name, sizeof(stub_request_name), "%s", name ? name : "");
+    for (int i = 0; i < ATTR_COUNT; i++) stub_request_attr[i] = attr ? attr[i] : 0;
+}
+int stub_pending;
+int session_pending_count(void) { return stub_pending; }
+const char *session_pending_name(int i) { return i < stub_pending ? "Mao" : ""; }
 void session_broadcast_op(const Op *op) { (void)op; }
 typedef struct { float x, y, w, h; Color c; } StubFill;
 /* Drawing: the HUD draws through these; the tests check layout and input only. Text is 0.5 em per byte. */

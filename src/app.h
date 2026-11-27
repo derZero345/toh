@@ -347,6 +347,7 @@ typedef enum {
     ACTION_SPAWN_CHARACTERS,
     ACTION_WALLS,
     ACTION_CHARACTER_ICON,
+    ACTION_CREATE_PICTURE, /* the creation steps' picture (charcreate.h) */
     ACTION_SAVE, /* save / load dialogs (save.c) */
     ACTION_LOAD,
 } ActionKind;
@@ -356,6 +357,7 @@ typedef struct {
     HexList tiles;
     DA(uint32_t) ids; /* ACTION_CHARACTER_ICON: the characters */
     int size, maxHealth, speed, initiative, maxStamina;
+    int attr[ATTR_COUNT]; /* ACTION_SPAWN_CHARACTERS */
     char name[CHAR_NAME_MAX]; /* ACTION_SPAWN_CHARACTERS: name of the new characters, "" = none */
     char party[CHAR_NAME_MAX]; /* ACTION_SPAWN_CHARACTERS: party of the new characters, "" = none */
 } PendingAction;
@@ -458,10 +460,10 @@ void gfx_drag(Vec2 p);
 void gfx_toggle_grid_orientation(void);
 void gfx_add_entity_preview_tiles(void);
 void gfx_request_file(ActionKind kind, const HexList *tiles, int size, int maxHealth, int speed, int initiative,
-                      int maxStamina, const char *name, const char *party);
+                      int maxStamina, const char *name, const char *party, const int *attr);
 void gfx_handle_file_result(const char *path); /* path NULL = cancelled */
 void gfx_spawn_character(int size, int maxhealth, int speed, int initiative, int maxStamina, const char *name,
-                         const char *party);
+                         const char *party, const int *attr);
 /* Where a character of this size on tile is drawn: its picture's top left corner and diameter. */
 void gfx_character_rect(Hex tile, int size, float *x, float *y, float *d);
 /* Where this character is drawn, taking shared tiles into account (after entity_layout). */

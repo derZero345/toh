@@ -9,6 +9,7 @@
  * Design: docs/superpowers/specs/2026-11-21-multiplayer-design.md, sections 1-3 and 5.
  */
 
+#include "attrs.h"
 #include "image.h"
 #include "ops.h"
 
@@ -49,9 +50,15 @@ void session_cmd_claim(void);
 
 /* The console's yes/no prompt became free: asks the next queued request. */
 void session_prompt_free(void);
-/* Client: asks the GM for a new character of ours with this picture (at most NET_CREATE_MAX_DIM per side). */
+#define SESSION_REQUESTS_MAX 3 /* a player's claims and new characters waiting for the GM, together */
+
+/* Client: asks the GM for a new character of ours with this picture (at most NET_CREATE_MAX_DIM per side).
+ * attr: its attributes (NULL = all 0). */
 void session_request_character(const Image *pic, Hex tile, int size, int maxHealth, int speed, int initiative,
-                               int maxStamina, const char *name);
+                               int maxStamina, const char *name, const int attr[ATTR_COUNT]);
+/* Client: our create requests the GM has not answered yet, oldest first; their names ("" = no name). */
+int         session_pending_count(void);
+const char *session_pending_name(int i);
 /* Host: while a new character is being asked about, draws its picture faintly on its tile (only for the GM). */
 void session_draw_request_preview(void);
 

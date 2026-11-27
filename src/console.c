@@ -551,7 +551,7 @@ static void cmd_character(Args *a) {
         /* a bare "party" leaves a party: nothing to create */
         if (has_owner || nres > 0 || (has_party && !party[0])) console_log("Select the characters first");
         else gfx_spawn_character(size, max_health, speed, initiative, max_stamina, has_name ? name : NULL,
-                                 has_party ? party : NULL);
+                                 has_party ? party : NULL, NULL);
         return;
     }
 
@@ -609,7 +609,7 @@ static void cmd_character(Args *a) {
         if (owner[0]) console_log("%d character(s) now belong to %s", own.ids.count, owner);
         else console_log("%d character(s) no longer have an owner", own.ids.count);
     }
-    if (has[5] && icon_targets > 0) gfx_request_file(ACTION_CHARACTER_ICON, NULL, 0, 0, 0, 0, 0, NULL, NULL);
+    if (has[5] && icon_targets > 0) gfx_request_file(ACTION_CHARACTER_ICON, NULL, 0, 0, 0, 0, 0, NULL, NULL, NULL);
     op_free(&stats);
     op_free(&own);
 }
