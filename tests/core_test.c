@@ -1,6 +1,7 @@
 /* Tests for the game core without a window: entity ids, op rules (ops_check) and
  * op effects (ops_apply). Run with `make test`. Stubs: tests/core_stubs.c. */
 #include "app.h"
+#include "attrs.h"
 #include "baranim.h"
 #include "hud.h"
 #include "hud_game.h"
@@ -717,6 +718,22 @@ static void test_confirm_answer(void) {
 }
 
 /* ---- HP rules (Tales of Honor) -------------------------------------------------------------- */
+
+/* Tales of Honor's stats from the attributes (attrs.h) */
+static void test_attr_rules(void) {
+    AttrStats d = attr_derive((const int[ATTR_COUNT]){ 0, 0, 0, 0 });
+    CHECK(d.maxHealth == 12 && d.maxStamina == 8 && d.speed == 3 && d.initiative == 0);
+    d = attr_derive((const int[ATTR_COUNT]){ -2, -2, -2, -2 }); /* the steps' lowest */
+    CHECK(d.maxHealth == 6 && d.maxStamina == 6 && d.speed == 2 && d.initiative == -2);
+    d = attr_derive((const int[ATTR_COUNT]){ 3, 3, 3, 3 }); /* the steps' highest */
+    CHECK(d.maxHealth == 21 && d.maxStamina == 11 && d.speed == 6 && d.initiative == 3);
+    d = attr_derive((const int[ATTR_COUNT]){ -10, -10, 10, 0 }); /* :c's range: never below 0, speed at least 2 */
+    CHECK(d.maxHealth == 0 && d.maxStamina == 0 && d.speed == 2 && d.initiative == 10);
+    CHECK(attr_by_name("STR") == ATTR_STR && attr_by_name("agi") == ATTR_AGI && attr_by_name("Cog") == ATTR_COG);
+    CHECK(attr_by_name("spi") == ATTR_SPI && attr_by_name("vig") == -1 && attr_by_name("") == -1);
+    CHECK(!strcmp(ATTR_NAMES[ATTR_STR], "STR") && !strcmp(ATTR_NAMES[ATTR_SPI], "SPI"));
+    CHECK(attr_valid(ATTR_MIN) && attr_valid(ATTR_MAX) && !attr_valid(ATTR_MIN - 1) && !attr_valid(ATTR_MAX + 1));
+}
 
 static void test_hp_rules(void) {
     CHECK(hp_clamp(25, 20) == 20 && hp_clamp(-25, 20) == -20 && hp_clamp(-3, 20) == -3);
@@ -2384,6 +2401,7 @@ int main(void) {
     test_tile_sharing();
     test_confirm_answer();
     test_hp_rules();
+    test_attr_rules();
     test_health_and_names();
     test_stamina();
     test_party_ops();
