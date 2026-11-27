@@ -2,7 +2,7 @@
 #define TOH_SAVEFMT_H
 
 /*
- * .tuhh file format, version 8: encoding, decoding and validation.
+ * .tuhh file format, version 9: encoding, decoding and validation.
  * Version 2 adds an owner name after each character's stats; version 1 files still load (no owners).
  * Version 3 drops the armor class (versions 1 and 2 store one after attack; it is skipped).
  * Version 4 uses the size classes of Tales of Honor; older sizes are converted (savefmt_size_from_v3).
@@ -10,6 +10,7 @@
  * Version 6 adds max and current stamina after the name.
  * Version 7 adds the party name after stamina.
  * Version 8 adds what the character used this turn (turn_used) after the party.
+ * Version 9 adds the attributes STR, AGI, COG and SPI after turn_used.
  *
  * Plain C11 on top of libzstd, libwebp and libsodium. It knows nothing about SDL,
  * Vulkan or the App struct, so tools or a server can reuse it to validate files.
@@ -24,7 +25,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SAVEFMT_VERSION     8
+#define SAVEFMT_VERSION     9
 #define SAVEFMT_TAG_SIZE    32
 #define SAVEFMT_HEADER_SIZE 12 /* magic, version, flags, state_len */
 
@@ -43,6 +44,9 @@
 #define SAVEFMT_MAX_HP          1000000 /* limit for HP values in ops (current HP is clamped to max HP) */
 #define SAVEFMT_MAX_SPEED       1000 /* = MAX_SPEED */
 #define SAVEFMT_MAX_TURN_USED   7    /* = TURN_ALL */
+#define SAVEFMT_ATTRS           4    /* = ATTR_COUNT */
+#define SAVEFMT_MIN_ATTR        (-10) /* = ATTR_MIN */
+#define SAVEFMT_MAX_ATTR        10   /* = ATTR_MAX */
 #define SAVEFMT_MIN_SIZE        (-2) /* = SIZE_MIN: Wee */
 #define SAVEFMT_MAX_SIZE        4    /* = SIZE_MAX_CLASS: Gigantic */
 #define SAVEFMT_MAX_COORD       1000000
@@ -85,6 +89,7 @@ typedef struct {
     int32_t max_stamina, stamina; /* characters only (version 6) */
     char party[SAVEFMT_CHAR_NAME_MAX]; /* characters only: "" = no party (version 7) */
     uint8_t turn_used; /* characters only: TURN_* bits of moves.h, 0..SAVEFMT_MAX_TURN_USED (version 8) */
+    int32_t attr[SAVEFMT_ATTRS]; /* characters only: STR, AGI, COG, SPI (version 9) */
 } SaveEntity;
 
 typedef struct {

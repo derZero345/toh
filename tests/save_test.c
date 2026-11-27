@@ -778,6 +778,47 @@ static void test_turn_used_versions(void) {
     free(f);
 }
 
+/* attributes (version 9): saved per character; a version 8 body loads with 0s */
+static void test_attr_versions(void) {
+    Sample s;
+    sample_init(&s);
+    s.entities[0].attr[0] = 3;
+    s.entities[0].attr[3] = -2;
+    size_t len;
+    uint8_t *file = encode_sample(&s, &len);
+    SaveData d;
+    CHECK_ERR(savefmt_decode(file, len, &d), SAVE_OK);
+    CHECK(d.entities[0].attr[0] == 3 && d.entities[0].attr[1] == 0 && d.entities[0].attr[3] == -2);
+    savefmt_free(&d);
+    free(file);
+
+    s.entities[0].attr[1] = SAVEFMT_MAX_ATTR + 1;
+    CHECK(encode_sample_err(&s) == SAVE_ERR_INVALID);
+    s.entities[0].attr[1] = SAVEFMT_MIN_ATTR - 1;
+    CHECK(encode_sample_err(&s) == SAVE_ERR_INVALID);
+    s.entities[0].attr[1] = 0;
+    s.entities[2].attr[0] = 1; /* a wall */
+    CHECK(encode_sample_err(&s) == SAVE_ERR_INVALID);
+    sample_free(&s);
+
+    W st = { .n = 0 }, im = { .n = 0 };
+    wimage(&im, 8, 8);
+    wworld(&st, 0);
+    wuv(&st, 1);
+    wcharacter(&st, 3, "Bob");
+    wstr(&st, "Mao");
+    wsv(&st, 9); wsv(&st, 4);
+    wstr(&st, "Heroes");
+    w8(&st, 1); /* turn_used (version 8) */
+    wuv(&st, 0); wuv(&st, 0);
+    wuv(&st, 0);
+    uint8_t *f = wrap_v(&st, &im, &len, 1, 8);
+    CHECK_ERR(savefmt_decode(f, len, &d), SAVE_OK);
+    CHECK(d.nentities == 1 && d.entities[0].turn_used == 1 && d.entities[0].attr[0] == 0 && d.entities[0].attr[3] == 0);
+    savefmt_free(&d);
+    free(f);
+}
+
 /* sizes of version 1-3 saves map to Tales of Honor's classes by footprint */
 static void test_size_conversion(void) {
     const int32_t from[] = { -5, -2, -1, 0, 1, 2, 3, 9 }, to[] = { -2, -1, 0, 1, 3, 4, 4, 4 };
@@ -838,6 +879,7 @@ int main(int argc, char **argv) {
     test_stamina_versions();
     test_party_versions();
     test_turn_used_versions();
+    test_attr_versions();
     test_size_conversion();
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;

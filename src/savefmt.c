@@ -93,6 +93,10 @@ static bool validate(const SaveData *d, bool encoding) {
         if (e->owner[0] != '\0' && (e->type != SAVE_ENT_CHARACTER || !savefmt_owner_valid(e->owner))) return false;
         if (e->name[0] != '\0' && (e->type != SAVE_ENT_CHARACTER || !savefmt_char_name_valid(e->name))) return false;
         if (e->party[0] != '\0' && (e->type != SAVE_ENT_CHARACTER || !savefmt_char_name_valid(e->party))) return false;
+        for (int a = 0; a < SAVEFMT_ATTRS; a++)
+            if (e->attr[a] < SAVEFMT_MIN_ATTR || e->attr[a] > SAVEFMT_MAX_ATTR ||
+                (e->attr[a] && e->type != SAVE_ENT_CHARACTER))
+                return false;
     }
 
     if (d->ninit > 0) {
@@ -151,6 +155,7 @@ static void write_state(Buf *b, const SaveData *d, bool fingerprint) {
             put_sv(b, e->stamina);
             put_str(b, e->party);
             put_u8(b, e->turn_used);
+            for (int a = 0; a < SAVEFMT_ATTRS; a++) put_sv(b, e->attr[a]);
         }
     }
 
@@ -219,6 +224,8 @@ static SaveError read_state(const uint8_t *p, size_t n, uint16_t version, SaveDa
             }
             if (version >= 7) get_str(&r, e->party, sizeof(e->party));
             if (version >= 8) e->turn_used = get_u8(&r);
+            if (version >= 9)
+                for (int a = 0; a < SAVEFMT_ATTRS; a++) e->attr[a] = get_sv(&r);
         } else if (e->type != SAVE_ENT_WALL) {
             return SAVE_ERR_CORRUPT;
         }
