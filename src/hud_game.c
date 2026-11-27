@@ -245,3 +245,36 @@ bool hud_game_key(SDL_Keycode key) {
     else if (key == SDLK_KP_0) slot = 9;
     return slot >= 0 && hud_key(slot);
 }
+
+bool hud_game_text(const char *utf8) { return hud_text_input(utf8); }
+
+bool hud_game_text_key(SDL_Keycode key) {
+    if (!hud_focused()) return false;
+    switch (key) {
+    case SDLK_LSHIFT: case SDLK_RSHIFT: case SDLK_LCTRL: case SDLK_RCTRL: case SDLK_LALT: case SDLK_RALT:
+        return false; /* the game tracks them */
+    case SDLK_RETURN: case SDLK_KP_ENTER:
+        if (gh->isCtrlDown || gh->isAltDown) return false; /* console / log toggles */
+        return hud_text_key(HUD_EDIT_ENTER);
+    case SDLK_V:
+        if (gh->isCtrlDown) { /* paste; line breaks become spaces */
+            char *clip = SDL_GetClipboardText();
+            if (clip) {
+                for (char *p = clip; *p; p++)
+                    if (*p == '\n' || *p == '\r') *p = ' ';
+                hud_text_input(clip);
+                SDL_free(clip);
+            }
+        }
+        return true;
+    case SDLK_LEFT: return hud_text_key(HUD_EDIT_LEFT);
+    case SDLK_RIGHT: return hud_text_key(HUD_EDIT_RIGHT);
+    case SDLK_HOME: return hud_text_key(HUD_EDIT_HOME);
+    case SDLK_END: return hud_text_key(HUD_EDIT_END);
+    case SDLK_BACKSPACE: return hud_text_key(HUD_EDIT_BACKSPACE);
+    case SDLK_DELETE: return hud_text_key(HUD_EDIT_DELETE);
+    case SDLK_ESCAPE: return hud_text_key(HUD_EDIT_ESCAPE);
+    default:
+        return true; /* every other key belongs to the field while it has the focus */
+    }
+}

@@ -1,5 +1,6 @@
 /* Mouse and keyboard handling (main/IOHandler). */
 #include "app.h"
+#include "charcreate.h"
 #include "ops.h"
 #include "hud_game.h"
 #include "move_ui.h"
@@ -9,10 +10,11 @@
 
 #define CON (&gh->console)
 
-/* A right press with the Drag tool that hasn't moved further than this (pixels) is a click: it opens the menu. */
+/* A right press with the Drag tool that hasn't moved further than this (pixels) is a click: it opens the menu (while
+ * placing a new character: it goes back to the summary). */
 #define RCLICK_SLOP 5
 
-static bool rclick_pending; /* a right press with the Drag tool that may still become a click */
+static bool rclick_pending; /* a right press (Drag tool, or placing) that may still become a click */
 static Vec2 rclick_at;
 
 static void select_entity(void);
@@ -198,10 +200,19 @@ static void select_tile(void) {
 
 /* ---- mouse buttons -------------------------------------------------------------------------- */
 
+/* A press on the toolbox selects that tool; true = it hit one. */
+static bool toolbox_pressed(void) {
+    for (int i = 0; i < gh->toolbox.ntools; i++)
+        if (rect_contains(gh->toolbox.tools[i].hitbox, gh->mousePos)) {
+            select_tool(i);
+            return true;
+        }
+    return false;
+}
+
 static void lmb_pressed(void) {
     gh->LMBDown = true;
-    for (int i = 0; i < gh->toolbox.ntools; i++)
-        if (rect_contains(gh->toolbox.tools[i].hitbox, gh->mousePos)) select_tool(i);
+    toolbox_pressed();
 
     if (!gh->isCtrlDown && !gh->isShiftDown) {
         da_clear(&gh->selectedEntities);
@@ -332,6 +343,7 @@ static void zoom_at_cursor(int notches) {
 static void key_pressed(const SDL_KeyboardEvent *k) {
     SDL_Keycode key = k->key;
     CON->swallowText = false;
+    if (!CON->active && hud_game_text_key(key)) return; /* the HUD's name field has the focus */
 
     if (CON->active) {
         switch (key) {
@@ -372,6 +384,8 @@ static void key_pressed(const SDL_KeyboardEvent *k) {
         else if (move_ui_active()) {
             move_ui_cancel();
             console_log("Move cancelled");
+        } else if (cc_placing()) {
+            cc_back(); /* back to the summary */
         }
         break;
     case SDLK_LSHIFT:
@@ -386,6 +400,11 @@ static void key_pressed(const SDL_KeyboardEvent *k) {
         if (gh->isCtrlDown) { gfx_toggle_console(); break; }
         if (gh->isAltDown)  { console_toggle_log(); break; }
         if (CON->active)    { console_command(CON->text); break; }
+        if (!gh->mouseActive && cc_placing()) { /* keyboard-only placing */
+            if (gh->isRShiftDown) cc_back();
+            else if (gh->hasTileUnderMouse) cc_place(gh->tileUnderMouse);
+            break;
+        }
         if (!gh->mouseActive) {
             /* simulate a click on the keyboard cursor */
             gh->mousePos = gh->hasTileUnderMouse ? hex_center(gh->tileUnderMouse)
@@ -459,9 +478,10 @@ static void text_input(const char *text) {
         CON->swallowText = false;
         return;
     }
-    if (!CON->active) return;
     SDL_Keymod mods = SDL_GetModState();
     if (mods & (SDL_KMOD_CTRL | SDL_KMOD_LALT)) return;
+    if (!CON->active && hud_game_text(text)) return; /* the HUD's name field has the focus */
+    if (!CON->active) return;
     console_insert(text);
 }
 
@@ -477,6 +497,10 @@ void io_handle_event(const SDL_Event *e) {
             if (hud_game_mouse_down(gh->mousePos)) break;     /* the HUD keeps its clicks from the map */
             Hex h;
             if (move_ui_active() && hex_find_closest(gh->mousePos, &h) && move_ui_click(h)) break;
+            if (cc_placing()) { /* placing a new character: the click is for it, not the map (the toolbox works) */
+                if (!toolbox_pressed() && hex_find_closest(gh->mousePos, &h)) cc_place(h);
+                break;
+            }
             lmb_pressed();
         } else if (e->button.button == SDL_BUTTON_RIGHT) {
             rclick_pending = false;
@@ -487,6 +511,13 @@ void io_handle_event(const SDL_Event *e) {
                 break;
             }
             if (hud_game_contains(gh->mousePos)) break;
+            if (cc_placing()) { /* a right click goes back to the summary; the Drag tool still drags the map */
+                gh->RMBDown = true;
+                if (gh->mode == DRAG_MODE) rmb_pressed();
+                rclick_pending = true;
+                rclick_at = gh->mousePos;
+                break;
+            }
             gh->RMBDown = true;
             rmb_pressed();
             rclick_pending = gh->mode == DRAG_MODE; /* the other tools use the right button themselves */
@@ -501,7 +532,8 @@ void io_handle_event(const SDL_Event *e) {
         } else if (e->button.button == SDL_BUTTON_RIGHT) {
             gh->RMBDown = false;
             if (gh->mode == DRAG_MODE) gh->hasDragStart = false;
-            if (rclick_pending && gh->mode == DRAG_MODE) radial_game_open(rclick_at);
+            if (rclick_pending && cc_placing()) cc_back();
+            else if (rclick_pending && gh->mode == DRAG_MODE) radial_game_open(rclick_at);
             rclick_pending = false;
         }
         break;

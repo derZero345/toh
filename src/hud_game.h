@@ -23,5 +23,9 @@ bool hud_game_mouse_move(Vec2 p);
 bool hud_game_mouse_up(Vec2 p);
 bool hud_game_contains(Vec2 p);
 bool hud_game_key(SDL_Keycode key); /* 1..9, 0 and the keypad, while the console is closed */
+/* While a HUD text field has the focus: text and editing keys go to it (true = used). Ctrl / Alt + Enter and the
+ * modifier keys are left to the game; Ctrl + V pastes into the field. */
+bool hud_game_text(const char *utf8);
+bool hud_game_text_key(SDL_Keycode key);
 
 #endif

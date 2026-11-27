@@ -1,5 +1,6 @@
 /* Window state, grid/camera handling, dialogs and scene rendering (main/GraphicsHandler). */
 #include "app.h"
+#include "charcreate.h"
 #include "draw.h"
 #include "hud_game.h"
 #include "hud_theme.h"
@@ -405,6 +406,16 @@ void gfx_handle_file_result(const char *path) {
         vkr_texture_release(t);
         break;
     }
+    case ACTION_CREATE_PICTURE: { /* the creation steps' picture (charcreate.h) */
+        Image cut = image_cut_circle(&img);
+        image_free(&img);
+        Image small = { 0 };
+        if (session_is_client()) small = image_scale_to_fit(&cut, NET_CREATE_MAX_DIM); /* for the request */
+        Texture *t = texture_from_image(&cut);
+        cc_set_picture(t, small); /* retains t, takes small */
+        vkr_texture_release(t);
+        break;
+    }
     case ACTION_WALLS: {
         Image cut = image_cut_hex(&img, gh->isFlat);
         image_free(&img);
@@ -739,6 +750,22 @@ static void draw_grid(void) {
             }
         if (gh->moveMode.path.count > 0)
             draw_hex(gh->moveMode.path.items[gh->moveMode.path.count - 1], th + 4, HUD_THEME.accent[acc]);
+        dr_set_alpha(0.5f);
+    }
+
+    /* placing a new character (charcreate.h): its picture under the mouse, its tiles green if it fits, else red */
+    if (cc_placing() && gh->hasTileUnderMouse) {
+        const CharCreate *cc = cc_state();
+        Hex tiles[MAX_OCCUPIED];
+        int n = character_occupied_tiles(gh->tileUnderMouse, cc->size, tiles);
+        bool fits = character_fits(gh->tileUnderMouse, cc->size, NULL);
+        dr_set_alpha(0.9f);
+        for (int i = 0; i < n; i++)
+            draw_hex(tiles[i], th + 3, HUD_THEME.accent[fits ? HUD_ACCENT_GREEN : HUD_ACCENT_RED]);
+        float x, y, d;
+        gfx_character_rect(gh->tileUnderMouse, cc->size, &x, &y, &d);
+        dr_set_alpha(0.75f);
+        if (cc->picture) dr_image(cc->picture, x, y, d, d);
         dr_set_alpha(0.5f);
     }
 
