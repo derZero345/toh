@@ -2,6 +2,7 @@
  * op effects (ops_apply). Run with `make test`. Stubs: tests/core_stubs.c. */
 #include "app.h"
 #include "attrs.h"
+#include "charcreate.h"
 #include "baranim.h"
 #include "hud.h"
 #include "hud_game.h"
@@ -951,6 +952,116 @@ static void test_stamina(void) {
     CHECK(s.stamina == 5 && s.maxStamina == 5);
 
     op_free(&ms); op_free(&spend); op_free(&both); op_free(&rec); op_free(&set);
+}
+
+extern int stub_file_requests, stub_requests, stub_request_max_health, stub_request_attr[ATTR_COUNT], stub_pending;
+extern ActionKind stub_file_kind;
+extern char stub_request_name[CHAR_NAME_MAX];
+extern Hex stub_request_tile;
+
+static Entity *last_entity(void) { return app.entities.items[app.entities.count - 1]; }
+
+static void test_char_create(void) {
+    reset_table();
+    stub_client = false;
+    const CharCreate *c = cc_state();
+    CHECK(!c->active);
+    const char *why = NULL;
+
+    cc_start(NULL);
+    CHECK(c->active && c->step == CC_NAME && c->size == SIZE_NORMAL && !c->hasTile && !c->placing);
+    CHECK(!cc_can_next(&why) && why && !strcmp(why, "Give the character a name"));
+    cc_next();
+    CHECK(c->step == CC_NAME); /* blocked */
+    cc_set_name("Mao");
+    CHECK(cc_can_next(&why));
+    cc_next();
+    CHECK(c->step == CC_SIZE);
+    cc_set_size(SIZE_SMALL);
+    cc_set_size(9); /* not a size: ignored */
+    CHECK(c->size == SIZE_SMALL);
+    cc_next();
+    CHECK(c->step == CC_ATTRS);
+    for (int i = 0; i < 6; i++) cc_step_attr(ATTR_STR, 1);
+    CHECK(c->attr[ATTR_STR] == ATTR_CREATE_MAX);
+    for (int i = 0; i < 6; i++) cc_step_attr(ATTR_AGI, -1);
+    CHECK(c->attr[ATTR_AGI] == ATTR_CREATE_MIN);
+    cc_step_attr(ATTR_AGI, 3);
+    CHECK(c->attr[ATTR_AGI] == 1);
+    cc_back();
+    CHECK(c->step == CC_SIZE && c->size == SIZE_SMALL && c->attr[ATTR_STR] == 3); /* Back keeps everything */
+    cc_next();
+    cc_next();
+    CHECK(c->step == CC_PICTURE);
+    CHECK(!cc_can_next(&why) && !strcmp(why, "Choose a picture first"));
+    int files = stub_file_requests;
+    cc_choose_picture();
+    CHECK(stub_file_requests == files + 1 && stub_file_kind == ACTION_CREATE_PICTURE);
+    int refs = stub_refs(TEX_A);
+    cc_set_picture(TEX_A, (Image){ 0 });
+    CHECK(stub_refs(TEX_A) == refs + 1 && c->picture == TEX_A);
+    cc_next();
+    CHECK(c->step == CC_SUMMARY);
+    cc_next();
+    CHECK(c->placing && strstr(stub_last_log, "Click a tile to place Mao (Esc: back)"));
+
+    /* no room: nothing happens but the log line */
+    add_wall((Hex){ 3, 3 });
+    int before = app.entities.count;
+    CHECK(cc_place((Hex){ 3, 3 }) && app.entities.count == before && c->placing);
+    CHECK(strstr(stub_last_log, "No room on that tile"));
+    cc_back(); /* Esc: back to the summary */
+    CHECK(c->active && !c->placing && c->step == CC_SUMMARY);
+    cc_next();
+    CHECK(cc_place((Hex){ 5, 5 }));
+    CHECK(!c->active && app.entities.count == before + 1);
+    Entity *e = last_entity();
+    CHECK(!strcmp(e->name, "Mao") && e->size == SIZE_SMALL && e->attr[ATTR_STR] == 3 && e->attr[ATTR_AGI] == 1);
+    CHECK(e->maxHealth == 21 && e->health == 21 && e->maxStamina == 9 && e->stamina == 9 && e->speed == 4);
+    CHECK(e->initiative == 0 && !e->owner[0] && hex_eq(e->tile, (Hex){ 5, 5 }));
+    CHECK(stub_refs(TEX_A) == refs + 1); /* the draft let go of its reference, the character holds one */
+
+    /* a tile chosen beforehand (the tile menu): Create on the summary, no placing */
+    cc_start(&(Hex){ 7, 7 });
+    cc_set_name("Orc");
+    cc_next();
+    cc_next();
+    cc_next();
+    cc_set_picture(TEX_B, (Image){ 0 });
+    cc_next();
+    CHECK(c->step == CC_SUMMARY && c->hasTile);
+    cc_next();
+    CHECK(!c->active && !c->placing && !strcmp(last_entity()->name, "Orc") && hex_eq(last_entity()->tile, (Hex){ 7, 7 }));
+
+    /* Cancel throws the draft away */
+    cc_start(NULL);
+    cc_set_name("Gone");
+    cc_next();
+    int count = app.entities.count;
+    cc_cancel();
+    CHECK(!c->active && c->name[0] == '\0' && app.entities.count == count);
+    CHECK(strstr(stub_last_log, "Character creation cancelled"));
+
+    /* a player asks the GM instead */
+    stub_client = true;
+    cc_start(NULL);
+    cc_set_name("Kiri");
+    cc_next();
+    cc_next();
+    cc_step_attr(ATTR_COG, 1);
+    cc_next();
+    Image small = { .w = 2, .h = 2, .px = calloc(16, 1) };
+    cc_set_picture(TEX_A, small); /* the draft owns small now */
+    cc_next();
+    cc_next();
+    int asks = stub_requests;
+    count = app.entities.count;
+    CHECK(cc_place((Hex){ 9, 9 }));
+    CHECK(stub_requests == asks + 1 && !strcmp(stub_request_name, "Kiri") && stub_request_max_health == 12);
+    CHECK(stub_request_attr[ATTR_COG] == 1 && hex_eq(stub_request_tile, (Hex){ 9, 9 }) && app.entities.count == count);
+    CHECK(!c->active);
+    stub_client = false;
+    reset_table();
 }
 
 static void test_party_ops(void) {
@@ -2650,6 +2761,7 @@ int main(void) {
     test_health_and_names();
     test_stamina();
     test_attribute_ops();
+    test_char_create();
     test_party_ops();
     test_bar_anim();
     test_parties();

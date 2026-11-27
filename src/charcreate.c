@@ -1,0 +1,123 @@
+/* The creation draft and its steps (see charcreate.h). */
+#include "charcreate.h"
+#include "ops.h"
+#include "savefmt.h"
+#include "session.h"
+
+#include <stdio.h>
+#include <string.h>
+
+static CharCreate C;
+
+const CharCreate *cc_state(void) { return &C; }
+bool cc_placing(void) { return C.active && C.placing; }
+
+static void reset(void) {
+    if (C.picture) vkr_texture_release(C.picture);
+    image_free(&C.small);
+    memset(&C, 0, sizeof(C));
+}
+
+void cc_start(const Hex *tile) {
+    reset();
+    C.active = true;
+    C.step = CC_NAME;
+    C.size = SIZE_NORMAL;
+    if (tile) {
+        C.hasTile = true;
+        C.tile = *tile;
+    }
+}
+
+void cc_cancel(void) {
+    if (!C.active) return;
+    reset();
+    console_log("Character creation cancelled");
+}
+
+bool cc_can_next(const char **why) {
+    *why = NULL;
+    if (!C.active) return false;
+    if (C.step == CC_NAME && !savefmt_char_name_valid(C.name)) *why = "Give the character a name";
+    else if (C.step == CC_PICTURE && !C.picture) *why = "Choose a picture first";
+    return *why == NULL;
+}
+
+/* creates the character on h: the GM spawns it, a player asks the GM */
+static void create(Hex h) {
+    AttrStats d = attr_derive(C.attr);
+    if (session_is_client()) {
+        session_request_character(&C.small, h, C.size, d.maxHealth, d.speed, d.initiative, d.maxStamina, C.name,
+                                  C.attr);
+    } else {
+        EntitySpec s = { .type = ENTITY_CHARACTER, .image = C.picture, .tile = h, .size = C.size,
+                         .maxHealth = d.maxHealth, .health = d.maxHealth, .speed = d.speed,
+                         .initiative = d.initiative, .maxStamina = d.maxStamina, .stamina = d.maxStamina };
+        snprintf(s.name, sizeof(s.name), "%s", C.name);
+        memcpy(s.attr, C.attr, sizeof(s.attr));
+        Op op = { .type = OP_SPAWN };
+        da_push(&op.specs, s);
+        ops_submit(&op);
+        op_free(&op);
+    }
+    reset();
+}
+
+void cc_next(void) {
+    const char *why;
+    if (!cc_can_next(&why) || C.placing) return;
+    if (C.step < CC_SUMMARY) {
+        C.step++;
+    } else if (C.hasTile) {
+        create(C.tile);
+    } else {
+        C.placing = true;
+        console_log("Click a tile to place %s (Esc: back)", C.name);
+    }
+}
+
+void cc_back(void) {
+    if (!C.active) return;
+    if (C.placing) C.placing = false;
+    else if (C.step > CC_NAME) C.step--;
+}
+
+void cc_set_name(const char *name) {
+    if (C.active) snprintf(C.name, sizeof(C.name), "%s", name ? name : "");
+}
+
+void cc_set_size(int size) {
+    if (C.active && size >= SIZE_MIN && size <= SIZE_MAX_CLASS) C.size = size;
+}
+
+void cc_step_attr(int a, int delta) {
+    if (!C.active || a < 0 || a >= ATTR_COUNT) return;
+    int v = C.attr[a] + delta;
+    C.attr[a] = v < ATTR_CREATE_MIN ? ATTR_CREATE_MIN : v > ATTR_CREATE_MAX ? ATTR_CREATE_MAX : v;
+}
+
+void cc_choose_picture(void) {
+    if (C.active) gfx_request_file(ACTION_CREATE_PICTURE, NULL, 0, 0, 0, 0, 0, NULL, NULL, NULL);
+}
+
+void cc_set_picture(Texture *t, Image small) {
+    if (!C.active) {
+        image_free(&small);
+        return;
+    }
+    if (t) vkr_texture_retain(t);
+    if (C.picture) vkr_texture_release(C.picture);
+    C.picture = t;
+    image_free(&C.small);
+    C.small = small;
+}
+
+bool cc_place(Hex h) {
+    if (!cc_placing()) return false;
+    if (!character_fits(h, C.size, NULL)) {
+        console_log("No room on that tile");
+        return true;
+    }
+    create(h);
+    return true;
+}
