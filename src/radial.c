@@ -25,7 +25,36 @@ static void activate_submenu(const RadialEntry *e) { radial_enter(e); }
 const RadialKindDef RADIAL_KINDS[RADIAL_KIND_COUNT] = {
     [RADIAL_ACTION] = { false, activate_action },
     [RADIAL_SUBMENU] = { true, activate_submenu },
+    [RADIAL_TOGGLE] = { false, radial_toggle },
 };
+
+/* the toggles that are on in the open menu */
+#define MAX_ON (RADIAL_MAX_ENTRIES * (RADIAL_MAX_DEPTH + 1))
+static const RadialEntry *on_entries[MAX_ON];
+static int non;
+
+static int on_index(const RadialEntry *e) {
+    for (int i = 0; i < non; i++)
+        if (on_entries[i] == e) return i;
+    return -1;
+}
+
+static bool entry_on(const RadialEntry *e) { return on_index(e) >= 0; }
+
+static void refresh_enabled(void);
+
+void radial_toggle(const RadialEntry *e) {
+    int i = on_index(e);
+    if (i >= 0) on_entries[i] = on_entries[--non];
+    else if (non < MAX_ON) on_entries[non++] = e;
+    refresh_enabled(); /* rules may ask for toggles (the centre's "choose one first") */
+}
+
+bool radial_toggled(const char *id) {
+    for (int i = 0; id && i < non; i++)
+        if (strcmp(on_entries[i]->id, id) == 0) return true;
+    return false;
+}
 
 /* ---- config and rules ---- */
 
@@ -222,6 +251,7 @@ static void (*handler)(const RadialEvent *ev);
 static void reset(void) {
     state = ST_CLOSED;
     menu = NULL;
+    non = 0; /* every toggle starts off */
     depth = nrings = 0;
     t = 1;
     hover = press = (Part){ PART_NONE, -1 };
@@ -587,14 +617,16 @@ void radial_clear_hover(void) { hover = (Part){ PART_NONE, -1 }; }
 
 /* ---- frame ---- */
 
+static void refresh_enabled(void) {
+    for (int i = 0; i < nrings; i++)
+        if (rings[i].role != ROLE_GONE)
+            for (int k = 0; k < rings[i].lv.n; k++) rings[i].lv.why[k] = why_disabled(rings[i].lv.items[k]);
+    centerWhy = menu && menu->center ? why_disabled(menu->center) : NULL;
+}
+
 bool radial_update(float dt) {
     if (state == ST_CLOSED) return false;
-    if (state == ST_OPEN) { /* enabled can change while it is open; visibility only when a ring opens */
-        for (int i = 0; i < nrings; i++)
-            if (rings[i].role != ROLE_GONE)
-                for (int k = 0; k < rings[i].lv.n; k++) rings[i].lv.why[k] = why_disabled(rings[i].lv.items[k]);
-        centerWhy = menu->center ? why_disabled(menu->center) : NULL;
-    }
+    if (state == ST_OPEN) refresh_enabled(); /* enabled can change while it is open; visibility only when a ring opens */
     if (t < 1) {
         t += durMs > 0 ? dt * 1000 / durMs : 1;
         if (t > 1) t = 1;
@@ -611,7 +643,7 @@ bool radial_update(float dt) {
 static RadialRingView ring_view(const Ring *r, float ox, float oy) {
     PartKind kind = r->role == ROLE_INNER ? PART_PARENT : r->role == ROLE_GONE ? PART_NONE : PART_RING;
     bool live = state == ST_OPEN && kind != PART_NONE;
-    RadialRingView v = { ox, oy, sc(), r->cur, r->lv.n, r->lv.items, r->lv.why, -1, -1, r->highlight, live };
+    RadialRingView v = { ox, oy, sc(), r->cur, r->lv.n, r->lv.items, r->lv.why, -1, -1, r->highlight, live, entry_on };
     if (live && hover.kind == kind) v.hover = hover.idx;
     if (live && pressActive && press.kind == kind && same_part(hover, press)) v.press = press.idx;
     return v;

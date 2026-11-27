@@ -1,5 +1,6 @@
 /* Attacks (see attacks.h). */
 #include "attacks.h"
+#include "blocks.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -119,11 +120,9 @@ AttackOutcome attack_dodge_contest(AttackDir dodge, int dv, int et, AttackDir d,
     return OUTCOME_SCRAPE;
 }
 
-/* The block on tile, if there is one: its directions (DIR_BIT) and Block Value. Blocks don't exist yet. */
-static bool find_block(Hex tile, int *dirs, int *bv) {
-    (void)tile, (void)dirs, (void)bv;
-    return false;
-}
+/* The block on tile, if there is one: its directions (DIR_BIT) and Block Value (blocks.h: every block there
+ * combined, the highest BV). */
+static bool find_block(Hex tile, int *dirs, int *bv) { return block_on_tile(tile, dirs, bv); }
 
 /* target's dodge, if it dodges: its direction, Dodge Value and Evasion Threshold. Dodges don't exist yet. */
 static bool find_dodge(const Entity *target, AttackDir *dir, int *dv, int *et) {
@@ -172,7 +171,20 @@ bool attack_rolls_ok(AttackAction a, const int rolled[OUTCOME_COUNT]) {
 
 /* ---- using it ---- */
 
-void attack_apply(Entity *e, AttackAction a, Hex tile, AttackDir d, const int rolled[OUTCOME_COUNT]) {
+int attack_targets(Hex tile, AttackDir d, int av, uint32_t *ids, int *outcomes, int cap) {
+    int n = 0;
+    for (int i = 0; i < gh->entities.count && n < cap; i++) {
+        const Entity *t = gh->entities.items[i];
+        if (t->type != ENTITY_CHARACTER || !entity_occupies(t, tile)) continue;
+        ids[n] = t->id;
+        outcomes[n] = attack_resolve(t, tile, d, av);
+        n++;
+    }
+    return n;
+}
+
+void attack_apply(Entity *e, AttackAction a, Hex tile, AttackDir d, const int rolled[OUTCOME_COUNT],
+                  const uint32_t *ids, const int *outcomes, int n) {
     const AttackActionDef *def = &ATTACK_ACTIONS[a];
     action_use_slot(e, def->slot);
     int before;
@@ -186,19 +198,23 @@ void attack_apply(Entity *e, AttackAction a, Hex tile, AttackDir d, const int ro
     entity_display_name(e, name, sizeof(name));
     char stamina[48] = "";
     if (spent) snprintf(stamina, sizeof(stamina), ", stamina %d/%d", e->stamina, e->maxStamina);
-    int hit = 0;
-    for (int i = 0; i < gh->entities.count; i++) {
-        const Entity *t = gh->entities.items[i];
-        if (t->type == ENTITY_CHARACTER && entity_occupies(t, tile)) hit++;
+    int dirs, bv;
+    char blocked[64] = "";
+    bool block = block_on_tile(tile, &dirs, &bv);
+    if (block) {
+        AttackOutcome bx = attack_block_contest(dirs, bv, d, def->value);
+        snprintf(blocked, sizeof(blocked), ", AV %d against a block of BV %d%s", def->value, bv,
+                 bx == OUTCOME_SUCCESS ? " in other directions" : "");
+        if (bx == OUTCOME_SUCCESS) block_failed(tile); /* blockers off the tile can't block it again next turn */
     }
-    console_log("%s: %s on [%d|%d] %s%s%s", name, def->name, tile.row, tile.col, ATTACK_DIR_NAMES[d], stamina,
-                hit ? "" : ", nobody there");
+    console_log("%s: %s on [%d|%d] %s%s%s%s", name, def->name, tile.row, tile.col, ATTACK_DIR_NAMES[d], blocked,
+                stamina, n ? "" : ", nobody there");
 
-    /* attacks apply to the tile: every character on it */
-    for (int i = 0; i < gh->entities.count; i++) {
-        Entity *t = gh->entities.items[i];
-        if (t->type != ENTITY_CHARACTER || !entity_occupies(t, tile)) continue;
-        AttackOutcome o = attack_resolve(t, tile, d, def->value);
+    /* attacks apply to the tile: every character on it, with the outcome the host decided */
+    for (int i = 0; i < n; i++) {
+        Entity *t = entity_by_id(ids[i]);
+        if (!t || t->type != ENTITY_CHARACTER || outcomes[i] < 0 || outcomes[i] >= OUTCOME_COUNT) continue;
+        AttackOutcome o = (AttackOutcome)outcomes[i];
         char tname[CHAR_NAME_MAX + 16];
         entity_display_name(t, tname, sizeof(tname));
         if (t->maxHealth <= 0) { /* no HP stat: nothing to lose */

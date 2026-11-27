@@ -46,7 +46,7 @@ static bool spec_ok(const NetSpec *s) {
 
 static bool op_ok(const NetOp *o) {
     if (o->type >= NOP_COUNT || !ids_ok(o->ids, o->nids)) return false;
-    if (o->nvalues > SAVEFMT_MAX_ENTITIES || o->nspecs > SAVEFMT_MAX_ENTITIES) return false;
+    if (o->nvalues > SAVEFMT_MAX_ENTITIES + NETMSG_ATTACK_ROLLS || o->nspecs > SAVEFMT_MAX_ENTITIES) return false;
     switch (o->type) {
     case NOP_MOVE:
     case NOP_MOVE_ACTION:
@@ -99,13 +99,15 @@ static bool op_ok(const NetOp *o) {
     case NOP_ATTACK_ACTION: /* ops_check checks the action, the range and the rolls against the attack's dice */
         if (o->id == 0 || !coord_ok(o->row) || !coord_ok(o->col)) return false;
         if (o->value < 0 || o->value >= NETMSG_ATTACK_DIRS) return false;
-        if (o->nvalues != 0 && o->nvalues != NETMSG_ATTACK_ROLLS) return false;
+        if (o->nvalues == 0 ? o->nids != 0 : o->nvalues != NETMSG_ATTACK_ROLLS + o->nids) return false;
         if (o->nvalues && !o->values) return false;
-        for (uint32_t i = 0; i < o->nvalues; i++) {
-            double v = o->values[i];
-            if (!isfinite(v) || v != floor(v) || v < 0 || v > NETMSG_MAX_DAMAGE) return false;
+        for (uint32_t i = 0; i < o->nvalues; i++) { /* the rolls, then the outcomes */
+            double v = o->values[i], max = i < NETMSG_ATTACK_ROLLS ? NETMSG_MAX_DAMAGE : NETMSG_ATTACK_ROLLS - 1;
+            if (!isfinite(v) || v != floor(v) || v < 0 || v > max) return false;
         }
         return true;
+    case NOP_BLOCK_ACTION: /* ops_check checks the action and the range */
+        return o->id != 0 && coord_ok(o->row) && coord_ok(o->col) && o->value >= 1 && o->value <= NETMSG_BLOCK_DIRS;
     default: /* DELETE, INIT_REMOVE (ids only), SET_BACKGROUND, INIT_NEXT, GRID / CLEAR / SHOW */
         return true;
     }
@@ -344,8 +346,16 @@ static void put_op(Buf *b, const NetOp *o) {
         put_sv(b, o->col);
         put_u8(b, o->action);
         put_u8(b, (uint8_t)o->value);
+        put_ids(b, o->ids, o->nids);
         put_uv(b, o->nvalues);
         for (uint32_t i = 0; i < o->nvalues; i++) put_f64(b, o->values[i]);
+        break;
+    case NOP_BLOCK_ACTION:
+        put_uv(b, o->id);
+        put_sv(b, o->row);
+        put_sv(b, o->col);
+        put_u8(b, o->action);
+        put_u8(b, (uint8_t)o->value);
         break;
     case NOP_ROLL:
         put_str(b, o->dice);
@@ -663,12 +673,20 @@ static void get_op(Rd *r, NetOp *o) {
         o->col = get_sv(r);
         o->action = get_u8(r);
         o->value = get_u8(r);
-        uint32_t n = get_count(r, NETMSG_ATTACK_ROLLS, 8);
+        o->ids = get_ids(r, &o->nids);
+        uint32_t n = get_count(r, NETMSG_ATTACK_ROLLS + SAVEFMT_MAX_ENTITIES, 8);
         o->values = get_array(r, n, sizeof(double));
         o->nvalues = o->values ? n : 0;
         for (uint32_t i = 0; i < o->nvalues && !r->bad; i++) o->values[i] = get_f64(r);
         break;
     }
+    case NOP_BLOCK_ACTION:
+        o->id = get_uv(r);
+        o->row = get_sv(r);
+        o->col = get_sv(r);
+        o->action = get_u8(r);
+        o->value = get_u8(r);
+        break;
     case NOP_ROLL: {
         get_str(r, o->dice, sizeof(o->dice));
         uint32_t n = get_count(r, NETMSG_MAX_ROLLS, 8);

@@ -1,12 +1,14 @@
 /* The op layer: rules for who may change what (ops_check) and the changes themselves (ops_apply). */
 #include "ops.h"
 #include "attacks.h"
+#include "blocks.h"
 #include "moves.h"
 #include "recover.h"
 #include "savefmt.h"
 #include "session.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -60,6 +62,7 @@ const char *ops_result_text(OpResult r) {
     case OPR_USE_ACTION:    return "During initiative, move with a move action: right click your character";
     case OPR_NO_STAMINA_STAT: return "That character has no stamina";
     case OPR_STAMINA_FULL:  return "Stamina is already full";
+    case OPR_BLOCK_LOCKED:  return "Can't block this tile this turn: its last block there failed";
     }
     return "Unknown error";
 }
@@ -171,18 +174,24 @@ static OpResult check_structure(const Op *op) {
         return recover_check(entity_by_id(op->id), (RecoverAction)op->action);
     case OP_ATTACK_ACTION: { /* like move actions, the rules hold for the GM too */
         if (!tile_ok(op->tile) || op->action < 0 || op->action >= ATTACK_COUNT) return OPR_INVALID;
-        if (op->values.count != 0 && op->values.count != OUTCOME_COUNT) return OPR_INVALID;
-        if (op->values.count) { /* the host's rolls: whole numbers the attack's dice can give */
+        /* from a client nothing; from the host the rolls, then one outcome per character hit */
+        if (op->values.count == 0 ? op->ids.count != 0 : op->values.count != OUTCOME_COUNT + op->ids.count)
+            return OPR_INVALID;
+        for (int i = 0; i < op->values.count; i++) { /* whole numbers */
+            double v = op->values.items[i];
+            if (!isfinite(v) || v != floor(v) || v < 0 || v > (i < OUTCOME_COUNT ? ATTACK_MAX_DAMAGE : OUTCOME_COUNT - 1))
+                return OPR_INVALID;
+        }
+        if (op->values.count) { /* the rolls: what the attack's dice can give */
             int rolled[OUTCOME_COUNT];
-            for (int o = 0; o < OUTCOME_COUNT; o++) {
-                double v = op->values.items[o];
-                if (!isfinite(v) || v != floor(v) || v < 0 || v > ATTACK_MAX_DAMAGE) return OPR_INVALID;
-                rolled[o] = (int)v;
-            }
+            for (int o = 0; o < OUTCOME_COUNT; o++) rolled[o] = (int)op->values.items[o];
             if (!attack_rolls_ok((AttackAction)op->action, rolled)) return OPR_INVALID;
         }
         return attack_check_at(entity_by_id(op->id), (AttackAction)op->action, op->tile, op->value);
     }
+    case OP_BLOCK_ACTION: /* like move actions, the rules hold for the GM too */
+        if (!tile_ok(op->tile) || op->action < 0 || op->action >= BLOCK_COUNT) return OPR_INVALID;
+        return block_check_at(entity_by_id(op->id), (BlockAction)op->action, op->tile, op->value);
     case OP_SET_BACKGROUND:
     case OP_GRID_ORIENTATION:
     case OP_INIT_CLEAR:
@@ -214,6 +223,7 @@ static OpResult check_player(const Op *op, const OpAuthor *a) {
     case OP_MOVE_ACTION:
     case OP_RECOVER_ACTION:
     case OP_ATTACK_ACTION:
+    case OP_BLOCK_ACTION:
         return is_owner(entity_by_id(op->id), a) ? OPR_OK : OPR_NOT_YOURS;
     case OP_SET_HEALTH:
     case OP_SET_STAMINA:
@@ -230,7 +240,7 @@ OpResult ops_check(const Op *op, const OpAuthor *author) {
     if (!memchr(author->name, '\0', sizeof(author->name))) return OPR_INVALID;
     bool player_op = op->type == OP_MOVE || op->type == OP_INIT_NEXT || op->type == OP_SET_HEALTH ||
                      op->type == OP_SET_NAME || op->type == OP_SET_STAMINA || op->type == OP_MOVE_ACTION ||
-                     op->type == OP_RECOVER_ACTION || op->type == OP_ATTACK_ACTION;
+                     op->type == OP_RECOVER_ACTION || op->type == OP_ATTACK_ACTION || op->type == OP_BLOCK_ACTION;
     if (!author->gm && !player_op) return OPR_GM_ONLY;
     OpResult r = check_structure(op);
     if (r != OPR_OK || author->gm) return r;
@@ -542,16 +552,37 @@ void ops_apply(Op *op) {
     case OP_ATTACK_ACTION: {
         Entity *e = entity_by_id(op->id);
         if (!e) break;
-        /* the host (or offline) rolls the damage; clients apply the rolls the host sent */
-        int rolled[OUTCOME_COUNT] = { 0 };
+        /* the host (or offline) rolls the damage and resolves the tile; clients apply what the host sent */
         if (!session_is_client()) {
+            int rolled[OUTCOME_COUNT], cap = gh->entities.count > 0 ? gh->entities.count : 1;
             attack_roll((AttackAction)op->action, rolled);
+            uint32_t *ids = malloc(sizeof(uint32_t) * (size_t)cap);
+            int *outcomes = malloc(sizeof(int) * (size_t)cap);
+            if (!ids || !outcomes) abort();
+            int n = attack_targets(op->tile, (AttackDir)op->value, ATTACK_ACTIONS[op->action].value, ids, outcomes, cap);
+            da_clear(&op->ids);
             da_clear(&op->values);
             for (int o = 0; o < OUTCOME_COUNT; o++) da_push(&op->values, rolled[o]);
-        } else {
-            for (int o = 0; o < OUTCOME_COUNT && o < op->values.count; o++) rolled[o] = (int)op->values.items[o];
+            for (int i = 0; i < n; i++) {
+                da_push(&op->ids, ids[i]);
+                da_push(&op->values, outcomes[i]);
+            }
+            free(ids);
+            free(outcomes);
         }
-        attack_apply(e, (AttackAction)op->action, op->tile, (AttackDir)op->value, rolled);
+        int n = op->ids.count, rolled[OUTCOME_COUNT] = { 0 };
+        int *outcomes = malloc(sizeof(int) * (size_t)(n > 0 ? n : 1));
+        if (!outcomes) abort();
+        for (int o = 0; o < OUTCOME_COUNT && o < op->values.count; o++) rolled[o] = (int)op->values.items[o];
+        for (int i = 0; i < n; i++)
+            outcomes[i] = OUTCOME_COUNT + i < op->values.count ? (int)op->values.items[OUTCOME_COUNT + i] : 0;
+        attack_apply(e, (AttackAction)op->action, op->tile, (AttackDir)op->value, rolled, op->ids.items, outcomes, n);
+        free(outcomes);
+        break;
+    }
+    case OP_BLOCK_ACTION: {
+        Entity *e = entity_by_id(op->id);
+        if (e) block_apply(e, (BlockAction)op->action, op->tile, op->value);
         break;
     }
     case OP_SET_TEST_MODE:

@@ -25,8 +25,8 @@ bool radial_game_open(Vec2 p);
  * on the menu's own hex); false lets it go on as a normal right press, so a right click elsewhere reopens it. */
 bool radial_game_right_down(Vec2 p);
 void radial_game_close(void); /* Esc */
-/* Opens the "direction" menu on h for the attack being chosen (attack_ui.h); keeps the actor. */
-bool radial_game_open_directions(Hex h);
+/* Opens menu (an attack's "direction" or a block's "block" ring, target_ui.h) on h; keeps the actor. */
+bool radial_game_open_menu(const char *menu, Hex h);
 /* Left button and motion from input.c; each true = the map must ignore it. */
 bool radial_game_mouse_down(Vec2 p);
 bool radial_game_mouse_move(Vec2 p);

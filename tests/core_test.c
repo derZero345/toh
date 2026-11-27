@@ -16,7 +16,8 @@
 #include "moves.h"
 #include "recover.h"
 #include "attacks.h"
-#include "attack_ui.h"
+#include "blocks.h"
+#include "target_ui.h"
 #include "move_ui.h"
 #include "party.h"
 #include "session.h"
@@ -40,6 +41,7 @@ _Static_assert((int)NOP_MOVE == (int)OP_MOVE && (int)NOP_SPAWN == (int)OP_SPAWN 
                (int)NOP_SET_PARTY == (int)OP_SET_PARTY && (int)NOP_MOVE_ACTION == (int)OP_MOVE_ACTION &&
                (int)NOP_SET_TEST_MODE == (int)OP_SET_TEST_MODE && (int)NOP_RECOVER_ACTION == (int)OP_RECOVER_ACTION &&
                (int)NOP_ATTACK_ACTION == (int)OP_ATTACK_ACTION && (int)NETMSG_ATTACK_DIRS == (int)DIR_COUNT &&
+               (int)NOP_BLOCK_ACTION == (int)OP_BLOCK_ACTION && (int)NETMSG_BLOCK_DIRS == (int)BLOCK_DIRS &&
                (int)NETMSG_ATTACK_ROLLS == (int)OUTCOME_COUNT && (int)NETMSG_MAX_DAMAGE == (int)ATTACK_MAX_DAMAGE &&
                (int)NOP_ROLL == (int)OP_COUNT,
                "NetOpType must match OpType");
@@ -2344,9 +2346,12 @@ static void test_test_mode(void) {
     ops_apply(&step);
     CHECK(hero->stamina == 0 && gh->currentTurn == hero); /* already exhausted: the turn doesn't end again */
 
-    /* an attack off-turn */
+    /* an attack and a block off-turn */
     orc_atk.tile = hex_neighbor_raw(orc->tile, 0); /* it stepped */
     CHECK_R(ops_check(&orc_atk, &GM), OPR_OK);
+    Op orc_blk = { .type = OP_BLOCK_ACTION, .id = orc->id, .action = BLOCK_TEST, .tile = orc->tile,
+                   .value = DIR_BIT(DIR_UP) };
+    CHECK_R(ops_check(&orc_blk, &GM), OPR_OK);
 
     /* off again: the rules are back */
     ops_apply(&off);
@@ -2354,6 +2359,7 @@ static void test_test_mode(void) {
     CHECK_R(ops_check(&step, &alice), OPR_NO_STAMINA);
     CHECK_R(ops_check(&orc_step, &GM), OPR_NOT_YOUR_TURN);
     CHECK_R(ops_check(&orc_atk, &GM), OPR_NOT_YOUR_TURN);
+    CHECK_R(ops_check(&orc_blk, &GM), OPR_NOT_YOUR_TURN);
     game_clear_initiative();
 }
 
@@ -2415,29 +2421,61 @@ static void test_action_menu(void) {
     Entity *orc = add_character(hex_neighbor_raw(hero->tile, 2), 4, "Bob");
     CHECK(radial_game_open(hex_center(hero->tile)));
     CHECK(rad_click("ring.4") && rad_click("ring.5") && !strcmp(radial_submenu_id(), "attack.major"));
-    CHECK(rad_click("ring.1") && !radial_is_open() && attack_ui_active() && gh->attackMode.id == hero->id);
-    CHECK(ts_has(&gh->attackMode.range, orc->tile) && !ts_has(&gh->attackMode.range, hero->tile));
+    CHECK(rad_click("ring.1") && !radial_is_open() && target_ui_active() && gh->targetMode.id == hero->id);
+    CHECK(ts_has(&gh->targetMode.range, orc->tile) && !ts_has(&gh->targetMode.range, hero->tile));
     rad_settle();
-    CHECK(attack_ui_click(orc->tile) && gh->attackMode.hasTarget && !strcmp(radial_menu_id(), "direction"));
+    CHECK(target_ui_click(orc->tile) && gh->targetMode.hasTarget && !strcmp(radial_menu_id(), "direction"));
     CHECK(radial_part_point("ring.4", &x, &y) && !radial_part_point("ring.5", &x, &y)); /* four directions */
     /* closing it goes back to choosing a tile */
     radial_close();
     rad_settle();
-    CHECK(attack_ui_active() && !gh->attackMode.hasTarget);
+    CHECK(target_ui_active() && !gh->targetMode.hasTarget);
     /* Right (the second entry) attacks the tile */
-    CHECK(attack_ui_click(orc->tile) && rad_click("ring.2") && !attack_ui_active());
+    CHECK(target_ui_click(orc->tile) && rad_click("ring.2") && !target_ui_active());
     CHECK(orc->health < 10 && (hero->turnUsed & TURN_MAJOR) && gh->attackMarks.count == 1 &&
           gh->attackMarks.items[0].dir == DIR_RIGHT && hex_eq(gh->attackMarks.items[0].tile, orc->tile));
     rad_settle();
     /* used up: the entry is disabled */
     CHECK(radial_game_open(hex_center(hero->tile)));
-    CHECK(rad_click("ring.4") && rad_click("ring.5") && rad_click("ring.1") && radial_is_open() && !attack_ui_active());
+    CHECK(rad_click("ring.4") && rad_click("ring.5") && rad_click("ring.1") && radial_is_open() && !target_ui_active());
     radial_close();
     rad_settle();
     /* a click outside the range cancels */
     hero->turnUsed = 0;
-    CHECK(attack_ui_start(hero->id, ATTACK_TEST) && attack_ui_click(steps_from(hero->tile, 3)) && !attack_ui_active());
+    CHECK(target_ui_start(TARGET_ATTACK, hero->id, ATTACK_TEST) && target_ui_click(steps_from(hero->tile, 3)) && !target_ui_active());
     CHECK(strstr(stub_last_log, "Attack cancelled"));
+
+    /* Major -> Block -> Test block: its own tile, so the toggle ring opens there at once */
+    hero->turnUsed = 0;
+    CHECK(radial_game_open(hex_center(hero->tile)));
+    CHECK(rad_click("ring.4") && rad_click("ring.6") && !strcmp(radial_submenu_id(), "block.major"));
+    CHECK(rad_click("ring.1") && radial_is_open() && !strcmp(radial_menu_id(), "block") && target_ui_active());
+    CHECK(gh->targetMode.hasTarget && hex_eq(gh->targetMode.target, hero->tile));
+    rad_settle();
+    CHECK(rad_click("center") && radial_is_open() && gh->blocks.count == 0); /* nothing on yet */
+    CHECK(rad_click("ring.1") && rad_click("ring.3") && radial_toggled("block.up") && radial_toggled("block.left"));
+    CHECK(rad_click("center") && !target_ui_active() && gh->blocks.count == 1);
+    CHECK(gh->blocks.items[0].dirs == (DIR_BIT(DIR_UP) | DIR_BIT(DIR_LEFT)) && (hero->turnUsed & TURN_MAJOR));
+    rad_settle();
+    /* closing the ring of an own-tile block cancels it */
+    hero->turnUsed = 0;
+    CHECK(target_ui_start(TARGET_BLOCK, hero->id, BLOCK_TEST) && radial_is_open());
+    radial_close();
+    rad_settle();
+    CHECK(!target_ui_active() && strstr(stub_last_log, "Block cancelled"));
+    /* Test block (range 1): choose the tile first, then the directions */
+    CHECK(radial_game_open(hex_center(hero->tile)));
+    CHECK(rad_click("ring.4") && rad_click("ring.6") && rad_click("ring.2") && !radial_is_open() && target_ui_active());
+    CHECK(ts_has(&gh->targetMode.range, orc->tile) && ts_has(&gh->targetMode.range, hero->tile));
+    rad_settle();
+    CHECK(target_ui_click(orc->tile) && !strcmp(radial_menu_id(), "block"));
+    radial_close(); /* back to choosing the tile */
+    rad_settle();
+    CHECK(target_ui_active() && !gh->targetMode.hasTarget);
+    CHECK(target_ui_click(orc->tile) && rad_click("ring.2") && rad_click("center") && !target_ui_active());
+    CHECK(gh->blocks.count == 2 && hex_eq(gh->blocks.items[1].tile, orc->tile) &&
+          gh->blocks.items[1].dirs == DIR_BIT(DIR_RIGHT) && !gh->blocks.items[1].occupied);
+    rad_settle();
     game_clear_initiative();
     radial_game_shutdown();
 }
@@ -2545,11 +2583,13 @@ static Op attack_op(const Entity *e, Hex tile, int dir) {
     return (Op){ .type = OP_ATTACK_ACTION, .id = e->id, .action = ATTACK_TEST, .tile = tile, .value = dir };
 }
 
+/* As the host sends it: the rolls, then a success for every character in op->ids. */
 static void set_rolls(Op *op, double success, double scrape, double miss) {
     da_clear(&op->values);
     da_push(&op->values, success);
     da_push(&op->values, scrape);
     da_push(&op->values, miss);
+    for (int i = 0; i < op->ids.count; i++) da_push(&op->values, OUTCOME_SUCCESS);
 }
 
 static bool adjacent(Hex a, Hex b) { return hex_distance(a, b) == 1; }
@@ -2701,7 +2741,11 @@ static void test_attack_actions(void) {
     /* the host rolls; every character on the tile takes the damage of its outcome (a success) */
     CHECK_R(ops_check(&atk, &alice), OPR_OK);
     ops_apply(&atk);
-    CHECK(atk.values.count == OUTCOME_COUNT && atk.values.items[0] >= 1 && atk.values.items[0] <= 4);
+    /* the op now carries the rolls, the characters hit and their outcomes, for the players */
+    CHECK(atk.values.count == OUTCOME_COUNT + 2 && atk.values.items[0] >= 1 && atk.values.items[0] <= 4);
+    CHECK(atk.ids.count == 2 && atk.ids.items[0] == orc->id && atk.ids.items[1] == wolf->id);
+    CHECK(atk.values.items[OUTCOME_COUNT] == OUTCOME_SUCCESS && atk.values.items[OUTCOME_COUNT + 1] == OUTCOME_SUCCESS);
+    CHECK_R(ops_check(&atk, &GM), OPR_ACTION_USED); /* the host's op is well-formed (only the slot is used now) */
     int dmg = (int)atk.values.items[0];
     CHECK(orc->health == 10 - dmg && wolf->health == 10 - dmg && hero->health == 10);
     CHECK(hero->turnUsed == TURN_MAJOR && hero->stamina == 4); /* the Major slot; the test attack is free */
@@ -2726,6 +2770,14 @@ static void test_attack_actions(void) {
     ops_apply(&atk);
     stub_client = false;
     CHECK(strstr(stub_last_log, "HP -2/10 (Dying)") && orc->health == -4 && gh->attackMarks.count == 3);
+    /* the client takes the host's outcomes as they are: the wolf scrapes */
+    atk.values.items[OUTCOME_COUNT + 1] = OUTCOME_SCRAPE;
+    wolf->health = 5;
+    hero->turnUsed = 0;
+    stub_client = true;
+    ops_apply(&atk);
+    stub_client = false;
+    CHECK(wolf->health == 4 && strstr(stub_last_log, ": scrape, 1 damage, HP 4/10") && orc->health == -7);
 
     /* a character without max HP has nothing to lose */
     wolf->maxHealth = 0;
@@ -2744,11 +2796,11 @@ static void test_attack_actions(void) {
 
     /* the marks go when the attacker's next turn starts */
     game_next_turn();
-    CHECK(gh->currentTurn == orc && gh->attackMarks.count == 5);
+    CHECK(gh->currentTurn == orc && gh->attackMarks.count == 6);
     Op orc_atk = attack_op(orc, a, DIR_RIGHT);
     CHECK_R(ops_check(&orc_atk, &bob), OPR_OK);
     ops_apply(&orc_atk);
-    CHECK(hero->health < 10 && gh->attackMarks.count == 6);
+    CHECK(hero->health < 10 && gh->attackMarks.count == 7);
     game_next_turn();
     CHECK(gh->currentTurn == hero && gh->attackMarks.count == 1 && gh->attackMarks.items[0].attacker == orc->id);
     /* ...when the attacker is deleted, and when the initiative ends */
@@ -2761,6 +2813,201 @@ static void test_attack_actions(void) {
     CHECK(gh->attackMarks.count == 0);
     op_free(&atk);
     op_free(&orc_atk);
+}
+
+/* toggle entries (RADIAL_TOGGLE): a click switches one on or off and the menu stays open; the centre confirms */
+static bool tog_any(const RadialTarget *t) { return (void)t, radial_toggled("t.a") || radial_toggled("t.b"); }
+
+static void test_radial_toggle(void) {
+    reset_table();
+    static const RadialEntry toggles[] = {
+        { .id = "t.a", .icon = "placeholder", .label = "A", .accent = HUD_ACCENT_BLUE, .kind = RADIAL_TOGGLE },
+        { .id = "t.b", .icon = "placeholder", .label = "B", .accent = HUD_ACCENT_BLUE, .kind = RADIAL_TOGGLE },
+    };
+    static const RadialEntry ok = { .id = "t.ok", .icon = "placeholder", .label = "OK", .accent = HUD_ACCENT_BLUE,
+                                    .kind = RADIAL_ACTION, .enabled_if = "any" };
+    static const RadialMenu menus[] = { { "toggles", &ok, toggles, 2 } };
+    static const RadialRule rules[] = { { "any", tog_any, "Choose one", "", NULL, 0 } };
+    char err[128];
+    CHECK(radial_config_check(menus, 1, rules, 1, err, sizeof(err)) == 0);
+    radial_set_rules(rules, 1);
+    radial_use_config(menus, 1);
+    radial_set_event_handler(rad_record);
+    RadialScreen scr = { 1000, 800, 1 };
+    radial_set_screen(&scr);
+    RadialTarget tg = { 3, 4 };
+
+    CHECK(radial_open("toggles", &tg, 500, 400) && !radial_toggled("t.a") && !radial_toggled("t.b"));
+    rad_settle();
+    rad_nevents = 0;
+    CHECK(rad_click("center") && radial_is_open() && rad_nevents == 0); /* the centre's rule: nothing is on */
+    CHECK(rad_click("ring.1") && radial_is_open() && radial_toggled("t.a") && !radial_toggled("t.b") && rad_nevents == 0);
+    CHECK(rad_click("ring.2") && rad_click("ring.1") && !radial_toggled("t.a") && radial_toggled("t.b")); /* off again */
+    CHECK(rad_click("center") && rad_nevents == 2 && !strcmp(rad_events[0].id, "t.ok"));
+    CHECK(radial_toggled("t.b")); /* still readable while it closes */
+    rad_settle();
+    CHECK(!radial_toggled("t.b"));
+    /* a new menu starts with every toggle off */
+    CHECK(radial_open("toggles", &tg, 500, 400) && !radial_toggled("t.b"));
+    radial_close();
+    rad_settle();
+    radial_use_config(NULL, 0);
+    radial_game_init();
+}
+
+/* Blocks (blocks.h): range, checks, the combined block on a tile, attacks against it, lifetime and the lock */
+static Op block_op(const Entity *e, BlockAction a, Hex tile, int dirs) {
+    return (Op){ .type = OP_BLOCK_ACTION, .id = e->id, .action = a, .tile = tile, .value = dirs };
+}
+
+static void test_block_actions(void) {
+    reset_table();
+    stub_client = false;
+    Hex a = { 10, 10 };
+    Entity *hero = add_character(a, 6, "Alice");
+    Hex mid = hex_neighbor_raw(a, 2);
+    Entity *orc = add_character(hex_neighbor_raw(mid, 2), 5, "Bob"); /* two tiles from the hero, past mid */
+    Entity *ally = add_character(mid, 5, "Alice");
+    OpAuthor alice = player("Alice"), bob = player("Bob");
+    const int UP = DIR_BIT(DIR_UP), LEFT = DIR_BIT(DIR_LEFT), RIGHT = DIR_BIT(DIR_RIGHT);
+
+    /* the table */
+    for (int i = 0; i < BLOCK_COUNT; i++) CHECK(block_action_by_id(BLOCK_ACTIONS[i].id) == i);
+    CHECK(block_action_by_id("attack.test") == -1 && block_action_by_id(NULL) == -1);
+    CHECK(BLOCK_ACTIONS[BLOCK_TEST].range == 0 && BLOCK_ACTIONS[BLOCK_TEST_RANGE].range == 1);
+
+    /* range: 0 = its own tiles, 1 = them and the tiles around */
+    CHECK(block_in_range(hero, BLOCK_TEST, a) && !block_in_range(hero, BLOCK_TEST, mid));
+    CHECK(block_in_range(hero, BLOCK_TEST_RANGE, a) && block_in_range(hero, BLOCK_TEST_RANGE, mid));
+    CHECK(!block_in_range(hero, BLOCK_TEST_RANGE, orc->tile));
+    TileSet range = { 0 };
+    block_range(hero, BLOCK_TEST_RANGE, &range);
+    int count = 0;
+    for (int r = 0; r < 20; r++)
+        for (int c = 0; c < 20; c++) count += ts_has(&range, (Hex){ r, c });
+    CHECK(count == 7);
+    ts_free(&range);
+
+    /* checks */
+    Op blk = block_op(hero, BLOCK_TEST, a, UP | LEFT);
+    CHECK_R(ops_check(&blk, &alice), OPR_NOT_IN_COMBAT);
+    Entity *order[3] = { hero, orc, ally };
+    double values[3] = { 0.9, 0.5, 0.1 };
+    game_initiative_list(order, values, 3);
+    game_next_turn();
+    CHECK(gh->currentTurn == hero);
+    CHECK_R(ops_check(&blk, &bob), OPR_NOT_YOURS);
+    Op bad = blk;
+    bad.value = 0;
+    CHECK_R(ops_check(&bad, &alice), OPR_INVALID); /* at least one direction */
+    bad.value = DIR_BIT(DIR_NEUTRAL);
+    CHECK_R(ops_check(&bad, &alice), OPR_INVALID); /* neutral is always blocked, not chosen */
+    bad = blk;
+    bad.action = BLOCK_COUNT;
+    CHECK_R(ops_check(&bad, &alice), OPR_INVALID);
+    bad = block_op(hero, BLOCK_TEST, mid, UP);
+    CHECK_R(ops_check(&bad, &alice), OPR_OUT_OF_RANGE);
+
+    /* a block on its own tile: up and left (and neutral), BV 2 */
+    CHECK_R(ops_check(&blk, &alice), OPR_OK);
+    ops_apply(&blk);
+    CHECK(gh->blocks.count == 1 && hero->turnUsed == TURN_MAJOR && gh->blocks.items[0].occupied);
+    CHECK(strstr(stub_last_log, "Test block on [10|10]: up, left and neutral, BV 2"));
+    int dirs, bv;
+    CHECK(block_on_tile(a, &dirs, &bv) && dirs == (UP | LEFT) && bv == 2 && !block_on_tile(mid, &dirs, &bv));
+    /* a big character blocks all of its tiles */
+    hero->turnUsed = 0;
+    ally->size = SIZE_GIGANTIC;
+    ally->turnUsed = 0;
+    gh->testMode = true; /* not its turn */
+    Op big = block_op(ally, BLOCK_TEST, mid, RIGHT);
+    CHECK_R(ops_check(&big, &alice), OPR_OK);
+    ops_apply(&big);
+    CHECK(gh->blocks.count == 8 && strstr(stub_last_log, "on its 7 tiles: right and neutral"));
+    /* several blocks on a tile: the directions combine, the highest BV applies */
+    CHECK(block_on_tile(a, &dirs, &bv) && dirs == (UP | LEFT | RIGHT) && bv == 2);
+    TileBlock low = { .tile = a, .dirs = UP, .value = -1, .blocker = orc->id, .occupied = false };
+    da_push(&gh->blocks, low);
+    CHECK(block_on_tile(a, &dirs, &bv) && bv == 2);
+    gh->testMode = false;
+    ally->size = SIZE_NORMAL;
+    blocks_clear();
+
+    /* attacks against a block: the right direction misses (BV 2 >= AV 0), another one succeeds */
+    TileBlock b = { .tile = orc->tile, .dirs = UP, .value = 2, .blocker = 999, .occupied = true };
+    da_push(&gh->blocks, b);
+    CHECK(attack_resolve(orc, orc->tile, DIR_UP, 0) == OUTCOME_MISS);
+    CHECK(attack_resolve(orc, orc->tile, DIR_NEUTRAL, 0) == OUTCOME_MISS); /* neutral is always covered */
+    CHECK(attack_resolve(orc, orc->tile, DIR_LEFT, 0) == OUTCOME_SUCCESS);
+    gh->blocks.items[0].value = -1; /* BV below the AV: a scrape */
+    CHECK(attack_resolve(orc, orc->tile, DIR_UP, 0) == OUTCOME_SCRAPE);
+    blocks_clear();
+
+    /* through the ops: the hero blocks the ally's tile (not its own) up; the orc attacks it up: a miss */
+    hero->turnUsed = 0;
+    Op guard = block_op(hero, BLOCK_TEST_RANGE, mid, UP);
+    CHECK_R(ops_check(&guard, &alice), OPR_OK);
+    ops_apply(&guard);
+    CHECK(gh->blocks.count == 1 && !gh->blocks.items[0].occupied);
+    gh->testMode = true; /* the orc attacks out of turn */
+    Op hit = { .type = OP_ATTACK_ACTION, .id = orc->id, .action = ATTACK_TEST, .tile = mid, .value = DIR_UP };
+    CHECK_R(ops_check(&hit, &GM), OPR_OK);
+    ops_apply(&hit);
+    CHECK(ally->health == 10 && hit.values.items[OUTCOME_COUNT] == OUTCOME_MISS);
+    CHECK(strstr(stub_last_log, ": miss, 0 damage") && gh->blockLocks.count == 0);
+    /* ...left: the block is in another direction, a success, and the hero can't block that tile next turn */
+    orc->turnUsed = 0;
+    hit.value = DIR_LEFT;
+    op_free(&hit);
+    ops_apply(&hit);
+    CHECK(ally->health < 10 && gh->blockLocks.count == 1 && gh->blockLocks.items[0].blocker == hero->id);
+    gh->testMode = false;
+
+    /* the hero's next turn: its block is gone, the tile is locked (also in test mode), other tiles are not */
+    game_next_turn();
+    game_next_turn();
+    CHECK(gh->currentTurn == ally);
+    CHECK(gh->blocks.count == 1); /* still there until the hero's turn */
+    game_next_turn();
+    CHECK(gh->currentTurn == hero && gh->blocks.count == 0);
+    CHECK_R(ops_check(&guard, &alice), OPR_BLOCK_LOCKED);
+    gh->testMode = true;
+    CHECK_R(ops_check(&guard, &alice), OPR_BLOCK_LOCKED); /* test mode keeps the lock */
+    gh->testMode = false;
+    Op elsewhere = block_op(hero, BLOCK_TEST_RANGE, hex_neighbor_raw(a, 0), UP);
+    CHECK_R(ops_check(&elsewhere, &alice), OPR_OK);
+    hero->tile = mid; /* standing on it lifts the lock */
+    CHECK_R(ops_check(&guard, &alice), OPR_OK);
+    hero->tile = a;
+    /* the turn after: the lock is over */
+    game_next_turn();
+    game_next_turn();
+    game_next_turn();
+    CHECK(gh->currentTurn == hero && gh->blockLocks.count == 0);
+    CHECK_R(ops_check(&guard, &alice), OPR_OK);
+
+    /* blocks stay when the blocker moves away, and go when it is deleted or the initiative ends */
+    ops_apply(&guard);
+    hero->tile = hex_neighbor_raw(a, 5);
+    CHECK(block_on_tile(mid, &dirs, &bv));
+    hero->tile = a;
+    game_clear_initiative();
+    CHECK(gh->blocks.count == 0 && gh->blockLocks.count == 0);
+
+    /* outside initiative (test mode): a new block replaces the blocker's earlier ones and ends its locks */
+    gh->testMode = true;
+    hero->turnUsed = 0;
+    ops_apply(&guard);
+    BlockLock lock = { .tile = hex_neighbor_raw(a, 3), .blocker = hero->id, .armed = false };
+    da_push(&gh->blockLocks, lock);
+    Op again = block_op(hero, BLOCK_TEST, a, LEFT);
+    CHECK_R(ops_check(&again, &alice), OPR_OK);
+    ops_apply(&again);
+    CHECK(gh->blocks.count == 1 && hex_eq(gh->blocks.items[0].tile, a) && gh->blockLocks.count == 0);
+    entity_delete(hero);
+    CHECK(gh->blocks.count == 0);
+    gh->testMode = false;
+    op_free(&hit);
 }
 
 static void test_radial_config(void) {
@@ -3348,6 +3595,8 @@ int main(void) {
     test_attack_directions();
     test_attack_contests();
     test_attack_actions();
+    test_block_actions();
+    test_radial_toggle();
     test_action_menu();
     test_settings();
     CHECK(stub_bad_releases == 0);

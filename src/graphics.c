@@ -5,8 +5,8 @@
 #include "hud_game.h"
 #include "hud_theme.h"
 #include "move_ui.h"
-#include "attack_ui.h"
-#include "attacks.h"
+#include "target_ui.h"
+#include "blocks.h"
 #include "moves.h"
 #include "radial_game.h"
 #include "settings.h"
@@ -139,8 +139,10 @@ void gfx_shutdown(void) {
     da_free(&gh->attackTiles);
     da_free(&gh->path);
     move_ui_cancel();
-    attack_ui_cancel();
+    target_ui_cancel();
     da_free(&gh->attackMarks);
+    da_free(&gh->blocks);
+    da_free(&gh->blockLocks);
     cc_shutdown(); /* the draft's picture */
     da_free(&gh->moveMode.path);
     da_free(&gh->init);
@@ -736,6 +738,33 @@ static void draw_attack_marks(void) {
     }
 }
 
+/* The blocked tiles (blocks.h): a blue hexagon inside the tile and, at its bottom, the combined directions and Block
+ * Value, e.g. "UL 2" (neutral is always blocked). */
+static void draw_block_marks(void) {
+    float hs = (float)gh->hexSize, th = (float)gh->thickness;
+    Color col = HUD_THEME.accent[HUD_ACCENT_BLUE];
+    for (int i = 0; i < gh->blocks.count; i++) {
+        Hex tile = gh->blocks.items[i].tile;
+        bool first = true; /* one mark per tile */
+        for (int k = 0; k < i && first; k++) first = !hex_eq(gh->blocks.items[k].tile, tile);
+        if (!first || !hex_visible(tile)) continue;
+        int dirs, bv;
+        block_on_tile(tile, &dirs, &bv);
+        Vec2 c = hex_center(tile), corners[6];
+        hex_corners(tile, corners);
+        for (int k = 0; k < 6; k++)
+            corners[k] = (Vec2){ c.x + (corners[k].x - c.x) * 0.78, c.y + (corners[k].y - c.y) * 0.78 };
+        dr_polygon(corners, 6, th * 2.5f, col);
+        char label[16];
+        snprintf(label, sizeof(label), "%s%s%s %d", dirs & DIR_BIT(DIR_UP) ? "U" : "",
+                 dirs & DIR_BIT(DIR_LEFT) ? "L" : "", dirs & DIR_BIT(DIR_RIGHT) ? "R" : "", bv);
+        float size = hs * 0.32f, w = dr_text_width(FONT_BOLD, size, label);
+        float x = (float)c.x - w / 2, y = (float)c.y + hs * 0.62f;
+        dr_fill_round_rect(x - 3, y - size * 0.85f, w + 6, size * 1.1f, 4, 4, col);
+        dr_text(FONT_BOLD, size, x, y, rgb_hex(0xFFFFFF), label);
+    }
+}
+
 static void draw_grid(void) {
     const Theme *t = gfx_theme();
     float th = (float)gh->thickness;
@@ -795,21 +824,19 @@ static void draw_grid(void) {
         dr_set_alpha(0.5f);
     }
 
-    /* choosing where an attack goes: its range in the colour of its slot, the tile under the pointer (or the one the
-     * direction menu is open on) stronger */
-    attack_ui_update();
-    if (gh->attackMode.active) {
-        Entity *me = entity_by_id(gh->attackMode.id);
-        HudAccent acc = me && action_slot(me, ATTACK_ACTIONS[gh->attackMode.action].slot) == SLOT_MINOR
-                            ? HUD_ACCENT_MINOR : HUD_ACCENT_MAJOR;
+    /* choosing where an attack or a block goes: its range in the colour of its slot, the tile under the pointer (or the
+     * one its ring is open on) stronger */
+    target_ui_update();
+    if (gh->targetMode.active) {
+        HudAccent acc = target_ui_slot() == SLOT_MINOR ? HUD_ACCENT_MINOR : HUD_ACCENT_MAJOR;
         dr_set_alpha(0.9f);
         for (int r = r0; r <= r1; r++)
             for (int c = c0; c <= c1; c++) {
                 Hex h = { r, c };
-                if (ts_has(&gh->attackMode.range, h)) draw_hex(h, th + 2, HUD_THEME.accentLight[acc]);
+                if (ts_has(&gh->targetMode.range, h)) draw_hex(h, th + 2, HUD_THEME.accentLight[acc]);
             }
-        Hex focus = gh->attackMode.hasTarget ? gh->attackMode.target : gh->tileUnderMouse;
-        if ((gh->attackMode.hasTarget || gh->hasTileUnderMouse) && ts_has(&gh->attackMode.range, focus))
+        Hex focus = gh->targetMode.hasTarget ? gh->targetMode.target : gh->tileUnderMouse;
+        if ((gh->targetMode.hasTarget || gh->hasTileUnderMouse) && ts_has(&gh->targetMode.range, focus))
             draw_hex(focus, th + 4, HUD_THEME.accent[acc]);
         dr_set_alpha(0.5f);
     }
@@ -947,6 +974,7 @@ static void draw_fx(void) {
         Vec2 a = hex_center(gh->moveMode.path.items[i]), b = hex_center(gh->moveMode.path.items[i + 1]);
         dr_line((int)a.x, (int)a.y, (int)b.x, (int)b.y, th * 3, rgb_hex(0xFFFFFF));
     }
+    draw_block_marks();
     draw_attack_marks();
 }
 

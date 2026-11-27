@@ -34,6 +34,10 @@
  *   Menus per hex type: add a RadialMenu to RADIAL_MENUS with its own id, and return that id from radial_game.c's
  *                       menu_for(); a menu's .center is the centre button's action on the top level (NULL: the
  *                       centre closes the menu).
+ *   Add a toggle:       an entry with .kind = RADIAL_TOGGLE: clicking it switches it on or off and the menu stays open;
+ *                       an entry that is on is drawn filled with its accent. radial_toggled(id) says whether it is on;
+ *                       every toggle is off when a menu opens. Confirm with the menu's centre action (its rule can ask
+ *                       radial_toggled, e.g. to stay disabled until one is on).
  *   Add an entry kind:  add it to RadialKind (before RADIAL_KIND_COUNT) and give it a RadialKindDef in radial.c's
  *                       RADIAL_KINDS table; activate() may use radial_emit_action, radial_enter, radial_close.
  *                       The components ask the table how to draw it (opensRing), so they need no change.
@@ -60,7 +64,7 @@ typedef struct { int row, col; } RadialTarget;
 
 /* ---- data (radial_config.c) ---- */
 
-typedef enum { RADIAL_ACTION, RADIAL_SUBMENU, RADIAL_KIND_COUNT } RadialKind;
+typedef enum { RADIAL_ACTION, RADIAL_SUBMENU, RADIAL_TOGGLE, RADIAL_KIND_COUNT } RadialKind;
 
 typedef struct RadialEntry RadialEntry;
 struct RadialEntry {
@@ -155,6 +159,7 @@ void radial_draw(void);
 bool radial_part_point(const char *part, float *x, float *y);
 int radial_depth(void);                  /* 0 = top level */
 const char *radial_submenu_id(void);     /* the entry whose ring is open; NULL at the top level */
+bool radial_toggled(const char *id);     /* is the RADIAL_TOGGLE entry id on? (the open menu; off when closed) */
 
 /* ---- entry kinds (radial.c) ---- */
 
@@ -167,6 +172,7 @@ extern const RadialKindDef RADIAL_KINDS[RADIAL_KIND_COUNT];
 
 /* For RadialKindDef.activate: */
 void radial_emit_action(const RadialEntry *e); /* sends RADIAL_EV_ACTION */
+void radial_toggle(const RadialEntry *e);      /* switches toggle e on or off */
 void radial_enter(const RadialEntry *e);       /* opens e's ring (e is on the current or the parent ring) */
 
 /* ---- components (radial_widgets.c) ---- */
@@ -182,6 +188,7 @@ typedef struct {
     int hover, press;       /* item index, -1 = none */
     int highlight;          /* the segment whose ring is open, -1 = none */
     bool interactive;       /* false while it fades out */
+    bool (*on)(const RadialEntry *e); /* a toggle that is on (drawn like the highlight); may be NULL */
 } RadialRingView;
 
 /* Segment i's angles in degrees, 0 = right, clockwise (screen y points down); segment 0 is centred at the top. */

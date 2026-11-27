@@ -42,7 +42,7 @@ in the Java version.
 | Left click (or Enter in keyboard mode) | select tile / entity |
 | Right click (or Right-Shift + Enter) | tool action (drag start, measure point, place attack) |
 | Right click without moving (Drag tool) | tile menu: a ring of entries around the tile; Esc / click outside closes; the GM's Create character on empty tiles |
-| Right click your character (Drag tool) | action menu: Minor / Info / Mental / Major; during initiative its move actions (Walk, Run, Crawl, Step, Sprint) move it on its turn, Recover (1d4) / Full Recover restore its stamina, and Major action -> Attack attacks a tile in range in a direction (up / left / right / neutral; so far only a placeholder Test attack) |
+| Right click your character (Drag tool) | action menu: Minor / Info / Mental / Major; during initiative its move actions (Walk, Run, Crawl, Step, Sprint) move it on its turn, Recover (1d4) / Full Recover restore its stamina, Major action -> Attack attacks a tile in range in a direction (up / left / right / neutral), and Major action -> Block blocks directions on a tile (switch Up / Right / Left on, confirm in the centre; so far only placeholder attacks and blocks) |
 | + Create character (bar, when you have no character) / + box left of the bar (GM) | create a character in steps: name, size, attributes (STR / AGI shown beside the HP bar), picture, then place it (left click a green tile; Esc / right click back; Enter / Right-Shift + Enter in keyboard mode, but the steps need the mouse) |
 | Shift + left click | move the selected character inside its (green) range (players: outside initiative) |
 | Hold Left Shift | preview footprint and path of the selected character |
@@ -63,7 +63,7 @@ Console commands: `:q` quit, `:b [file.png]` background, `:d` debug, `:c` charac
 (`delete`, `size n`, `maxhealth n`, `maxstamina n`, `stamina n`, `spend n`, `recover n`, `speed n`, `initiative n`, `icon`, `owner <player|none>`, `name <name>`, `party <name>` (GM), `str / agi / cog / spi n` (attributes; they set max HP, max stamina, speed, initiative; GM only on a selection),
 `hp n`, `damage n`, `heal n`; the HUD at the bottom shows the selected (your own, or a party member's) character's HP and stamina),
 `:w [delete]` wall, `:e delete`, `:r 2d6+3` roll, `:g` grid orientation, `:gm` gamemaster,
-`:i [add|remove|clear|show|next]` initiative, `:tm [on|off]` test mode (GM: move and recover actions and attacks without turn, action or stamina requirements, for the whole table), `:cl` clear, `:t [name]` theme (remembered in `settings.txt`), `:h [command]` help, `:hud [on|off]` HUD on/off,
+`:i [add|remove|clear|show|next]` initiative, `:tm [on|off]` test mode (GM: move and recover actions, attacks and blocks without turn, action or stamina requirements, for the whole table), `:cl` clear, `:t [name]` theme (remembered in `settings.txt`), `:h [command]` help, `:hud [on|off]` HUD on/off,
 `:save [file]` / `:load[!] [file]` save files (see below), `:q!` quit without saving,
 `:host`, `:join`, `:leave`, `:unhost`, `:players`, `:kick`, `:ban`, `:unban`, `:claim`, `:party` multiplayer (see below).
 

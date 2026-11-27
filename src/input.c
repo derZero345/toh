@@ -3,7 +3,7 @@
 #include "charcreate.h"
 #include "ops.h"
 #include "hud_game.h"
-#include "attack_ui.h"
+#include "target_ui.h"
 #include "move_ui.h"
 #include "radial_game.h"
 
@@ -385,9 +385,9 @@ static void key_pressed(const SDL_KeyboardEvent *k) {
         else if (move_ui_active()) {
             move_ui_cancel();
             console_log("Move cancelled");
-        } else if (attack_ui_active()) {
-            attack_ui_cancel();
-            console_log("Attack cancelled");
+        } else if (target_ui_active()) {
+            target_ui_cancel();
+            console_log(gh->targetMode.kind == TARGET_ATTACK ? "Attack cancelled" : "Block cancelled");
         } else if (cc_placing()) {
             cc_back(); /* back to the summary */
         }
@@ -501,7 +501,7 @@ void io_handle_event(const SDL_Event *e) {
             if (hud_game_mouse_down(gh->mousePos)) break;     /* the HUD keeps its clicks from the map */
             Hex h;
             if (move_ui_active() && hex_find_closest(gh->mousePos, &h) && move_ui_click(h)) break;
-            if (attack_ui_active() && hex_find_closest(gh->mousePos, &h) && attack_ui_click(h)) break;
+            if (target_ui_active() && hex_find_closest(gh->mousePos, &h) && target_ui_click(h)) break;
             if (cc_placing()) { /* placing a new character: the click is for it, not the map (the toolbox works) */
                 if (!toolbox_pressed() && hex_find_closest(gh->mousePos, &h)) cc_place(h);
                 break;
@@ -516,9 +516,9 @@ void io_handle_event(const SDL_Event *e) {
                 console_log("Move cancelled");
                 break;
             }
-            if (attack_ui_active()) {
-                attack_ui_cancel();
-                console_log("Attack cancelled");
+            if (target_ui_active()) {
+                target_ui_cancel();
+                console_log(gh->targetMode.kind == TARGET_ATTACK ? "Attack cancelled" : "Block cancelled");
                 break;
             }
             if (hud_game_contains(gh->mousePos)) break;

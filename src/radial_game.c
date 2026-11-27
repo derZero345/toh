@@ -1,8 +1,8 @@
 /* The radial menu adapter: which menu a hex gets, the rules the conditions name, and what the actions do. This is
  * the only radial menu file that touches game state (see radial.h). */
 #include "radial_game.h"
-#include "attack_ui.h"
-#include "attacks.h"
+#include "blocks.h"
+#include "target_ui.h"
 #include "charcreate.h"
 #include "move_ui.h"
 #include "moves.h"
@@ -54,6 +54,21 @@ static const char *rule_attack(const RadialTarget *t, int arg) {
 }
 #define ATTACK_RULE(key_, action_) { key_, NULL, NULL, "Not possible", rule_attack, action_ }
 
+/* Can the actor use block arg now? */
+static const char *rule_block(const RadialTarget *t, int arg) {
+    (void)t;
+    OpResult r = block_check(entity_by_id(actor), (BlockAction)arg);
+    return r == OPR_OK ? NULL : move_result_text(r);
+}
+#define BLOCK_RULE(key_, action_) { key_, NULL, NULL, "Not possible", rule_block, action_ }
+
+/* The block ring's toggles: their direction bits. */
+static int toggled_dirs(void) {
+    return (radial_toggled("block.up") ? DIR_BIT(DIR_UP) : 0) | (radial_toggled("block.left") ? DIR_BIT(DIR_LEFT) : 0) |
+           (radial_toggled("block.right") ? DIR_BIT(DIR_RIGHT) : 0);
+}
+static bool rule_block_dirs(const RadialTarget *t) { return (void)t, toggled_dirs() != 0; }
+
 static const RadialRule RULES[] = {
     { "gm", rule_gm, "Only the GM can do this", "The GM can't do this", NULL, 0 },
     { "occupied", rule_occupied, "Needs something on the tile", "Needs an empty tile", NULL, 0 },
@@ -69,6 +84,10 @@ static const RadialRule RULES[] = {
     RECOVER_RULE("stamina.full_recover", RECOVER_FULL),
     /* one per attack; the keys are ATTACK_ACTIONS' ids */
     ATTACK_RULE("attack.test", ATTACK_TEST),
+    /* one per block; the keys are BLOCK_ACTIONS' ids */
+    BLOCK_RULE("block.test", BLOCK_TEST),
+    BLOCK_RULE("block.test_range", BLOCK_TEST_RANGE),
+    { "block.dirs", rule_block_dirs, "Choose at least one direction", "", NULL, 0 },
 };
 #define NRULES ((int)(sizeof(RULES) / sizeof(RULES[0])))
 
@@ -121,19 +140,26 @@ static int direction_of(const char *id) {
 
 static void on_event(const RadialEvent *ev) {
     bool directions = ev->menu && strcmp(ev->menu, "direction") == 0;
+    bool blocking = ev->menu && strcmp(ev->menu, "block") == 0;
     switch (ev->type) {
     case RADIAL_EV_ACTION: {
         if (directions) {
             int d = direction_of(ev->id);
-            if (d >= 0) attack_ui_choose(d);
+            if (d >= 0) target_ui_attack(d);
+            break;
+        }
+        if (blocking) { /* the centre: block in the directions that are on */
+            if (strcmp(ev->id, "block.confirm") == 0) target_ui_block(toggled_dirs());
             break;
         }
         int move = move_action_by_id(ev->id), recover = recover_action_by_id(ev->id);
-        int attack = attack_action_by_id(ev->id);
+        int attack = attack_action_by_id(ev->id), block = block_action_by_id(ev->id);
         if (move >= 0) {
             move_ui_start(actor, move);
         } else if (attack >= 0) {
-            attack_ui_start(actor, attack);
+            target_ui_start(TARGET_ATTACK, actor, attack);
+        } else if (block >= 0) {
+            target_ui_start(TARGET_BLOCK, actor, block);
         } else if (recover >= 0) { /* nothing to choose: done at once */
             Op op = { .type = OP_RECOVER_ACTION, .id = actor, .action = recover };
             ops_submit(&op);
@@ -148,7 +174,7 @@ static void on_event(const RadialEvent *ev) {
         break;
     }
     case RADIAL_EV_CLOSED:
-        if (directions) attack_ui_back(); /* no direction chosen: choose the tile again */
+        if (directions || blocking) target_ui_back(); /* nothing chosen: choose the tile again */
         break;
     }
 }
@@ -183,16 +209,16 @@ bool radial_game_open(Vec2 p) {
     RadialTarget t = { h.row, h.col };
     Vec2 c = hex_center(h);
     move_ui_cancel(); /* a new menu replaces choosing a tile */
-    attack_ui_cancel();
+    target_ui_cancel();
     actor = actor_on(h);
     return radial_open(radial_game_menu_for(h), &t, (float)c.x, (float)c.y);
 }
 
-bool radial_game_open_directions(Hex h) {
+bool radial_game_open_menu(const char *menu, Hex h) {
     radial_game_refresh_screen();
     RadialTarget t = { h.row, h.col };
     Vec2 c = hex_center(h);
-    return radial_open("direction", &t, (float)c.x, (float)c.y);
+    return radial_open(menu, &t, (float)c.x, (float)c.y);
 }
 
 bool radial_game_right_down(Vec2 p) {

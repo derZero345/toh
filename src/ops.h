@@ -35,8 +35,9 @@ typedef enum {
     OP_MOVE_ACTION,      /* id, action (MoveAction), tile: a move action on the character's turn (moves.h) */
     OP_SET_TEST_MODE,    /* value: 1 on, 0 off; GM only (moves.h: what test mode lifts) */
     OP_RECOVER_ACTION,   /* id, action (RecoverAction), value: the host's roll (recover.h) */
-    OP_ATTACK_ACTION,    /* id, action (AttackAction), tile, value: AttackDir, values: none from a client, else the
-                          * host's damage roll per outcome (attacks.h) */
+    OP_ATTACK_ACTION,    /* id, action (AttackAction), tile, value: AttackDir; from the host also ids: the characters
+                          * hit, and values: the damage roll per outcome, then each character's outcome (attacks.h) */
+    OP_BLOCK_ACTION,     /* id, action (BlockAction), tile, value: the blocked directions, DIR_BIT bits (blocks.h) */
     OP_COUNT
 } OpType;
 
@@ -64,7 +65,7 @@ typedef struct Op {
     uint32_t id; /* OP_MOVE */
     Hex tile;    /* OP_MOVE, OP_WAYPOINT_SET */
     DA(uint32_t) ids;
-    DA(double) values;    /* OP_INIT_ADD; OP_ATTACK_ACTION: damage rolls */
+    DA(double) values;    /* OP_INIT_ADD; OP_ATTACK_ACTION: damage rolls and outcomes */
     DA(EntitySpec) specs; /* OP_SPAWN */
     Texture *image;       /* OP_SET_ICON, OP_SET_BACKGROUND; borrowed */
     int statMask;         /* OP_SET_STATS */
@@ -73,7 +74,7 @@ typedef struct Op {
     char name[WAYPOINT_NAME_MAX]; /* OP_WAYPOINT_*: waypoint name, OP_SET_OWNER: player name */
     int healthMode, value;        /* OP_SET_HEALTH, OP_SET_STAMINA; value: OP_SET_TEST_MODE, OP_RECOVER_ACTION */
     int action;                   /* OP_MOVE_ACTION: MoveAction, OP_RECOVER_ACTION: RecoverAction,
-                                   * OP_ATTACK_ACTION: AttackAction */
+                                   * OP_ATTACK_ACTION: AttackAction, OP_BLOCK_ACTION: BlockAction */
     char charName[CHAR_NAME_MAX]; /* OP_SET_NAME */
     char party[CHAR_NAME_MAX];    /* OP_SET_PARTY: "" = no party */
     bool remote;  /* someone else's op: leave the local selection and path preview alone */
@@ -107,8 +108,9 @@ typedef enum {
     OPR_USE_ACTION,    /* OP_MOVE by a player during initiative: move with a move action */
     OPR_NO_STAMINA_STAT, /* OP_RECOVER_ACTION: the character has no max stamina */
     OPR_STAMINA_FULL,    /* OP_RECOVER_ACTION: stamina is at its maximum */
+    OPR_BLOCK_LOCKED,    /* OP_BLOCK_ACTION: the blocker's last block on that tile failed (blocks.h) */
 } OpResult;
-#define OPR_LAST OPR_STAMINA_FULL
+#define OPR_LAST OPR_BLOCK_LOCKED
 
 /*
  * Notes for ops_check / ops_apply:

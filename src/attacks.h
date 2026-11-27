@@ -4,9 +4,9 @@
  *
  * An attack targets a tile, not a character: a tile within the attack's range, in one of four directions (up, left,
  * right, neutral). It succeeds, scrapes or misses for every character on the tile, who takes the damage of that
- * outcome. It resolves at once, when it is used. Only the framework is built: the table holds one placeholder row,
- * blocks and dodges don't exist yet (attack_resolve's hooks find none, so every attack succeeds), and the contests
- * they will use are ready below.
+ * outcome. It resolves at once, when it is used. Only the framework is built: the table holds one placeholder row.
+ * attack_resolve asks two hooks: the block on the tile (blocks.h) and a dodge by the character (dodges don't exist
+ * yet; their contest is ready below).
  *
  * Directions, as seen from the attacker (attack_dir_tiles):
  *   neutral      the target tile itself
@@ -22,12 +22,13 @@
  * the initiative ends or the attacker is deleted; outside initiative (test mode) the attacker's next attack replaces
  * its marks. Marks are not saved.
  *
- * The host rolls the damage of every outcome (ops_apply when not a client) and sends the rolls in the op, so everyone
- * applies the same damage; the outcome itself follows from the shared table state.
+ * The host decides: it rolls the damage of every outcome and resolves the tile (attack_targets) in ops_apply, and
+ * sends the rolls, the characters hit and their outcomes in the op, so everyone applies the same damage even when a
+ * player who joined mid-round lacks earlier blocks.
  *
  * Add an attack: an AttackAction value (before ATTACK_COUNT) and its row in ATTACK_ACTIONS; the radial menu entry
  * with the same id goes into radial_config.c (an "Attack" submenu of its slot) and its rule into radial_game.c.
- * Blocks and dodges: fill in find_block / find_dodge in attacks.c; attack_resolve then uses the contests.
+ * Dodges: fill in find_dodge in attacks.c; attack_resolve then uses the dodge contest.
  */
 #ifndef TOH_ATTACKS_H
 #define TOH_ATTACKS_H
@@ -89,8 +90,8 @@ AttackOutcome attack_block_contest(int dirs, int bv, AttackDir d, int av);
  * against an attack in direction d with Attack Value av; won if dv >= av + et. Won and another direction: miss; lost
  * and another direction or won and the same direction: scrape; lost and the same direction: success. */
 AttackOutcome attack_dodge_contest(AttackDir dodge, int dv, int et, AttackDir d, int av);
-/* The outcome of an attack (direction d, Attack Value av) on tile for the character target there. Asks for a block on
- * the tile and a dodge by target; there are none yet, so it is a success. */
+/* The outcome of an attack (direction d, Attack Value av) on tile for the character target there: the block contest
+ * against the tile's block (blocks.h), else the dodge contest against target's dodge (none yet), else a success. */
 AttackOutcome attack_resolve(const Entity *target, Hex tile, AttackDir d, int av);
 
 /* ---- damage ---- */
@@ -104,9 +105,14 @@ bool attack_rolls_ok(AttackAction a, const int rolled[OUTCOME_COUNT]);
 
 /* ---- using it ---- */
 
-/* Uses the slot, spends the stamina, marks the tile and resolves the attack for every character on it, who loses
- * rolled[its outcome] HP; logs what happened. Exhausted: the turn ends. Requires attack_check_at == OPR_OK. */
-void attack_apply(Entity *e, AttackAction a, Hex tile, AttackDir d, const int rolled[OUTCOME_COUNT]);
+/* The host's resolution: the characters on tile (at most cap) and each one's outcome against an attack in direction
+ * d with Attack Value av. Returns how many. */
+int attack_targets(Hex tile, AttackDir d, int av, uint32_t *ids, int *outcomes, int cap);
+/* Uses the slot, spends the stamina, marks the tile, locks it for failed blockers off it (blocks.h) and applies the
+ * outcomes: character ids[i] loses rolled[outcomes[i]] HP; logs what happened. Exhausted: the turn ends. Requires
+ * attack_check_at == OPR_OK. */
+void attack_apply(Entity *e, AttackAction a, Hex tile, AttackDir d, const int rolled[OUTCOME_COUNT],
+                  const uint32_t *ids, const int *outcomes, int n);
 
 /* ---- tile marks ---- */
 

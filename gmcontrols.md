@@ -348,8 +348,10 @@ and one line per character on the tile: `  Bob: success, 3 damage, HP 7/10 (Inju
 
 - Every character on the tile is hit, allies too. An empty tile gives `..., nobody there`. A character without max
   HP takes no damage (`3 damage (no HP)`). HP can go below 0, down to −max HP, as with `:c damage`.
-- Each attack succeeds, scrapes or misses for each character. Blocks and dodges are not in the game yet, so every
-  attack succeeds for now.
+- Each attack succeeds, scrapes or misses for each character: against a block on the tile (below) it can scrape or
+  miss, otherwise it succeeds (dodges are not in the game yet). The log then says e.g.
+  `Mao: Test attack on [4|7] up, AV 0 against a block of BV 2` and `  Bob: miss, 0 damage, HP 10/10 (Healthy)`; an
+  attack in a direction the block doesn't cover adds ` in other directions` and succeeds.
 - The range counts tiles in a straight line from the attacker's nearest tile (big characters attack from the tile
   closest to the target). Walls don't block it yet, and a character can't attack its own tiles.
 - The attack uses its Major or Minor action and its stamina, like the move actions (same turn rules; a Minor attack
@@ -357,7 +359,40 @@ and one line per character on the tile: `  Bob: success, 3 damage, HP 7/10 (Inju
 - The attacked tile gets a red mark for everyone: an arrow in the attack's direction, a ring for neutral. The marks
   stay until the attacker's next turn starts, and all go when the initiative ends or a table is loaded. They are not
   saved, and players who join in the middle of a round don't see the marks made before they joined.
-- In a session your game (the host) rolls the damage, so everyone sees the same result.
+- In a session your game (the host) rolls the damage and decides each character's result, so everyone sees the same
+  result.
+
+### Blocks (during initiative)
+
+A block covers up, left and/or right on a tile; neutral is always covered. The menu has the framework for blocks;
+the blocks in it so far are placeholders:
+
+| Action | Type | Tiles | Block Value (BV) | Stamina |
+|---|---|---|---|---|
+| Test block (placeholder) | Major | the character's own tiles | 2 | 0 |
+| Test block (placeholder), range 1 | Major | one tile within 1 (its own included) | 2 | 0 |
+
+Choose Major action, then **Block**, then the block. A block of the own tiles opens its ring on the character at
+once; one with a range first lights up the tiles in range: left click one. The ring has three switches, clockwise
+from the top: **Up**, **Right**, **Left** (as an attacker sees it). Click them on or off (an entry that is on is
+filled blue), then click the centre button **Block**; it is greyed out ("Choose at least one direction") until one
+is on. Esc, a click outside the ring or a right click closes the ring: for a range block back to choosing a tile
+(then Esc, a right click or a click outside the range cancels), for an own-tile block it cancels ("Block
+cancelled"). The log shows e.g. `Mao: Test block on [4|7]: up, left and neutral, BV 2` (a big character: `on its 7
+tiles`).
+
+- An attack in a covered direction misses when its Attack Value is at most the BV, else it scrapes. An attack in
+  another direction succeeds.
+- The block belongs to the tile: every character on it is protected, and it stays there when the blocker moves
+  away. With several blocks on a tile their directions combine and the highest BV counts.
+- A blocked tile shows a blue hexagon with the directions and the BV, e.g. `UL 2`.
+- Blocks stay until the blocker's next turn starts, and all go when the initiative ends or a table is loaded. They
+  are not saved, and players who join in the middle of a round don't see earlier blocks (the results stay right:
+  your game decides them).
+- **A failed block:** when an attack succeeds against a tile a character blocked without standing on it (wrong
+  direction), that character can't block that tile on its next turn, unless it stands on it then: "Can't block this
+  tile this turn: its last block there failed".
+- The turn rules are those of the other actions (Major / Minor action, stamina, exhaustion).
 
 ### Test mode
 
@@ -366,22 +401,23 @@ and one line per character on the tile: `  Bob: success, 3 damage, HP 7/10 (Inju
 | `testmode [on\|off]` | `:tm` | Test mode on / off for the whole table (without an argument it toggles; Tab completes `on` / `off`) |
 
 Test mode is for trying things out without setting up turns and stamina first. While it is on, move actions, the
-recover actions (Recover, Full Recover) and attacks work for everyone at the table:
+recover actions (Recover, Full Recover), attacks and blocks work for everyone at the table:
 - outside initiative, and for any character, not only the one whose turn it is;
 - when the Major or Minor action is already used this turn;
 - for Sprint without another move action before it;
-- with too little stamina (move actions and attacks).
+- with too little stamina (move actions, attacks and blocks).
 
 The actions still have their effects: they use up their Major or Minor action, and they spend stamina, but never
 below 0. A character whose stamina an action brings to 0 is exhausted and its turn ends, as usual; actions at 0
 stamina don't end the turn again.
 
-Still checked in test mode: players only act with their own characters, the move or attack stays within the
-action's range, a character with speed 0 can only Step, and the recover actions need a character with max stamina
-whose stamina isn't full. Players' Shift + click moves keep their rules (refused during initiative). Roll and claim
+Still checked in test mode: players only act with their own characters, the move, attack or block stays within the
+action's range, a character with speed 0 can only Step, the recover actions need a character with max stamina
+whose stamina isn't full, and a failed block's tile stays locked for the blocker's next turn. Players' Shift + click moves keep their rules (refused during initiative). Roll and claim
 limits stay too.
 
-Outside initiative an attack's marks stay until the same character attacks again (its new mark replaces them).
+Outside initiative an attack's marks stay until the same character attacks again (its new mark replaces them), and
+a character's blocks until it blocks again (its new block replaces them and ends its failed-block locks).
 
 - Only the GM can switch it. Everyone gets `Test mode on: actions ignore turns, used actions and stamina` or
   `Test mode off` in the log, and a gold **TEST MODE** label shows at the top of the map while it is on.
@@ -446,6 +482,7 @@ inside the window near the edges.
 |---|---|
 | Left click an entry | Use it. The menu closes. |
 | Left click an entry with a small triangle | Open its submenu: the ring shrinks into an inner ring, the submenu's ring opens around it, and the entry that opened it stays highlighted |
+| Left click a switch (a block's directions) | Switch it on (filled) or off; the menu stays open |
 | Left click the centre | On the first ring: the menu's main action. In a submenu: back one level |
 | Left click the highlighted entry in the inner ring | Back one level |
 | Left click another triangle entry in the inner ring | Switch the outer ring to that submenu |
@@ -472,9 +509,9 @@ whose turn it is, else the first. Its four entries, clockwise from the top:
 | Minor action | gold (#84672B) | Step, Sprint, Recover |
 | Info | grey (#5E5E5E) | nothing yet; choosing it only closes the menu |
 | Mental action | violet (#80537E) | nothing yet: greyed out, "Nothing to choose here" |
-| Major action | blue (#355C85) | Walk, Run, Crawl, Full Recover, Attack (a submenu: Test attack) |
+| Major action | blue (#355C85) | Walk, Run, Crawl, Full Recover, Attack (a submenu: Test attack), Block (a submenu: Test block, Test block range 1) |
 
-The move and recover actions, attacks and their rules are in section 6. The centre button closes the menu.
+The move and recover actions, attacks, blocks and their rules are in section 6. The centre button closes the menu.
 
 ## 11. Waypoints and teleport
 
@@ -645,7 +682,7 @@ in the name field Enter = Next). `:c` creates a character without them.
 
 Players can:
 - move their own characters (freely outside initiative; while it runs, with move actions on their turn),
-  recover their stamina with Recover and Full Recover, and attack with them, on their turn;
+  recover their stamina with Recover and Full Recover, attack and block with them, on their turn;
 - end their turn with `:i next`;
 - roll dice (at most 10 rolls in 10 seconds);
 - ask for existing characters with `:claim`, or for a new one of their own through the bar's **+ Create

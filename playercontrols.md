@@ -51,9 +51,15 @@ attack: 1 tile, 1d4 damage). Left click a lit tile in range, then its direction 
 away from you, Right, Neutral: the tile itself, Left). An attack hits the tile: **every character on it**, your
 friends too. The tile gets a red arrow (a ring for neutral) until your next turn. Esc goes back one step.
 
+To **block**, choose Major action, then **Block**, then the block (placeholders so far: Test block on your own tile,
+or Test block (range 1) on a tile next to you, which you click first). In the ring, switch **Up**, **Right** and/or
+**Left** on, then click the centre **Block**. Neutral is always blocked. Attacks on that tile in a blocked direction
+then miss or scrape, until your next turn; the tile shows a blue hexagon. If you block a tile you don't stand on and
+an attack gets through, you can't block that tile again on your next turn.
+
 While a gold **TEST MODE** label shows at the top, the GM has turned on test mode: you can use move actions,
-Recover / Full Recover and attacks at any time, even when it isn't your turn or you lack the action or stamina.
-They still use up the action and stamina.
+Recover / Full Recover, attacks and blocks at any time, even when it isn't your turn or you lack the action or
+stamina. They still use up the action and stamina, and a failed block's tile stays locked.
 
 **Outside initiative** you move freely:
 

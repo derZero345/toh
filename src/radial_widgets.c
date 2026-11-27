@@ -65,7 +65,8 @@ void radial_draw_segment(const RadialRingView *v, int i) {
     radial_segment_angles(i, v->n, &a0, &a1);
     bool disabled = v->why && v->why[i];
     bool hover = v->interactive && v->hover == i && !disabled, press = hover && v->press == i;
-    bool active = v->highlight == i, dimmed = v->highlight >= 0 && !active;
+    bool lit = v->highlight == i, on = v->on && v->on(e);
+    bool active = lit || on, dimmed = v->highlight >= 0 && !lit;
     float alpha = v->geo.alpha; /* the fill stays dark when dimmed or disabled; the icon and band fade */
     float content = alpha * (disabled ? T->radialDisabledAlpha : dimmed ? T->radialDimAlpha : 1);
     if (alpha <= 0.004f) return;

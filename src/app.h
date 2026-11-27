@@ -343,6 +343,12 @@ typedef struct { char name[16]; Color primary, secondary; } Theme;
 typedef struct { Entity *entity; double value; } InitEntry;
 /* A tile an attack hit this round (attacks.h): dir is an AttackDir, from the attacker's tile nearest to it. */
 typedef struct { Hex tile, from; int dir; uint32_t attacker; } AttackMark;
+/* A block on a tile (blocks.h): dirs are DIR_BIT bits (neutral is always covered), value its Block Value; occupied:
+ * the blocker stood on the tile when it blocked. */
+typedef struct { Hex tile; int dirs, value; uint32_t blocker; bool occupied; } TileBlock;
+/* A tile the blocker can't block again (blocks.h: a failed block on a tile it didn't occupy); armed once its next
+ * turn has started. */
+typedef struct { Hex tile; uint32_t blocker; bool armed; } BlockLock;
 
 typedef enum {
     ACTION_NONE,
@@ -405,17 +411,21 @@ typedef struct App {
         TileSet range;
         HexList path;
     } moveMode;
-    /* choosing where an attack goes (attack_ui.c): its range, then the target while the direction menu is open */
+    /* choosing where an attack or a block goes (target_ui.c): its range, then the target while its ring is open */
     struct {
         bool active;
-        uint32_t id; /* the attacker */
-        int action;  /* AttackAction */
+        int kind;    /* TargetKind (target_ui.h) */
+        uint32_t id; /* the attacker or blocker */
+        int action;  /* AttackAction or BlockAction */
         TileSet range;
         bool hasTarget;
         Hex target;
-    } attackMode;
+    } targetMode;
     /* the tiles attacked this round (attacks.h), one per attack, drawn by graphics.c; not saved */
     DA(AttackMark) attackMarks;
+    /* the blocks on tiles and the tiles blockers can't block again (blocks.h); not saved */
+    DA(TileBlock) blocks;
+    DA(BlockLock) blockLocks;
 
     bool hasTileUnderMouse;
     Hex tileUnderMouse;
