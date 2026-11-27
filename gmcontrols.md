@@ -493,6 +493,8 @@ anything else asks again). Several requests wait in line; each player can have a
 - Your log says "<player> asks for a new character.", and the console asks, for example,
   `Bob: new character Mao [2|7] size 1 HP 15 speed 5 init 0 ST 10 STR 1 AGI 2 COG 0 SPI 0. Allow? (y/n)` (the name
   only if they gave one). Until you answer, the player's bar shows `Waiting for the GM: Mao`.
+- If a player's request can't be sent (their log says why, e.g. "The picture is too large" or "Could not send that
+  to the host"), their draft is kept: they are still placing it (or on the summary) and can try again.
 - While the question is open, only your screen shows the picture faintly on that tile, so you can check it.
 - On `y` the character is created for everyone with full HP and stamina and belongs to that player ("The GM
   accepted your character."); on `n` the player is told "The GM declined your character."

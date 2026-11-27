@@ -960,8 +960,23 @@ extern int stub_file_requests, stub_requests, stub_request_max_health, stub_requ
 extern ActionKind stub_file_kind;
 extern char stub_request_name[CHAR_NAME_MAX];
 extern Hex stub_request_tile;
+extern int stub_request_pic_w;
+extern bool stub_request_fail;
+extern const uint8_t *stub_tex_pixels;
+extern int stub_tex_w, stub_tex_h;
 
 static Entity *last_entity(void) { return app.entities.items[app.entities.count - 1]; }
+
+/* a draft named name with picture t (and no request copy of it) on the summary */
+static void cc_to_summary(const Hex *tile, const char *name, Texture *t) {
+    cc_start(tile);
+    cc_set_name(name);
+    cc_next();
+    cc_next();
+    cc_next();
+    cc_set_picture(t, (Image){ 0 });
+    cc_next();
+}
 
 static void test_char_create(void) {
     reset_table();
@@ -1062,6 +1077,38 @@ static void test_char_create(void) {
     CHECK(stub_requests == asks + 1 && !strcmp(stub_request_name, "Kiri") && stub_request_max_health == 12);
     CHECK(stub_request_attr[ATTR_COG] == 1 && hex_eq(stub_request_tile, (Hex){ 9, 9 }) && app.entities.count == count);
     CHECK(!c->active);
+
+    /* the picture was chosen offline (no request copy): it is made from the texture's pixels when asking; a request
+     * that is not sent keeps the draft and the placing, so the player can try again */
+    uint8_t px[4 * 4 * 4] = { 0 };
+    stub_tex_pixels = px;
+    stub_tex_w = stub_tex_h = 4;
+    cc_to_summary(NULL, "Kiri", TEX_A);
+    cc_next();
+    CHECK(c->placing && !c->small.px);
+    stub_request_fail = true;
+    asks = stub_requests;
+    CHECK(cc_place((Hex){ 9, 9 }));
+    CHECK(stub_requests == asks + 1 && stub_request_pic_w == 4 && strstr(stub_last_log, "Could not send that"));
+    CHECK(c->active && c->placing && !strcmp(c->name, "Kiri") && c->picture == TEX_A);
+    stub_request_fail = false;
+    CHECK(cc_place((Hex){ 9, 9 }) && stub_requests == asks + 2 && !c->active);
+    /* from the tile menu: a failed Create stays on the summary */
+    cc_to_summary(&(Hex){ 7, 8 }, "Kiri", TEX_A);
+    stub_request_fail = true;
+    cc_next();
+    CHECK(c->active && !c->placing && c->step == CC_SUMMARY);
+    stub_request_fail = false;
+    cc_next();
+    CHECK(!c->active && hex_eq(stub_request_tile, (Hex){ 7, 8 }));
+    /* no pixels to make the copy from: nothing is sent, the draft stays */
+    stub_tex_pixels = NULL;
+    cc_to_summary(NULL, "Kiri", TEX_A);
+    cc_next();
+    asks = stub_requests;
+    CHECK(cc_place((Hex){ 9, 9 }) && stub_requests == asks && strstr(stub_last_log, "Could not encode the picture"));
+    CHECK(c->active && c->placing);
+    cc_cancel();
     stub_client = false;
     reset_table();
 }

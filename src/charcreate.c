@@ -1,5 +1,6 @@
 /* The creation draft and its steps (see charcreate.h). */
 #include "charcreate.h"
+#include "netmsg.h"
 #include "ops.h"
 #include "savefmt.h"
 #include "session.h"
@@ -43,12 +44,29 @@ bool cc_can_next(const char **why) {
     return *why == NULL;
 }
 
-/* creates the character on h: the GM spawns it, a player asks the GM */
-static void create(Hex h) {
+/* players: the request's copy of the picture, made from the texture's pixels if the dialog didn't make one (the
+ * table was offline then) */
+static bool request_picture(void) {
+    if (C.small.px) return true;
+    const uint8_t *px = C.picture ? vkr_texture_pixels(C.picture) : NULL;
+    if (!px) return false;
+    Image full = { vkr_texture_width(C.picture), vkr_texture_height(C.picture), (uint8_t *)px }; /* only read */
+    C.small = image_scale_to_fit(&full, NET_CREATE_MAX_DIM);
+    return true;
+}
+
+/* creates the character on h: the GM spawns it, a player asks the GM. False (the reason was logged): a player's
+ * request was not sent, the draft stays. */
+static bool create(Hex h) {
     AttrStats d = attr_derive(C.attr);
     if (session_is_client()) {
-        session_request_character(&C.small, h, C.size, d.maxHealth, d.speed, d.initiative, d.maxStamina, C.name,
-                                  C.attr);
+        if (!request_picture()) {
+            console_log("Could not encode the picture");
+            return false;
+        }
+        if (!session_request_character(&C.small, h, C.size, d.maxHealth, d.speed, d.initiative, d.maxStamina,
+                                       C.name, C.attr))
+            return false;
     } else {
         EntitySpec s = { .type = ENTITY_CHARACTER, .image = C.picture, .tile = h, .size = C.size,
                          .maxHealth = d.maxHealth, .health = d.maxHealth, .speed = d.speed,
@@ -61,6 +79,7 @@ static void create(Hex h) {
         op_free(&op);
     }
     reset();
+    return true;
 }
 
 void cc_next(void) {

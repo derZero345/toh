@@ -53,8 +53,8 @@ void session_prompt_free(void);
 #define SESSION_REQUESTS_MAX 3 /* a player's claims and new characters waiting for the GM, together */
 
 /* Client: asks the GM for a new character of ours with this picture (at most NET_CREATE_MAX_DIM per side).
- * attr: its attributes (NULL = all 0). */
-void session_request_character(const Image *pic, Hex tile, int size, int maxHealth, int speed, int initiative,
+ * attr: its attributes (NULL = all 0). True = sent; false: not sent, the reason was logged. */
+bool session_request_character(const Image *pic, Hex tile, int size, int maxHealth, int speed, int initiative,
                                int maxStamina, const char *name, const int attr[ATTR_COUNT]);
 /* Client: our create requests the GM has not answered yet, oldest first; their names ("" = no name). */
 int         session_pending_count(void);

@@ -46,6 +46,13 @@ void vkr_texture_retain(Texture *t) {
     if (r) (*r)++;
 }
 
+/* The pixels every texture keeps (save files, a player's request); NULL = none kept. */
+const uint8_t *stub_tex_pixels;
+int stub_tex_w, stub_tex_h;
+const uint8_t *vkr_texture_pixels(const Texture *t) { return t ? stub_tex_pixels : NULL; }
+int vkr_texture_width(const Texture *t) { return t ? stub_tex_w : 0; }
+int vkr_texture_height(const Texture *t) { return t ? stub_tex_h : 0; }
+
 void vkr_texture_release(Texture *t) {
     int *r = t ? stub_ref_slot(t) : NULL;
     if (!r) return;
@@ -99,17 +106,22 @@ void gfx_request_file(ActionKind kind, const HexList *tiles, int size, int maxHe
     stub_file_requests++;
     stub_file_kind = kind;
 }
-int stub_requests, stub_request_max_health, stub_request_attr[ATTR_COUNT];
+/* stub_request_fail: the request is not sent (session.c logged why); stub_requests counts the tries */
+int stub_requests, stub_request_max_health, stub_request_attr[ATTR_COUNT], stub_request_pic_w;
+bool stub_request_fail;
 char stub_request_name[CHAR_NAME_MAX];
 Hex stub_request_tile;
-void session_request_character(const Image *pic, Hex tile, int size, int maxHealth, int speed, int initiative,
+bool session_request_character(const Image *pic, Hex tile, int size, int maxHealth, int speed, int initiative,
                                int maxStamina, const char *name, const int attr[ATTR_COUNT]) {
-    (void)pic, (void)size, (void)speed, (void)initiative, (void)maxStamina;
+    (void)size, (void)speed, (void)initiative, (void)maxStamina;
     stub_requests++;
+    stub_request_pic_w = pic && pic->px ? pic->w : 0;
     stub_request_tile = tile;
     stub_request_max_health = maxHealth;
     snprintf(stub_request_name, sizeof(stub_request_name), "%s", name ? name : "");
     for (int i = 0; i < ATTR_COUNT; i++) stub_request_attr[i] = attr ? attr[i] : 0;
+    if (stub_request_fail) console_log("Could not send that to the host");
+    return !stub_request_fail;
 }
 int stub_pending;
 int session_pending_count(void) { return stub_pending; }

@@ -908,17 +908,17 @@ void session_draw_request_preview(void) {
     dr_set_alpha(1.0f);
 }
 
-void session_request_character(const Image *pic, Hex tile, int size, int maxHealth, int speed,
+bool session_request_character(const Image *pic, Hex tile, int size, int maxHealth, int speed,
                                int initiative, int maxStamina, const char *name,
                                const int attr[ATTR_COUNT]) {
     if (S.role != ROLE_CLIENT) {
         console_log("Wait until you have joined the table");
-        return;
+        return false;
     }
     SaveBlob b;
     if (!savefmt_encode_image(pic->px, pic->w, pic->h, SAVE_IMG_LOSSLESS, &b)) {
         console_log("Could not encode the picture");
-        return;
+        return false;
     }
     NetMsg m = { .type = NM_CREATE, .seq = ++S.seq, .data = b.webp, .data_len = b.len };
     m.spec = (NetSpec){ .type = SAVE_ENT_CHARACTER, .row = tile.row, .col = tile.col, .size = size,
@@ -927,15 +927,18 @@ void session_request_character(const Image *pic, Hex tile, int size, int maxHeal
                         .max_stamina = maxStamina, .stamina = maxStamina };
     snprintf(m.spec.name, sizeof(m.spec.name), "%s", name ? name : "");
     if (attr) memcpy(m.spec.attr, attr, sizeof(m.spec.attr));
+    bool sent = false;
     if (b.len > NET_CREATE_MAX_BLOB) console_log("The picture is too large");
     else if (!net_send(S.net, 1, &m)) console_log("Could not send that to the host");
     else {
+        sent = true;
         console_log("Asked the GM to create your character.");
         PendingCreate pc = { .seq = m.seq };
         snprintf(pc.name, sizeof(pc.name), "%s", name ? name : "");
         da_push(&S.pending, pc);
     }
     free(b.webp);
+    return sent;
 }
 
 int session_pending_count(void) { return S.role == ROLE_CLIENT ? S.pending.count : 0; }

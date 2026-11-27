@@ -119,7 +119,8 @@ it and go through the steps; **Cancel** stops, **< Back** goes back without losi
    Max HP 12 + 3 × STR, Stamina 8 + AGI, Speed AGI + 3 (at least 2), Initiative COG.
 4. **Picture**: **Choose picture…** and pick a PNG (large pictures are shrunk to 512×512).
 5. **Summary**: check it and click **Place**. The picture follows the mouse: green tiles = it fits, red = no room
-   ("No room on that tile"). Left click a green tile. Esc or a right click goes back to the summary.
+   ("No room on that tile"). Left click a green tile. Esc or a right click goes back to the summary. If the
+   request can't be sent, the log says why and you can click again.
 
 The GM then accepts or declines; until then the bar shows "Waiting for the GM: <name>". The rest of the table
 only sees your character once the GM says yes, so you can surprise the party. It then belongs to you. Only the GM
