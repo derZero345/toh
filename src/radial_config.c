@@ -1,8 +1,8 @@
 /* The radial menus: one tree of entries per menu. Edit these tables to change the menus; radial_game.c chooses
  * which menu a hex gets and handles the actions by id (see radial.h).
  *
- * "actions" is the menu of a character you control. "tile" and "character" (other hexes) are still placeholders, so
- * the framework can be tried out: neutral ids and labels, the placeholder icon, a submenu
+ * "actions" is the menu of a character you control. "tile" and "character" (other hexes) are still placeholders,
+ * except the tile menu's GM entry "Create character" (a real one), so the framework can be tried out: neutral ids and labels, the placeholder icon, a submenu
  * with a nested submenu, a second submenu to switch to, an entry that needs something on the tile (disabled on an
  * empty one) and one only the GM sees. */
 #include "radial.h"
@@ -47,6 +47,7 @@ static const RadialEntry TILE[] = {
     ACTION("action.3", "Action 3 (needs something on the tile)", HUD_ACCENT_GOLD, .enabled_if = "occupied"),
     SUBMENU("menu.b", "Menu B", HUD_ACCENT_VIOLET, SUB_B),
     ACTION("action.gm", "GM action", HUD_ACCENT_GREY, .visible_if = "gm"),
+    ACTION("char.create", "Create character", HUD_ACCENT_GREEN, .visible_if = "gm", .enabled_if = "!occupied"),
 };
 
 /* a hex with a character on it */

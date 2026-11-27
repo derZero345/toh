@@ -1,6 +1,7 @@
 /* The radial menu adapter: which menu a hex gets, the rules the conditions name, and what the actions do. This is
  * the only radial menu file that touches game state (see radial.h). */
 #include "radial_game.h"
+#include "charcreate.h"
 #include "move_ui.h"
 #include "moves.h"
 #include "recover.h"
@@ -107,6 +108,9 @@ static void on_event(const RadialEvent *ev) {
         } else if (recover >= 0) { /* nothing to choose: done at once */
             Op op = { .type = OP_RECOVER_ACTION, .id = actor, .action = recover };
             ops_submit(&op);
+        } else if (strcmp(ev->id, "char.create") == 0) { /* the creation steps, with this tile */
+            Hex h = { ev->target.row, ev->target.col };
+            cc_start(&h);
         } else if (strcmp(ev->id, "info") == 0) {
             /* nothing yet */
         } else { /* placeholder entries: they only say what was chosen */

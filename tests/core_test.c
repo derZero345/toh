@@ -2468,6 +2468,45 @@ static void test_radial_config(void) {
     CHECK(near(a0, -135, 0.01f) && near(a1, -45, 0.01f));
 }
 
+/* the GM's "Create character" on an empty tile starts creation with the tile chosen */
+static void test_create_character_menu(void) {
+    reset_table();
+    stub_client = false;
+    const RadialMenu *tile = NULL;
+    for (int i = 0; i < RADIAL_NMENUS; i++)
+        if (!strcmp(RADIAL_MENUS[i].id, "tile")) tile = &RADIAL_MENUS[i];
+    bool found = false;
+    for (int i = 0; tile && i < tile->count; i++)
+        if (!strcmp(tile->entries[i].id, "char.create")) {
+            found = true;
+            CHECK(!strcmp(tile->entries[i].visible_if, "gm") && !strcmp(tile->entries[i].enabled_if, "!occupied"));
+        }
+    CHECK(found);
+
+    gh->winW = 1000;
+    gh->winH = 800;
+    radial_game_init();
+    radial_use_config(NULL, 0);
+    Hex empty = { 6, 6 };
+    CHECK(radial_game_open(hex_center(empty)) && !strcmp(radial_menu_id(), "tile"));
+    rad_settle();
+    CHECK(rad_click("ring.7")); /* the GM's 7th entry */
+    const CharCreate *cc = cc_state();
+    CHECK(cc->active && cc->hasTile && hex_eq(cc->tile, empty) && cc->step == CC_NAME);
+    cc_cancel();
+    rad_settle();
+    /* a player doesn't see it */
+    stub_client = true;
+    CHECK(radial_game_open(hex_center(empty)));
+    rad_settle();
+    float px, py;
+    CHECK(!radial_part_point("ring.7", &px, &py) && !radial_part_point("ring.6", &px, &py));
+    radial_game_close();
+    rad_settle();
+    stub_client = false;
+    reset_table();
+}
+
 static void test_radial_menu(void) {
     const HudTheme *t = &HUD_THEME;
     reset_table();
@@ -2484,7 +2523,7 @@ static void test_radial_menu(void) {
     CHECK(radial_open("tile", &tg, 500, 400) && radial_is_open() && !strcmp(radial_menu_id(), "tile"));
     CHECK(radial_update(0)); /* it animates in */
     CHECK(radial_part_point("ring.6", &x, &y));          /* the GM entry: the GM sees it */
-    CHECK(!radial_part_point("ring.7", &x, &y) && !radial_part_point("parent.1", &x, &y));
+    CHECK(radial_part_point("ring.7", &x, &y) && !radial_part_point("ring.8", &x, &y) && !radial_part_point("parent.1", &x, &y));
     CHECK(!radial_part_point("ring.0", &x, &y) && !radial_part_point("ring.x", &x, &y));
     CHECK(radial_part_point("ring.1", &x, &y) && near(x, 500, 0.5f) && y < 400); /* the first one is at the top */
     CHECK(radial_part_point("center", &x, &y) && near(x, 500, 0.01f) && near(y, 400, 0.01f));
@@ -2916,6 +2955,7 @@ int main(void) {
     test_hud_create();
     test_radial_config();
     test_radial_menu();
+    test_create_character_menu();
     test_move_actions();
     test_test_mode();
     test_recover_actions();
