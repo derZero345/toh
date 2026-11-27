@@ -2,6 +2,7 @@
 #include "ops.h"
 #include "attacks.h"
 #include "blocks.h"
+#include "dodges.h"
 #include "moves.h"
 #include "recover.h"
 #include "savefmt.h"
@@ -25,7 +26,7 @@ EntitySpec op_spec_from_entity(const Entity *e) {
     EntitySpec s = { .type = e->type, .image = e->image, .tile = e->tile, .size = e->size,
                      .maxHealth = e->maxHealth, .health = e->health, .attack = e->attack,
                      .speed = e->speed, .initiative = e->initiative,
-                     .maxStamina = e->maxStamina, .stamina = e->stamina };
+                     .maxStamina = e->maxStamina, .stamina = e->stamina, .evasion = e->evasion };
     snprintf(s.name, sizeof(s.name), "%s", e->name);
     snprintf(s.party, sizeof(s.party), "%s", e->party);
     memcpy(s.attr, e->attr, sizeof(s.attr));
@@ -108,6 +109,7 @@ static OpResult check_structure(const Op *op) {
             if (!memchr(s->party, '\0', sizeof(s->party))) return OPR_INVALID;
             if (s->party[0] && (s->type != ENTITY_CHARACTER || !savefmt_char_name_valid(s->party))) return OPR_INVALID;
             if (s->maxStamina < 0 || s->maxStamina > SAVEFMT_MAX_HP) return OPR_INVALID; /* the wire's limit */
+            if (s->type == ENTITY_CHARACTER && (s->evasion < 0 || s->evasion > EVASION_MAX)) return OPR_INVALID;
             for (int a = 0; a < ATTR_COUNT; a++)
                 if (!attr_valid(s->attr[a])) return OPR_INVALID;
         }
@@ -149,6 +151,7 @@ static OpResult check_structure(const Op *op) {
         if ((op->statMask & STAT_MAXSTAMINA) && (op->maxStamina < 0 || op->maxStamina > SAVEFMT_MAX_HP))
             return OPR_INVALID;
         if (op->statMask & ~STAT_ALL) return OPR_INVALID;
+        if ((op->statMask & STAT_EVASION) && (op->evasion < 0 || op->evasion > EVASION_MAX)) return OPR_INVALID;
         for (int a = 0; a < ATTR_COUNT; a++)
             if ((op->statMask & STAT_ATTR(a)) && !attr_valid(op->attr[a])) return OPR_INVALID;
         return ids_exist(op) ? OPR_OK : OPR_NO_ENTITY;
@@ -192,6 +195,10 @@ static OpResult check_structure(const Op *op) {
     case OP_BLOCK_ACTION: /* like move actions, the rules hold for the GM too */
         if (!tile_ok(op->tile) || op->action < 0 || op->action >= BLOCK_COUNT) return OPR_INVALID;
         return block_check_at(entity_by_id(op->id), (BlockAction)op->action, op->tile, op->value);
+    case OP_DODGE_ACTION: /* like move actions, the rules hold for the GM too; value: 0 or the host's roll */
+        if (!tile_ok(op->tile) || op->action < 0 || op->action >= DODGE_COUNT) return OPR_INVALID;
+        if (op->value != 0 && !dodge_roll_ok((DodgeAction)op->action, op->value)) return OPR_INVALID;
+        return dodge_check_to(entity_by_id(op->id), (DodgeAction)op->action, op->tile);
     case OP_SET_BACKGROUND:
     case OP_GRID_ORIENTATION:
     case OP_INIT_CLEAR:
@@ -224,6 +231,7 @@ static OpResult check_player(const Op *op, const OpAuthor *a) {
     case OP_RECOVER_ACTION:
     case OP_ATTACK_ACTION:
     case OP_BLOCK_ACTION:
+    case OP_DODGE_ACTION:
         return is_owner(entity_by_id(op->id), a) ? OPR_OK : OPR_NOT_YOURS;
     case OP_SET_HEALTH:
     case OP_SET_STAMINA:
@@ -240,7 +248,8 @@ OpResult ops_check(const Op *op, const OpAuthor *author) {
     if (!memchr(author->name, '\0', sizeof(author->name))) return OPR_INVALID;
     bool player_op = op->type == OP_MOVE || op->type == OP_INIT_NEXT || op->type == OP_SET_HEALTH ||
                      op->type == OP_SET_NAME || op->type == OP_SET_STAMINA || op->type == OP_MOVE_ACTION ||
-                     op->type == OP_RECOVER_ACTION || op->type == OP_ATTACK_ACTION || op->type == OP_BLOCK_ACTION;
+                     op->type == OP_RECOVER_ACTION || op->type == OP_ATTACK_ACTION || op->type == OP_BLOCK_ACTION ||
+                     op->type == OP_DODGE_ACTION;
     if (!author->gm && !player_op) return OPR_GM_ONLY;
     OpResult r = check_structure(op);
     if (r != OPR_OK || author->gm) return r;
@@ -271,6 +280,7 @@ static void apply_spawn(Op *op) {
             snprintf(e->name, sizeof(e->name), "%s", s->name);
             snprintf(e->party, sizeof(e->party), "%s", s->party);
             memcpy(e->attr, s->attr, sizeof(e->attr));
+            e->evasion = s->evasion;
         }
         if (keep) entity_register_as(e, given[i]);
         else entity_register(e);
@@ -367,6 +377,7 @@ static void apply_stats(const Op *op) {
         if (m & STAT_SPEED) speed = op->speed;
         if (m & STAT_INITIATIVE) ini = op->initiative;
         if (m & STAT_SIZE) e->size = op->size;
+        if (m & STAT_EVASION) e->evasion = op->evasion;
         if (maxH != e->maxHealth) {
             e->health = hp_after_max_change(e->health, e->maxHealth, maxH);
             e->maxHealth = maxH;
@@ -559,7 +570,7 @@ void ops_apply(Op *op) {
             uint32_t *ids = malloc(sizeof(uint32_t) * (size_t)cap);
             int *outcomes = malloc(sizeof(int) * (size_t)cap);
             if (!ids || !outcomes) abort();
-            int n = attack_targets(op->tile, (AttackDir)op->value, ATTACK_ACTIONS[op->action].value, ids, outcomes, cap);
+            int n = attack_targets(e, op->tile, (AttackDir)op->value, ATTACK_ACTIONS[op->action].value, ids, outcomes, cap);
             da_clear(&op->ids);
             da_clear(&op->values);
             for (int o = 0; o < OUTCOME_COUNT; o++) da_push(&op->values, rolled[o]);
@@ -583,6 +594,16 @@ void ops_apply(Op *op) {
     case OP_BLOCK_ACTION: {
         Entity *e = entity_by_id(op->id);
         if (e) block_apply(e, (BlockAction)op->action, op->tile, op->value);
+        break;
+    }
+    case OP_DODGE_ACTION: {
+        Entity *e = entity_by_id(op->id);
+        if (!e) break;
+        /* the host (or offline) rolls the Dodge Value's die; clients apply the roll the host sent */
+        if (!session_is_client()) op->value = dodge_roll((DodgeAction)op->action);
+        bool was_selected = e == selected_entity();
+        dodge_apply(e, (DodgeAction)op->action, op->tile, op->value);
+        if (was_selected) entities_clear_highlights(); /* the range shown belonged to the old tile */
         break;
     }
     case OP_SET_TEST_MODE:

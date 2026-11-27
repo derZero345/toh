@@ -13,6 +13,7 @@
 _Static_assert(SAVEFMT_NAME_MAX == WAYPOINT_NAME_MAX, "waypoint name sizes differ");
 _Static_assert(SAVEFMT_MAX_SPEED == MAX_SPEED, "speed limits differ");
 _Static_assert(SAVEFMT_MAX_TURN_USED == TURN_ALL, "turn state bits differ");
+_Static_assert(SAVEFMT_MAX_EVASION == EVASION_MAX, "the save file's ET limit");
 _Static_assert(SAVEFMT_ATTRS == ATTR_COUNT && SAVEFMT_MIN_ATTR == ATTR_MIN && SAVEFMT_MAX_ATTR == ATTR_MAX,
                "attribute limits differ");
 _Static_assert(SAVEFMT_OWNER_MAX == PLAYER_NAME_MAX, "owner name sizes differ");
@@ -101,6 +102,7 @@ static void gather(Gathered *g) {
             snprintf(s->party, sizeof(s->party), "%s", e->party);
             s->turn_used = (uint8_t)(e->turnUsed & TURN_ALL);
             for (int a = 0; a < SAVEFMT_ATTRS; a++) s->attr[a] = e->attr[a];
+            s->evasion = e->evasion;
         }
     }
 
@@ -345,6 +347,7 @@ static void apply(SaveData *d, bool keep_view) {
             snprintf(e->party, sizeof(e->party), "%s", s->party);
             e->turnUsed = s->turn_used;
             for (int a = 0; a < SAVEFMT_ATTRS; a++) e->attr[a] = s->attr[a];
+            e->evasion = s->evasion;
         }
         entity_register(e);
     }

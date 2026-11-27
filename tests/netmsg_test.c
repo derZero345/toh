@@ -64,7 +64,7 @@ static NetOp sample_op(int type) {
         fill_hash(specs2[0].image, 1);
         strcpy(specs2[0].name, "Mao");
         strcpy(specs2[0].party, "Silver Hand");
-        specs2[0].max_stamina = 9; specs2[0].stamina = 3;
+        specs2[0].max_stamina = 9; specs2[0].stamina = 3; specs2[0].evasion = 4;
         specs2[1] = (NetSpec){ .type = SAVE_ENT_WALL, .row = -1000000, .col = 9 };
         fill_hash(specs2[1].image, 2);
         o.specs = specs2; o.nspecs = 2;
@@ -78,6 +78,7 @@ static NetOp sample_op(int type) {
         o.ids = ids3; o.nids = 1;
         o.stat_mask = 1 | 4 | 8 | 16 | NSTAT_STR | NSTAT_SPI; o.max_stamina = 7; o.size = -2; o.speed = 21; o.initiative = 4;
         o.attr[0] = 3; o.attr[3] = -2;
+        o.stat_mask |= NSTAT_EVASION; o.evasion = 6;
         break;
     case NOP_SET_ICON:
         o.ids = ids3; o.nids = 2;
@@ -133,6 +134,9 @@ static NetOp sample_op(int type) {
         break;
     case NOP_BLOCK_ACTION:
         o.id = 12; o.row = 5; o.col = -3; o.action = 1; o.value = 5;
+        break;
+    case NOP_DODGE_ACTION:
+        o.id = 13; o.row = -2; o.col = 8; o.action = 0; o.value = 7; /* the host's roll */
         break;
     case NOP_ROLL:
         strcpy(o.dice, "2d6+3");
@@ -255,7 +259,7 @@ static void test_fields_survive(void) {
     CHECK(d.op.specs[1].type == SAVE_ENT_WALL && d.op.specs[1].row == -1000000 && d.op.specs[1].speed == 0);
     CHECK(strcmp(d.op.specs[0].name, "Mao") == 0 && d.op.specs[1].name[0] == '\0');
     CHECK(strcmp(d.op.specs[0].party, "Silver Hand") == 0 && d.op.specs[1].party[0] == '\0');
-    CHECK(d.op.specs[0].max_stamina == 9 && d.op.specs[0].stamina == 3);
+    CHECK(d.op.specs[0].max_stamina == 9 && d.op.specs[0].stamina == 3 && d.op.specs[0].evasion == 4);
     netmsg_free(&d);
 
     m = sample_msg(NM_OP, NOP_SET_HEALTH);
@@ -296,12 +300,15 @@ static void test_fields_survive(void) {
     m = sample_msg(NM_OP, NOP_ATTACK_ACTION); m.op.nvalues = 0; m.op.nids = 0; /* a client sends no rolls */
     CHECK(round_trip(&m, &d) && d.op.nvalues == 0 && d.op.nids == 0 && d.op.value == 2);
     netmsg_free(&d);
+    m = sample_msg(NM_OP, NOP_DODGE_ACTION);
+    CHECK(round_trip(&m, &d) && d.op.id == 13 && d.op.row == -2 && d.op.col == 8 && d.op.action == 0 && d.op.value == 7);
+    netmsg_free(&d);
     m = sample_msg(NM_OP, NOP_BLOCK_ACTION);
     CHECK(round_trip(&m, &d) && d.op.id == 12 && d.op.row == 5 && d.op.col == -3 && d.op.action == 1 && d.op.value == 5);
     netmsg_free(&d);
 
     m = sample_msg(NM_OP, NOP_SET_STATS);
-    CHECK(round_trip(&m, &d) && d.seq == 99 && d.op.stat_mask == (29 | NSTAT_STR | NSTAT_SPI) && d.op.attr[0] == 3 && d.op.attr[3] == -2 && d.op.attr[1] == 0 &&
+    CHECK(round_trip(&m, &d) && d.seq == 99 && d.op.stat_mask == (29 | NSTAT_STR | NSTAT_SPI | NSTAT_EVASION) && d.op.evasion == 6 && d.op.attr[0] == 3 && d.op.attr[3] == -2 && d.op.attr[1] == 0 &&
           d.op.max_stamina == 7 && d.op.size == -2 && d.op.speed == 21 &&
           d.op.initiative == 4 && d.op.max_health == 0);
     netmsg_free(&d);
@@ -469,6 +476,13 @@ static void test_encoder_refuses_invalid(void) {
     m = sample_msg(NM_OP, NOP_SPAWN); strcpy(specs2[1].name, "wall"); check_invalid(m, "wall with a name"); specs2[1].name[0] = '\0';
     m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = 0; check_invalid(m, "empty stat mask");
     m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = NSTAT_ALL + 1; check_invalid(m, "unknown stat bit");
+    m = sample_msg(NM_OP, NOP_SET_STATS); m.op.evasion = SAVEFMT_MAX_EVASION + 1; check_invalid(m, "ET too high");
+    m = sample_msg(NM_OP, NOP_SET_STATS); m.op.evasion = -1; check_invalid(m, "ET below 0");
+    m = sample_msg(NM_OP, NOP_SPAWN); specs2[0].evasion = 100; check_invalid(m, "spawned with ET too high");
+    specs2[0].evasion = 4;
+    m = sample_msg(NM_OP, NOP_DODGE_ACTION); m.op.id = 0; check_invalid(m, "dodge without a character");
+    m = sample_msg(NM_OP, NOP_DODGE_ACTION); m.op.value = -1; check_invalid(m, "dodge roll below 0");
+    m = sample_msg(NM_OP, NOP_DODGE_ACTION); m.op.value = NETMSG_MAX_DIE + 1; check_invalid(m, "dodge roll too high");
     m = sample_msg(NM_OP, NOP_SET_STATS); m.op.max_stamina = SAVEFMT_MAX_HP + 1; check_invalid(m, "max stamina too big");
     m = sample_msg(NM_OP, NOP_SET_STATS); m.op.max_stamina = -1; check_invalid(m, "negative max stamina");
     m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = NSTAT_SPEED; m.op.speed = SAVEFMT_MAX_SPEED + 1; check_invalid(m, "stat speed too big");

@@ -41,7 +41,8 @@ static bool spec_ok(const NetSpec *s) {
     if (s->party[0] && (s->type != SAVE_ENT_CHARACTER || !savefmt_char_name_valid(s->party))) return false;
     if (s->type != SAVE_ENT_CHARACTER) return true;
     return s->speed <= SAVEFMT_MAX_SPEED && s->max_stamina >= 0 && s->max_stamina <= SAVEFMT_MAX_HP &&
-           s->stamina >= -SAVEFMT_MAX_HP && s->stamina <= SAVEFMT_MAX_HP && attrs_ok(s->attr);
+           s->stamina >= -SAVEFMT_MAX_HP && s->stamina <= SAVEFMT_MAX_HP && attrs_ok(s->attr) && s->evasion >= 0 &&
+           s->evasion <= SAVEFMT_MAX_EVASION;
 }
 
 static bool op_ok(const NetOp *o) {
@@ -61,6 +62,7 @@ static bool op_ok(const NetOp *o) {
         if (o->stat_mask == 0 || o->stat_mask > NSTAT_ALL) return false;
         if ((o->stat_mask & NSTAT_MAXSTAMINA) && (o->max_stamina < 0 || o->max_stamina > SAVEFMT_MAX_HP)) return false;
         if ((o->stat_mask & (NSTAT_STR | NSTAT_AGI | NSTAT_COG | NSTAT_SPI)) && !attrs_ok(o->attr)) return false;
+        if ((o->stat_mask & NSTAT_EVASION) && (o->evasion < 0 || o->evasion > SAVEFMT_MAX_EVASION)) return false;
         return !(o->stat_mask & NSTAT_SPEED) || o->speed <= SAVEFMT_MAX_SPEED;
     case NOP_SET_ICON:
         return o->has_image;
@@ -108,6 +110,8 @@ static bool op_ok(const NetOp *o) {
         return true;
     case NOP_BLOCK_ACTION: /* ops_check checks the action and the range */
         return o->id != 0 && coord_ok(o->row) && coord_ok(o->col) && o->value >= 1 && o->value <= NETMSG_BLOCK_DIRS;
+    case NOP_DODGE_ACTION: /* ops_check checks the action, the tile and the roll's range */
+        return o->id != 0 && coord_ok(o->row) && coord_ok(o->col) && o->value >= 0 && o->value <= NETMSG_MAX_DIE;
     default: /* DELETE, INIT_REMOVE (ids only), SET_BACKGROUND, INIT_NEXT, GRID / CLEAR / SHOW */
         return true;
     }
@@ -263,6 +267,7 @@ static void put_op(Buf *b, const NetOp *o) {
                 put_sv(b, s->stamina);
                 put_str(b, s->party);
                 for (int a = 0; a < NETMSG_ATTRS; a++) put_sv(b, s->attr[a]);
+                put_sv(b, s->evasion);
             }
         }
         put_ids(b, o->ids, o->nids);
@@ -274,9 +279,9 @@ static void put_op(Buf *b, const NetOp *o) {
     case NOP_SET_STATS: {
         put_ids(b, o->ids, o->nids);
         put_uv(b, o->stat_mask);
-        const int32_t v[9] = { o->size, o->max_health, o->speed, o->initiative, o->max_stamina,
-                               o->attr[0], o->attr[1], o->attr[2], o->attr[3] };
-        for (int i = 0; i < 9; i++)
+        const int32_t v[10] = { o->size, o->max_health, o->speed, o->initiative, o->max_stamina,
+                                o->attr[0], o->attr[1], o->attr[2], o->attr[3], o->evasion };
+        for (int i = 0; i < 10; i++)
             if (o->stat_mask & (1 << i)) put_sv(b, v[i]);
         break;
     }
@@ -356,6 +361,13 @@ static void put_op(Buf *b, const NetOp *o) {
         put_sv(b, o->col);
         put_u8(b, o->action);
         put_u8(b, (uint8_t)o->value);
+        break;
+    case NOP_DODGE_ACTION:
+        put_uv(b, o->id);
+        put_sv(b, o->row);
+        put_sv(b, o->col);
+        put_u8(b, o->action);
+        put_sv(b, o->value);
         break;
     case NOP_ROLL:
         put_str(b, o->dice);
@@ -575,6 +587,7 @@ static void get_op(Rd *r, NetOp *o) {
                 s->stamina = get_sv(r);
                 get_str(r, s->party, sizeof(s->party));
                 for (int a = 0; a < NETMSG_ATTRS; a++) s->attr[a] = get_sv(r);
+                s->evasion = get_sv(r);
             }
         }
         o->ids = get_ids(r, &o->nids);
@@ -589,8 +602,8 @@ static void get_op(Rd *r, NetOp *o) {
         uint32_t mask = get_uv(r);
         if (mask > 0xFFFF) r->bad = true;
         o->stat_mask = (uint16_t)mask;
-        int32_t v[9] = { 0 };
-        for (int i = 0; i < 9; i++)
+        int32_t v[10] = { 0 };
+        for (int i = 0; i < 10; i++)
             if (o->stat_mask & (1 << i)) v[i] = get_sv(r);
         o->size = v[0];
         o->max_health = v[1];
@@ -598,6 +611,7 @@ static void get_op(Rd *r, NetOp *o) {
         o->initiative = v[3];
         o->max_stamina = v[4];
         for (int a = 0; a < NETMSG_ATTRS; a++) o->attr[a] = v[5 + a];
+        o->evasion = v[9];
         break;
     }
     case NOP_SET_ICON:
@@ -686,6 +700,13 @@ static void get_op(Rd *r, NetOp *o) {
         o->col = get_sv(r);
         o->action = get_u8(r);
         o->value = get_u8(r);
+        break;
+    case NOP_DODGE_ACTION:
+        o->id = get_uv(r);
+        o->row = get_sv(r);
+        o->col = get_sv(r);
+        o->action = get_u8(r);
+        o->value = get_sv(r);
         break;
     case NOP_ROLL: {
         get_str(r, o->dice, sizeof(o->dice));

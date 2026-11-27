@@ -1,6 +1,7 @@
 /* Attacks (see attacks.h). */
 #include "attacks.h"
 #include "blocks.h"
+#include "dodges.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -124,19 +125,28 @@ AttackOutcome attack_dodge_contest(AttackDir dodge, int dv, int et, AttackDir d,
  * combined, the highest BV). */
 static bool find_block(Hex tile, int *dirs, int *bv) { return block_on_tile(tile, dirs, bv); }
 
-/* target's dodge, if it dodges: its direction, Dodge Value and Evasion Threshold. Dodges don't exist yet. */
-static bool find_dodge(const Entity *target, AttackDir *dir, int *dv, int *et) {
-    (void)target, (void)dir, (void)dv, (void)et;
-    return false;
+/* target's dodge from tile, if it dodged from there (dodges.h): its direction against an attack from `from`
+ * (DIR_COUNT: toward the attacker, no attack direction), Dodge Value and Evasion Threshold. */
+static bool find_dodge(const Entity *target, Hex from, Hex tile, AttackDir *dir, int *dv, int *et) {
+    const DodgeRec *d = dodge_find(target, tile);
+    if (!d) return false;
+    *dir = (AttackDir)dodge_dir(from, tile, d->step);
+    *dv = d->value;
+    *et = target->evasion;
+    return true;
 }
 
-AttackOutcome attack_resolve(const Entity *target, Hex tile, AttackDir d, int av) {
+AttackOutcome attack_resolve(const Entity *target, Hex from, Hex tile, AttackDir d, int av) {
     int dirs, bv, dv, et;
     AttackDir dodge;
-    /* how a block and a dodge against the same attack combine is decided when both exist; for now the block wins */
-    if (find_block(tile, &dirs, &bv)) return attack_block_contest(dirs, bv, d, av);
-    if (find_dodge(target, &dodge, &dv, &et)) return attack_dodge_contest(dodge, dv, et, d, av);
-    return OUTCOME_SUCCESS; /* not interfered with */
+    AttackOutcome o = OUTCOME_SUCCESS; /* not interfered with */
+    if (find_block(tile, &dirs, &bv)) o = attack_block_contest(dirs, bv, d, av);
+    /* a block and a dodge: the better result for the defender (miss > scrape > success) */
+    if (find_dodge(target, from, tile, &dodge, &dv, &et)) {
+        AttackOutcome dx = attack_dodge_contest(dodge, dv, et, d, av);
+        if (dx > o) o = dx;
+    }
+    return o;
 }
 
 /* ---- damage ---- */
@@ -171,13 +181,15 @@ bool attack_rolls_ok(AttackAction a, const int rolled[OUTCOME_COUNT]) {
 
 /* ---- using it ---- */
 
-int attack_targets(Hex tile, AttackDir d, int av, uint32_t *ids, int *outcomes, int cap) {
+int attack_targets(const Entity *attacker, Hex tile, AttackDir d, int av, uint32_t *ids, int *outcomes, int cap) {
     int n = 0;
+    Hex from = attack_origin(attacker, tile);
     for (int i = 0; i < gh->entities.count && n < cap; i++) {
         const Entity *t = gh->entities.items[i];
-        if (t->type != ENTITY_CHARACTER || !entity_occupies(t, tile)) continue;
+        /* the characters on the tile and those who dodged from it (they dodge on the original tile) */
+        if (t->type != ENTITY_CHARACTER || (!entity_occupies(t, tile) && !dodge_find(t, tile))) continue;
         ids[n] = t->id;
-        outcomes[n] = attack_resolve(t, tile, d, av);
+        outcomes[n] = attack_resolve(t, from, tile, d, av);
         n++;
     }
     return n;
@@ -205,7 +217,10 @@ void attack_apply(Entity *e, AttackAction a, Hex tile, AttackDir d, const int ro
         AttackOutcome bx = attack_block_contest(dirs, bv, d, def->value);
         snprintf(blocked, sizeof(blocked), ", AV %d against a block of BV %d%s", def->value, bv,
                  bx == OUTCOME_SUCCESS ? " in other directions" : "");
-        if (bx == OUTCOME_SUCCESS) block_failed(tile); /* blockers off the tile can't block it again next turn */
+        /* blockers off the tile can't block it again next turn, unless a dodge saved everyone hit */
+        bool through = n == 0;
+        for (int i = 0; i < n && !through; i++) through = outcomes[i] == OUTCOME_SUCCESS;
+        if (bx == OUTCOME_SUCCESS && through) block_failed(tile);
     }
     console_log("%s: %s on [%d|%d] %s%s%s%s", name, def->name, tile.row, tile.col, ATTACK_DIR_NAMES[d], blocked,
                 stamina, n ? "" : ", nobody there");
@@ -215,8 +230,15 @@ void attack_apply(Entity *e, AttackAction a, Hex tile, AttackDir d, const int ro
         Entity *t = entity_by_id(ids[i]);
         if (!t || t->type != ENTITY_CHARACTER || outcomes[i] < 0 || outcomes[i] >= OUTCOME_COUNT) continue;
         AttackOutcome o = (AttackOutcome)outcomes[i];
-        char tname[CHAR_NAME_MAX + 16];
+        char tname[CHAR_NAME_MAX + 96];
         entity_display_name(t, tname, sizeof(tname));
+        const DodgeRec *dg = dodge_find(t, tile); /* a player who joined later may not know it: no note then */
+        if (dg) {
+            int dd = dodge_dir(attack_origin(e, tile), tile, dg->step);
+            size_t len = strlen(tname);
+            snprintf(tname + len, sizeof(tname) - len, " (dodged %s, DV %d against AV %d + ET %d)",
+                     dd < DIR_COUNT ? ATTACK_DIR_NAMES[dd] : "toward the attacker", dg->value, def->value, t->evasion);
+        }
         if (t->maxHealth <= 0) { /* no HP stat: nothing to lose */
             console_log("  %s: %s, %d damage (no HP)", tname, ATTACK_OUTCOME_NAMES[o], rolled[o]);
             continue;

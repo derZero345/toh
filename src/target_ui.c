@@ -1,6 +1,7 @@
-/* Choosing where an attack or a block goes (see target_ui.h). */
+/* Choosing where an attack, a block or a dodge goes (see target_ui.h). */
 #include "target_ui.h"
 #include "blocks.h"
+#include "dodges.h"
 #include "ops.h"
 #include "radial_game.h"
 
@@ -11,7 +12,15 @@ static Hex start_tile; /* where the character stood when the mode started */
 bool target_ui_active(void) { return TM.active; }
 
 static OpResult check(const Entity *e) {
-    return TM.kind == TARGET_ATTACK ? attack_check(e, (AttackAction)TM.action) : block_check(e, (BlockAction)TM.action);
+    switch (TM.kind) {
+    case TARGET_ATTACK: return attack_check(e, (AttackAction)TM.action);
+    case TARGET_BLOCK:  return block_check(e, (BlockAction)TM.action);
+    default:            return dodge_check(e, (DodgeAction)TM.action);
+    }
+}
+
+const char *target_ui_name(void) {
+    return TM.kind == TARGET_ATTACK ? "Attack" : TM.kind == TARGET_BLOCK ? "Block" : "Dodge";
 }
 
 static bool own_tiles(void) { return TM.kind == TARGET_BLOCK && BLOCK_ACTIONS[TM.action].range == 0; }
@@ -47,13 +56,16 @@ bool target_ui_start(TargetKind kind, uint32_t id, int action) {
     TM.hasTarget = false;
     start_tile = e->tile;
     if (kind == TARGET_ATTACK) attack_range(e, (AttackAction)action, &TM.range);
-    else block_range(e, (BlockAction)action, &TM.range);
+    else if (kind == TARGET_BLOCK) block_range(e, (BlockAction)action, &TM.range);
+    else dodge_range(e, (DodgeAction)action, &TM.range);
     entities_clear_highlights(); /* the movement range would mix with the action's */
     char name[CHAR_NAME_MAX + 16];
     entity_display_name(e, name, sizeof(name));
     if (own_tiles()) {
         console_log("%s: %s; choose the directions to block (Esc cancels)", name, BLOCK_ACTIONS[action].name);
         open_ring(e->tile);
+    } else if (kind == TARGET_DODGE) {
+        console_log("%s: %s; click the adjacent tile to dodge to (Esc cancels)", name, DODGE_ACTIONS[action].name);
     } else {
         const char *what = kind == TARGET_ATTACK ? ATTACK_ACTIONS[action].name : BLOCK_ACTIONS[action].name;
         int range = kind == TARGET_ATTACK ? ATTACK_ACTIONS[action].range : BLOCK_ACTIONS[action].range;
@@ -68,7 +80,14 @@ bool target_ui_click(Hex h) {
     if (TM.hasTarget) return true; /* the ring is open and takes the presses */
     if (!ts_has(&TM.range, h)) {
         target_ui_cancel();
-        console_log(TM.kind == TARGET_ATTACK ? "Attack cancelled" : "Block cancelled");
+        console_log("%s cancelled", target_ui_name());
+        return true;
+    }
+    if (TM.kind == TARGET_DODGE) { /* no ring: the step is the choice */
+        Op op = { .type = OP_DODGE_ACTION, .id = TM.id, .action = TM.action, .tile = h };
+        target_ui_cancel();
+        ops_submit(&op);
+        op_free(&op);
         return true;
     }
     open_ring(h);
@@ -108,6 +127,8 @@ void target_ui_update(void) {
 
 int target_ui_slot(void) {
     Entity *e = entity_by_id(TM.id);
-    ActionSlot s = TM.kind == TARGET_ATTACK ? ATTACK_ACTIONS[TM.action].slot : BLOCK_ACTIONS[TM.action].slot;
+    ActionSlot s = TM.kind == TARGET_ATTACK  ? ATTACK_ACTIONS[TM.action].slot
+                   : TM.kind == TARGET_BLOCK ? BLOCK_ACTIONS[TM.action].slot
+                                             : DODGE_ACTIONS[TM.action].slot;
     return e && action_slot(e, s) == SLOT_MINOR ? SLOT_MINOR : SLOT_MAJOR;
 }

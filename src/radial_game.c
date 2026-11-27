@@ -2,6 +2,7 @@
  * the only radial menu file that touches game state (see radial.h). */
 #include "radial_game.h"
 #include "blocks.h"
+#include "dodges.h"
 #include "target_ui.h"
 #include "charcreate.h"
 #include "move_ui.h"
@@ -62,6 +63,13 @@ static const char *rule_block(const RadialTarget *t, int arg) {
 }
 #define BLOCK_RULE(key_, action_) { key_, NULL, NULL, "Not possible", rule_block, action_ }
 
+/* Can the actor use dodge arg now? */
+static const char *rule_dodge(const RadialTarget *t, int arg) {
+    (void)t;
+    OpResult r = dodge_check(entity_by_id(actor), (DodgeAction)arg);
+    return r == OPR_OK ? NULL : move_result_text(r);
+}
+
 /* The block ring's toggles: their direction bits. */
 static int toggled_dirs(void) {
     return (radial_toggled("block.up") ? DIR_BIT(DIR_UP) : 0) | (radial_toggled("block.left") ? DIR_BIT(DIR_LEFT) : 0) |
@@ -88,6 +96,8 @@ static const RadialRule RULES[] = {
     BLOCK_RULE("block.test", BLOCK_TEST),
     BLOCK_RULE("block.test_range", BLOCK_TEST_RANGE),
     { "block.dirs", rule_block_dirs, "Choose at least one direction", "", NULL, 0 },
+    /* one per dodge; the keys are DODGE_ACTIONS' ids */
+    { "dodge", NULL, NULL, "Not possible", rule_dodge, DODGE_BASIC },
 };
 #define NRULES ((int)(sizeof(RULES) / sizeof(RULES[0])))
 
@@ -154,12 +164,15 @@ static void on_event(const RadialEvent *ev) {
         }
         int move = move_action_by_id(ev->id), recover = recover_action_by_id(ev->id);
         int attack = attack_action_by_id(ev->id), block = block_action_by_id(ev->id);
+        int dodge = dodge_action_by_id(ev->id);
         if (move >= 0) {
             move_ui_start(actor, move);
         } else if (attack >= 0) {
             target_ui_start(TARGET_ATTACK, actor, attack);
         } else if (block >= 0) {
             target_ui_start(TARGET_BLOCK, actor, block);
+        } else if (dodge >= 0) {
+            target_ui_start(TARGET_DODGE, actor, dodge);
         } else if (recover >= 0) { /* nothing to choose: done at once */
             Op op = { .type = OP_RECOVER_ACTION, .id = actor, .action = recover };
             ops_submit(&op);

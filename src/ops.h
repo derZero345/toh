@@ -38,11 +38,12 @@ typedef enum {
     OP_ATTACK_ACTION,    /* id, action (AttackAction), tile, value: AttackDir; from the host also ids: the characters
                           * hit, and values: the damage roll per outcome, then each character's outcome (attacks.h) */
     OP_BLOCK_ACTION,     /* id, action (BlockAction), tile, value: the blocked directions, DIR_BIT bits (blocks.h) */
+    OP_DODGE_ACTION,     /* id, action (DodgeAction), tile: where to; value: 0 from a client, the host's roll (dodges.h) */
     OP_COUNT
 } OpType;
 
 enum { STAT_SIZE = 1, STAT_MAXHEALTH = 2, STAT_SPEED = 4, STAT_INITIATIVE = 8, STAT_MAXSTAMINA = 16,
-       STAT_STR = 32, STAT_AGI = 64, STAT_COG = 128, STAT_SPI = 256, STAT_ALL = 511 };
+       STAT_STR = 32, STAT_AGI = 64, STAT_COG = 128, STAT_SPI = 256, STAT_EVASION = 512, STAT_ALL = 1023 };
 #define STAT_ATTR(a) (STAT_STR << (a)) /* the bit of attribute a (attrs.h) */
 #define STAT_ATTRS (STAT_STR | STAT_AGI | STAT_COG | STAT_SPI)
 enum { HEALTH_SET = 0, HEALTH_CHANGE = 1 }; /* OP_SET_HEALTH: value is the new HP / is added to it */
@@ -56,6 +57,7 @@ typedef struct {
     int size, maxHealth, health, attack, speed, initiative; /* characters only */
     int maxStamina, stamina;                                /* characters only */
     int attr[ATTR_COUNT];                                   /* characters only */
+    int evasion;                                            /* characters only: EVASION_DEFAULT for new ones */
     char name[CHAR_NAME_MAX]; /* characters: "" = no name */
     char party[CHAR_NAME_MAX]; /* characters: "" = no party */
 } EntitySpec;
@@ -71,10 +73,12 @@ typedef struct Op {
     int statMask;         /* OP_SET_STATS */
     int size, maxHealth, speed, initiative, maxStamina;
     int attr[ATTR_COUNT]; /* OP_SET_STATS: the attribute bits' values */
+    int evasion;          /* OP_SET_STATS: STAT_EVASION's value */
     char name[WAYPOINT_NAME_MAX]; /* OP_WAYPOINT_*: waypoint name, OP_SET_OWNER: player name */
     int healthMode, value;        /* OP_SET_HEALTH, OP_SET_STAMINA; value: OP_SET_TEST_MODE, OP_RECOVER_ACTION */
     int action;                   /* OP_MOVE_ACTION: MoveAction, OP_RECOVER_ACTION: RecoverAction,
-                                   * OP_ATTACK_ACTION: AttackAction, OP_BLOCK_ACTION: BlockAction */
+                                   * OP_ATTACK_ACTION: AttackAction, OP_BLOCK_ACTION: BlockAction,
+                                   * OP_DODGE_ACTION: DodgeAction */
     char charName[CHAR_NAME_MAX]; /* OP_SET_NAME */
     char party[CHAR_NAME_MAX];    /* OP_SET_PARTY: "" = no party */
     bool remote;  /* someone else's op: leave the local selection and path preview alone */

@@ -25,7 +25,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SAVEFMT_VERSION     9
+#define SAVEFMT_VERSION     10
 #define SAVEFMT_TAG_SIZE    32
 #define SAVEFMT_HEADER_SIZE 12 /* magic, version, flags, state_len */
 
@@ -47,6 +47,7 @@
 #define SAVEFMT_ATTRS           4    /* = ATTR_COUNT */
 #define SAVEFMT_MIN_ATTR        (-10) /* = ATTR_MIN */
 #define SAVEFMT_MAX_ATTR        10   /* = ATTR_MAX */
+#define SAVEFMT_MAX_EVASION     99   /* = EVASION_MAX */
 #define SAVEFMT_MIN_SIZE        (-2) /* = SIZE_MIN: Wee */
 #define SAVEFMT_MAX_SIZE        4    /* = SIZE_MAX_CLASS: Gigantic */
 #define SAVEFMT_MAX_COORD       1000000
@@ -90,6 +91,7 @@ typedef struct {
     char party[SAVEFMT_CHAR_NAME_MAX]; /* characters only: "" = no party (version 7) */
     uint8_t turn_used; /* characters only: TURN_* bits of moves.h, 0..SAVEFMT_MAX_TURN_USED (version 8) */
     int32_t attr[SAVEFMT_ATTRS]; /* characters only: STR, AGI, COG, SPI (version 9) */
+    int32_t evasion; /* characters only: Evasion Threshold, 0..SAVEFMT_MAX_EVASION (version 10; older: 3) */
 } SaveEntity;
 
 typedef struct {

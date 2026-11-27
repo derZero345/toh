@@ -92,6 +92,7 @@ static const RadialEntry MAJOR[] = {
     MOVE("stamina.full_recover", "Full Recover: all your stamina", HUD_ACCENT_MAJOR),
     SUBMENU("attack.major", "Attack", HUD_ACCENT_MAJOR, MAJOR_ATTACKS),
     SUBMENU("block.major", "Block", HUD_ACCENT_MAJOR, MAJOR_BLOCKS),
+    MOVE("dodge", "Dodge: step to an adjacent tile; attacks on the tile you left meet DV 1d8 + AGI", HUD_ACCENT_MAJOR),
 };
 
 /* clockwise from the top */

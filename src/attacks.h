@@ -5,8 +5,9 @@
  * An attack targets a tile, not a character: a tile within the attack's range, in one of four directions (up, left,
  * right, neutral). It succeeds, scrapes or misses for every character on the tile, who takes the damage of that
  * outcome. It resolves at once, when it is used. Only the framework is built: the table holds one placeholder row.
- * attack_resolve asks two hooks: the block on the tile (blocks.h) and a dodge by the character (dodges don't exist
- * yet; their contest is ready below).
+ * attack_resolve asks two hooks: the block on the tile (blocks.h) and a dodge from the tile by the character
+ * (dodges.h; it may have moved away: it dodges on the original tile). With both, the better result for the defender
+ * counts.
  *
  * Directions, as seen from the attacker (attack_dir_tiles):
  *   neutral      the target tile itself
@@ -28,7 +29,6 @@
  *
  * Add an attack: an AttackAction value (before ATTACK_COUNT) and its row in ATTACK_ACTIONS; the radial menu entry
  * with the same id goes into radial_config.c (an "Attack" submenu of its slot) and its rule into radial_game.c.
- * Dodges: fill in find_dodge in attacks.c; attack_resolve then uses the dodge contest.
  */
 #ifndef TOH_ATTACKS_H
 #define TOH_ATTACKS_H
@@ -90,9 +90,10 @@ AttackOutcome attack_block_contest(int dirs, int bv, AttackDir d, int av);
  * against an attack in direction d with Attack Value av; won if dv >= av + et. Won and another direction: miss; lost
  * and another direction or won and the same direction: scrape; lost and the same direction: success. */
 AttackOutcome attack_dodge_contest(AttackDir dodge, int dv, int et, AttackDir d, int av);
-/* The outcome of an attack (direction d, Attack Value av) on tile for the character target there: the block contest
- * against the tile's block (blocks.h), else the dodge contest against target's dodge (none yet), else a success. */
-AttackOutcome attack_resolve(const Entity *target, Hex tile, AttackDir d, int av);
+/* The outcome of an attack from `from` (the attacker's tile, attack_origin) in direction d with Attack Value av on
+ * tile for the character target: the better for target of the block contest against the tile's block (blocks.h) and
+ * the dodge contest against target's dodge from tile (dodges.h); neither: a success. */
+AttackOutcome attack_resolve(const Entity *target, Hex from, Hex tile, AttackDir d, int av);
 
 /* ---- damage ---- */
 
@@ -105,11 +106,11 @@ bool attack_rolls_ok(AttackAction a, const int rolled[OUTCOME_COUNT]);
 
 /* ---- using it ---- */
 
-/* The host's resolution: the characters on tile (at most cap) and each one's outcome against an attack in direction
- * d with Attack Value av. Returns how many. */
-int attack_targets(Hex tile, AttackDir d, int av, uint32_t *ids, int *outcomes, int cap);
-/* Uses the slot, spends the stamina, marks the tile, locks it for failed blockers off it (blocks.h) and applies the
- * outcomes: character ids[i] loses rolled[outcomes[i]] HP; logs what happened. Exhausted: the turn ends. Requires
+/* The host's resolution of attacker's attack: the characters on tile and those who dodged from it (at most cap) and
+ * each one's outcome against an attack in direction d with Attack Value av. Returns how many. */
+int attack_targets(const Entity *attacker, Hex tile, AttackDir d, int av, uint32_t *ids, int *outcomes, int cap);
+/* Uses the slot, spends the stamina, marks the tile, locks it for failed blockers off it (blocks.h; not when a dodge
+ * saved everyone hit) and applies the outcomes: character ids[i] loses rolled[outcomes[i]] HP; logs what happened. Exhausted: the turn ends. Requires
  * attack_check_at == OPR_OK. */
 void attack_apply(Entity *e, AttackAction a, Hex tile, AttackDir d, const int rolled[OUTCOME_COUNT],
                   const uint32_t *ids, const int *outcomes, int n);

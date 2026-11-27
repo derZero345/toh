@@ -77,7 +77,8 @@ static bool create(Hex h) {
     } else {
         EntitySpec s = { .type = ENTITY_CHARACTER, .image = C.picture, .tile = h, .size = C.size,
                          .maxHealth = d.maxHealth, .health = d.maxHealth, .speed = d.speed,
-                         .initiative = d.initiative, .maxStamina = d.maxStamina, .stamina = d.maxStamina };
+                         .initiative = d.initiative, .maxStamina = d.maxStamina, .stamina = d.maxStamina,
+                         .evasion = EVASION_DEFAULT };
         snprintf(s.name, sizeof(s.name), "%s", C.name);
         memcpy(s.attr, C.attr, sizeof(s.attr));
         Op op = { .type = OP_SPAWN };

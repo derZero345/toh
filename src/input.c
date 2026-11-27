@@ -387,7 +387,7 @@ static void key_pressed(const SDL_KeyboardEvent *k) {
             console_log("Move cancelled");
         } else if (target_ui_active()) {
             target_ui_cancel();
-            console_log(gh->targetMode.kind == TARGET_ATTACK ? "Attack cancelled" : "Block cancelled");
+            console_log("%s cancelled", target_ui_name());
         } else if (cc_placing()) {
             cc_back(); /* back to the summary */
         }
@@ -518,7 +518,7 @@ void io_handle_event(const SDL_Event *e) {
             }
             if (target_ui_active()) {
                 target_ui_cancel();
-                console_log(gh->targetMode.kind == TARGET_ATTACK ? "Attack cancelled" : "Block cancelled");
+                console_log("%s cancelled", target_ui_name());
                 break;
             }
             if (hud_game_contains(gh->mousePos)) break;

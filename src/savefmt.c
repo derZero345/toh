@@ -89,6 +89,7 @@ static bool validate(const SaveData *d, bool encoding) {
         const SaveEntity *e = &d->entities[i];
         if (e->type > SAVE_ENT_WALL || e->image >= d->nimages || !coord_ok(e->row) || !coord_ok(e->col)) return false;
         if (e->type == SAVE_ENT_CHARACTER && e->speed > SAVEFMT_MAX_SPEED) return false;
+        if (e->type == SAVE_ENT_CHARACTER && (e->evasion < 0 || e->evasion > SAVEFMT_MAX_EVASION)) return false;
         if (e->turn_used > SAVEFMT_MAX_TURN_USED || (e->turn_used && e->type != SAVE_ENT_CHARACTER)) return false;
         if (e->owner[0] != '\0' && (e->type != SAVE_ENT_CHARACTER || !savefmt_owner_valid(e->owner))) return false;
         if (e->name[0] != '\0' && (e->type != SAVE_ENT_CHARACTER || !savefmt_char_name_valid(e->name))) return false;
@@ -156,6 +157,7 @@ static void write_state(Buf *b, const SaveData *d, bool fingerprint) {
             put_str(b, e->party);
             put_u8(b, e->turn_used);
             for (int a = 0; a < SAVEFMT_ATTRS; a++) put_sv(b, e->attr[a]);
+            put_sv(b, e->evasion);
         }
     }
 
@@ -226,6 +228,7 @@ static SaveError read_state(const uint8_t *p, size_t n, uint16_t version, SaveDa
             if (version >= 8) e->turn_used = get_u8(&r);
             if (version >= 9)
                 for (int a = 0; a < SAVEFMT_ATTRS; a++) e->attr[a] = get_sv(&r);
+            e->evasion = version >= 10 ? get_sv(&r) : 3; /* the base Evasion Threshold */
         } else if (e->type != SAVE_ENT_WALL) {
             return SAVE_ERR_CORRUPT;
         }

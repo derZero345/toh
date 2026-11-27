@@ -57,8 +57,13 @@ or Test block (range 1) on a tile next to you, which you click first). In the ri
 then miss or scrape, until your next turn; the tile shows a blue hexagon. If you block a tile you don't stand on and
 an attack gets through, you can't block that tile again on your next turn.
 
+To **dodge**, choose Major action, then **Dodge** (2 stamina), and click an adjacent tile: your character moves
+there. Until your next turn, an attack on the tile you left still targets you, against your Dodge Value (1d8 + AGI)
+and your Evasion Threshold (ET): it misses or scrapes when you win, and the direction of your step (as the attacker
+sees it) counts. The tile you left shows a green hexagon.
+
 While a gold **TEST MODE** label shows at the top, the GM has turned on test mode: you can use move actions,
-Recover / Full Recover, attacks and blocks at any time, even when it isn't your turn or you lack the action or
+Recover / Full Recover, attacks, blocks and dodges at any time, even when it isn't your turn or you lack the action or
 stamina. They still use up the action and stamina, and a failed block's tile stays locked.
 
 **Outside initiative** you move freely:

@@ -33,6 +33,7 @@ static const ArgDef ARGS_CHARACTER[] = {
     { "recover", NULL },   { "icon", "ic" },       { "owner", "ow" },    { "name", "nm" },
     { "hp", NULL },        { "damage", "dmg" },    { "heal", NULL },     { "party", "pt" },
     { "str", NULL },       { "agi", NULL },        { "cog", NULL },      { "spi", NULL },
+    { "evasion", "et" },
     { NULL, NULL },
 };
 static const ArgDef ARGS_ON_OFF[] = { { "on", NULL }, { "off", NULL }, { NULL, NULL } };
@@ -449,6 +450,8 @@ static void cmd_character(Args *a) {
     bool has_party = false;
     int attr[ATTR_COUNT] = { 0 };
     bool has_attr[ATTR_COUNT] = { 0 };
+    int evasion = 0;
+    bool has_et = false;
     struct { int mode, value; bool stamina; } res[8]; /* hp / stamina changes, in the order given */
     int nres = 0;
     for (int i = 1; i < a->argc;) {
@@ -525,6 +528,15 @@ static void cmd_character(Args *a) {
             i += 2;
             continue;
         }
+        if (!strcmp(key, "et") || !strcmp(key, "evasion")) {
+            if (!parse_int_arg(val, &evasion) || evasion < 0 || evasion > EVASION_MAX) {
+                console_log("Evasion Threshold goes from 0 to %d", EVASION_MAX);
+                return;
+            }
+            has_et = true;
+            i += 2;
+            continue;
+        }
         int at = attr_by_name(key);
         if (at >= 0) {
             int v;
@@ -575,7 +587,8 @@ static void cmd_character(Args *a) {
 
     if (gh->selectedEntities.count == 0) {
         /* a bare "party" leaves a party: nothing to create */
-        if (has_owner || nres > 0 || (has_party && !party[0])) console_log("Select the characters first");
+        if (has_et) console_log("Select the characters first (new characters start with ET %d)", EVASION_DEFAULT);
+        else if (has_owner || nres > 0 || (has_party && !party[0])) console_log("Select the characters first");
         else {
             AttrStats d = attr_derive(attr); /* the derived stats fill in unless given by hand */
             if (has_attr[ATTR_STR] && !has[1]) max_health = d.maxHealth;
@@ -592,6 +605,10 @@ static void cmd_character(Args *a) {
                  .initiative = initiative, .maxStamina = max_stamina };
     for (int s = 0; s < 5; s++)
         if (has[s]) stats.statMask |= 1 << s;
+    if (has_et) {
+        stats.statMask |= STAT_EVASION;
+        stats.evasion = evasion;
+    }
     for (int at = 0; at < ATTR_COUNT; at++)
         if (has_attr[at]) {
             stats.statMask |= STAT_ATTR(at);
@@ -669,6 +686,8 @@ static void cmd_help(Args *a) {
         console_log("  maxstamina <n> | stamina <n> | spend <n> | recover <n>");
         console_log("  str <n> | agi <n> | cog <n> | spi <n> (-10..10): STR sets max HP (12 + 3 STR), AGI max");
         console_log("  stamina (8 + AGI) and speed (AGI + 3, at least 2), COG initiative - GM only on a selection");
+        console_log("  evasion <n> or et <n> (0..%d): Evasion Threshold for dodges, new characters %d - GM only",
+                    EVASION_MAX, EVASION_DEFAULT);
         console_log("  party <name> | party (last: leave the party) - GM only");
         console_log("  players: name, HP and stamina of your own characters; with nothing selected,");
         console_log("  asks the GM for a new character of your own");
@@ -732,8 +751,9 @@ static void cmd_help(Args *a) {
         console_log(":hud [on|off] # Show or hide the HUD at the bottom of the window");
     } else if (!strcmp(arg, "testmode") || !strcmp(arg, ":tm")) {
         console_log(":tm or testmode [on|off] # GM: test mode for the whole table (no argument: switch)");
-        console_log("  move and recover actions work outside initiative and off-turn, and used actions or");
-        console_log("  too little stamina don't stop them; they still use the action and spend stamina (not below 0)");
+        console_log("  move and recover actions, attacks, blocks and dodges work outside initiative and off-turn,");
+        console_log("  and used actions or too little stamina don't stop them; they still use the action and");
+        console_log("  spend stamina (not below 0)");
     } else {
         console_log("Available commands:");
         console_log(":q  or quit       # Quit the application");

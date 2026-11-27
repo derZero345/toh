@@ -7,6 +7,7 @@
 #include "move_ui.h"
 #include "target_ui.h"
 #include "blocks.h"
+#include "dodges.h"
 #include "moves.h"
 #include "radial_game.h"
 #include "settings.h"
@@ -143,6 +144,7 @@ void gfx_shutdown(void) {
     da_free(&gh->attackMarks);
     da_free(&gh->blocks);
     da_free(&gh->blockLocks);
+    da_free(&gh->dodges);
     cc_shutdown(); /* the draft's picture */
     da_free(&gh->moveMode.path);
     da_free(&gh->init);
@@ -402,7 +404,8 @@ void gfx_handle_file_result(const char *path) {
         for (int i = 0; i < a->tiles.count; i++) {
             EntitySpec s = { .type = ENTITY_CHARACTER, .image = t, .tile = a->tiles.items[i], .size = a->size,
                              .maxHealth = a->maxHealth, .health = a->maxHealth, .speed = a->speed,
-                             .initiative = a->initiative, .maxStamina = a->maxStamina, .stamina = a->maxStamina };
+                             .initiative = a->initiative, .maxStamina = a->maxStamina, .stamina = a->maxStamina,
+                             .evasion = EVASION_DEFAULT };
             memcpy(s.attr, a->attr, sizeof(s.attr));
             snprintf(s.name, sizeof(s.name), "%s", a->name);
             snprintf(s.party, sizeof(s.party), "%s", a->party);
@@ -765,6 +768,45 @@ static void draw_block_marks(void) {
     }
 }
 
+/* The tiles a dodger left (dodges.h): a green hexagon inside the tile, an arrow toward its step and, on the other
+ * side, its Dodge Value, e.g. "DV 6". */
+static void draw_dodge_marks(void) {
+    float hs = (float)gh->hexSize, th = (float)gh->thickness;
+    Color col = HUD_THEME.accent[HUD_ACCENT_GREEN];
+    for (int i = 0; i < gh->dodges.count; i++) {
+        const DodgeRec *d = &gh->dodges.items[i];
+        for (int t = 0; t < d->nfrom; t++) {
+            Hex tile = d->from[t];
+            if (!hex_visible(tile)) continue;
+            Vec2 c = hex_center(tile), corners[6], to = hex_center(hex_neighbor_raw(tile, d->step));
+            hex_corners(tile, corners);
+            for (int k = 0; k < 6; k++)
+                corners[k] = (Vec2){ c.x + (corners[k].x - c.x) * 0.62, c.y + (corners[k].y - c.y) * 0.62 };
+            dr_polygon(corners, 6, th * 2.5f, col);
+            double ux = to.x - c.x, uy = to.y - c.y, len = sqrt(ux * ux + uy * uy);
+            if (len > 0) {
+                ux /= len;
+                uy /= len;
+            }
+            if (len > 0) {
+                float head = hs * 0.5f, wing = hs * 0.2f;
+                float ex = (float)(c.x + ux * head), ey = (float)(c.y + uy * head);
+                dr_line((float)c.x, (float)c.y, ex, ey, th * 2.5f, col);
+                for (int s = -1; s <= 1; s += 2) {
+                    double a = atan2(-uy, -ux) + s * 0.6;
+                    dr_line(ex, ey, (float)(ex + cos(a) * wing), (float)(ey + sin(a) * wing), th * 2.5f, col);
+                }
+            }
+            char label[16];
+            snprintf(label, sizeof(label), "DV %d", d->value);
+            float size = hs * 0.32f, w = dr_text_width(FONT_BOLD, size, label);
+            float x = (float)(c.x - ux * hs * 0.42) - w / 2, y = (float)(c.y - uy * hs * 0.42) + size * 0.3f;
+            dr_fill_round_rect(x - 3, y - size * 0.85f, w + 6, size * 1.1f, 4, 4, col);
+            dr_text(FONT_BOLD, size, x, y, rgb_hex(0xFFFFFF), label);
+        }
+    }
+}
+
 static void draw_grid(void) {
     const Theme *t = gfx_theme();
     float th = (float)gh->thickness;
@@ -975,6 +1017,7 @@ static void draw_fx(void) {
         dr_line((int)a.x, (int)a.y, (int)b.x, (int)b.y, th * 3, rgb_hex(0xFFFFFF));
     }
     draw_block_marks();
+    draw_dodge_marks();
     draw_attack_marks();
 }
 

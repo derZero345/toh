@@ -819,6 +819,44 @@ static void test_attr_versions(void) {
     free(f);
 }
 
+/* Evasion Threshold (version 10): saved per character; a version 9 body loads with the base 3 */
+static void test_evasion_versions(void) {
+    Sample s;
+    sample_init(&s);
+    s.entities[0].evasion = 5;
+    s.entities[1].evasion = SAVEFMT_MAX_EVASION;
+    size_t len;
+    uint8_t *file = encode_sample(&s, &len);
+    SaveData d;
+    CHECK_ERR(savefmt_decode(file, len, &d), SAVE_OK);
+    CHECK(d.entities[0].evasion == 5 && d.entities[1].evasion == SAVEFMT_MAX_EVASION);
+    savefmt_free(&d);
+    free(file);
+    s.entities[0].evasion = SAVEFMT_MAX_EVASION + 1;
+    CHECK(encode_sample_err(&s) == SAVE_ERR_INVALID);
+    s.entities[0].evasion = -1;
+    CHECK(encode_sample_err(&s) == SAVE_ERR_INVALID);
+    sample_free(&s);
+
+    W st = { .n = 0 }, im = { .n = 0 };
+    wimage(&im, 8, 8);
+    wworld(&st, 0);
+    wuv(&st, 1);
+    wcharacter(&st, 3, "Bob");
+    wstr(&st, "Mao");
+    wsv(&st, 9); wsv(&st, 4);
+    wstr(&st, "Heroes");
+    w8(&st, 0);
+    wsv(&st, 1); wsv(&st, 2); wsv(&st, 0); wsv(&st, -1); /* attributes (version 9) */
+    wuv(&st, 0); wuv(&st, 0);
+    wuv(&st, 0);
+    uint8_t *f = wrap_v(&st, &im, &len, 1, 9);
+    CHECK_ERR(savefmt_decode(f, len, &d), SAVE_OK);
+    CHECK(d.nentities == 1 && d.entities[0].attr[1] == 2 && d.entities[0].evasion == 3);
+    savefmt_free(&d);
+    free(f);
+}
+
 /* sizes of version 1-3 saves map to Tales of Honor's classes by footprint */
 static void test_size_conversion(void) {
     const int32_t from[] = { -5, -2, -1, 0, 1, 2, 3, 9 }, to[] = { -2, -1, 0, 1, 3, 4, 4, 4 };
@@ -880,6 +918,7 @@ int main(int argc, char **argv) {
     test_party_versions();
     test_turn_used_versions();
     test_attr_versions();
+    test_evasion_versions();
     test_size_conversion();
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;

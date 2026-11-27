@@ -4,7 +4,10 @@
 # entries), Up attacks: the tile gets a mark and the log says the character took damage. Esc in the direction menu
 # goes back to choosing a tile, a second Esc cancels. Then blocks, in test mode: the target blocks up on its own
 # tile through Major action -> Block -> Test block and the toggle ring (Up, then the centre), the tile gets a block
-# mark, and an attack up on it misses. Opens a window (needs Wayland or X11) and uses ImageMagick.
+# mark, and an attack up on it misses. Then dodges, in test mode: the target gets ET 0 (:c et 0), dodges up through
+# Major action -> Dodge and a click on the tile above, the tile it left gets a dodge mark, and a neutral attack on
+# that tile meets the dodge (a step away from the attacker: up) and misses. Opens a window (needs Wayland or X11) and
+# uses ImageMagick.
 # Usage: tests/e2e_attack.sh   (or: make e2e)
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -73,4 +76,27 @@ differ "$out/b-before.png" "$out/blocked.png" 300 150 || fail "the blocked tile 
 grep -q "AV 0 against a block of BV 2" "$out/b-log.txt" || fail "the attack did not meet the block (see $out/b-log.txt)"
 grep -q ": miss, 0 damage, HP 10/10 " "$out/b-log.txt" || fail "an attack up on a tile blocked up did not miss (see $out/b-log.txt)"
 
-echo "e2e attacks and blocks: OK"
+# dodges (test mode); with ET 0 every Dodge Value (1d8 + AGI 0) wins against the Test attack's AV 0
+timeout 60 ./toh --size 600x500 --auto-file "$icon" \
+    --exec "@click 300 150" --exec ":c speed 4 maxhealth 10" --exec "@wait 5" \
+    --exec "@click 300 220" --exec ":c speed 4" --exec "@wait 5" --exec ":tm" \
+    --exec "@click 300 150" --exec ":c et 0" --exec "@click 500 60" --exec "@wait 5" \
+    --exec "@shot $out/d-before.png" \
+    --exec "@rclick 300 150" --exec "@wait 20" --exec "@clickradial ring.4" --exec "@wait 20" \
+    --exec "@clickradial ring.7" --exec "@wait 20" --exec "@click 300 80" --exec "@wait 20" \
+    --exec "@move 500 60" --exec "@wait 5" --exec "@shot $out/dodged.png" \
+    --exec "@rclick 300 220" --exec "@wait 20" --exec "@clickradial ring.4" --exec "@wait 20" \
+    --exec "@clickradial ring.5" --exec "@wait 20" --exec "@clickradial ring.1" --exec "@wait 20" \
+    --exec "@click 300 150" --exec "@wait 20" --exec "@clickradial ring.3" --exec "@wait 20" \
+    --exec "@logfile $out/d-log.txt" \
+    --exec "@quit" > "$out/toh-d.log" 2>&1 || fail "toh exited with status $? (see $out/toh-d.log)"
+
+grep -q "Dodge from \[.*\] to \[.*\], DV [0-9]* (1d8: [1-8], AGI 0)" "$out/d-log.txt" ||
+    fail "the dodge is not in the log (see $out/d-log.txt)"
+differ "$out/d-before.png" "$out/dodged.png" 300 150 || fail "the tile left has no dodge mark"
+differ "$out/d-before.png" "$out/dodged.png" 300 80 || fail "the dodger did not move up"
+grep -q "Test attack on \[.*\] neutral" "$out/d-log.txt" || fail "the attack on the tile left is missing (see $out/d-log.txt)"
+grep -q " (dodged up, DV [0-9]* against AV 0 + ET 0): miss, 0 damage, HP 10/10 " "$out/d-log.txt" ||
+    fail "a neutral attack on the tile left did not meet the dodge and miss (see $out/d-log.txt)"
+
+echo "e2e attacks, blocks and dodges: OK"

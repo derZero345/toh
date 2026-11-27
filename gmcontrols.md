@@ -84,9 +84,9 @@ steps are shown inside the bar; the tab says `New character · 2/5`.
 |---|---|
 | 1 Name | Type it (1 to 32 bytes; typing past 32 does nothing). Enter = Next, Ctrl + V pastes (line breaks become spaces). The field gets the focus when the step opens; while it has it, keys go to it, not to the map (W A S D don't move the view, `:` doesn't open the console; Ctrl + Enter and Alt + Enter still work). Esc, a click elsewhere or any right click takes the focus away. |
 | 2 Size | Wee to Gigantic; Normal is chosen. Hover a size for its tiles and bulk, e.g. "Huge: 3 tiles in a triangle, bulk 3", "Gigantic: 7 tiles, bulk 5 centre, 3 around". |
-| 3 Attributes | STR, AGI, COG, SPI with − / +, −2 to 3; the line below shows Max HP, Stamina, Speed and Initiative (see **Attributes**) |
+| 3 Attributes | STR, AGI, COG, SPI with − / +, −2 to 3; the line below shows Max HP, Stamina, Speed, Initiative and ET (the Evasion Threshold, always 3 for a new character; see **Attributes**) |
 | 4 Picture | **Choose picture…** opens the PNG dialog; the preview shows the round cut |
-| 5 Summary | The picture with `name · size` beside it and the stats below, e.g. `STR 1 AGI -1 COG 0 SPI 0 · HP 15 · Stamina 7 · Speed 2 · Initiative 0`. **Place** (see below); started from the tile menu the button is **Create** and puts the character on that tile at once (no room check). |
+| 5 Summary | The picture with `name · size` beside it and the stats below, e.g. `STR 1 AGI -1 COG 0 SPI 0 · HP 15 · Stamina 7 · Speed 2 · Initiative 0 · ET 3`. **Place** (see below); started from the tile menu the button is **Create** and puts the character on that tile at once (no room check). |
 
 **Cancel** is on every step ("Character creation cancelled"); **< Back** (from step 2 on) keeps what was entered.
 **Next** is greyed out until there is a name and a picture; hovering it says "Give the character a name" or
@@ -124,6 +124,7 @@ Select one or more characters, then:
 | `:c maxstamina <n>` | `ms` | Maximum stamina; 0 (the default) means the character has no stamina |
 | `:c speed <n>` | `s` | Movement range in tiles (5 ft each), at most 1000 |
 | `:c initiative <n>` | `in` | Initiative stat |
+| `:c evasion <n>` | `et` | Evasion Threshold for dodges, 0 to 99 ("Evasion Threshold goes from 0 to 99"); new characters have 3. Only on selected characters: with nothing selected it says "Select the characters first (new characters start with ET 3)" |
 | `:c icon` | `ic` | Choose a new image |
 | `:c owner <player>` | `ow` | Give the characters to a player (by their name) |
 | `:c owner none` | | Take them back: only the GM controls them |
@@ -348,8 +349,8 @@ and one line per character on the tile: `  Bob: success, 3 damage, HP 7/10 (Inju
 
 - Every character on the tile is hit, allies too. An empty tile gives `..., nobody there`. A character without max
   HP takes no damage (`3 damage (no HP)`). HP can go below 0, down to −max HP, as with `:c damage`.
-- Each attack succeeds, scrapes or misses for each character: against a block on the tile (below) it can scrape or
-  miss, otherwise it succeeds (dodges are not in the game yet). The log then says e.g.
+- Each attack succeeds, scrapes or misses for each character: against a block on the tile or a dodge (below) it can
+  scrape or miss, otherwise it succeeds. The log then says e.g.
   `Mao: Test attack on [4|7] up, AV 0 against a block of BV 2` and `  Bob: miss, 0 damage, HP 10/10 (Healthy)`; an
   attack in a direction the block doesn't cover adds ` in other directions` and succeeds.
 - The range counts tiles in a straight line from the attacker's nearest tile (big characters attack from the tile
@@ -394,6 +395,33 @@ tiles`).
   tile this turn: its last block there failed".
 - The turn rules are those of the other actions (Major / Minor action, stamina, exhaustion).
 
+### Dodges (during initiative)
+
+| Action | Type | Movement | Dodge Value (DV) | Stamina |
+|---|---|---|---|---|
+| Dodge | Major | to an adjacent tile | 1d8 + AGI | 2 |
+
+Choose Major action, then **Dodge**. The adjacent tiles the character fits on light up; left click one and it moves
+there. Esc, a right click or a click outside them cancels ("Dodge cancelled"). Your game (the host) rolls the die;
+the log shows e.g. `Mao: Dodge from [4|7] to [3|7], DV 6 (1d8: 4, AGI 2), stamina 6/8`.
+
+- The character dodges on the tile it left: until its next turn starts, an attack on that tile still hits it, with
+  the dodge contest. It wins when its DV is at least the attack's Attack Value plus its Evasion Threshold
+  (`:c et`, 3 by default).
+- The dodge's direction is its step, as the attacker sees it: away from the attacker is up, to the attacker's left or
+  right is left or right. A step toward the attacker matches no direction.
+- Won and the attack comes from another direction: miss. Won in the same direction, or lost in another direction:
+  scrape. Lost in the same direction: success. The log adds the dodge to the character's line, e.g.
+  `  Mao (dodged up, DV 6 against AV 0 + ET 3): miss, 0 damage, HP 10/10 (Healthy)`.
+- Attacks on the tile it moved to hit it as usual.
+- With a block on the attacked tile as well, the better result for the character counts. A failed block there locks
+  the tile only if the attack got through to someone (not when a dodge saved everyone hit).
+- Each tile the character left shows a green hexagon with an arrow toward its step and its DV, e.g. `DV 6`. Dodges
+  stay until the dodger's next turn starts, and all go when the initiative ends or a table is loaded. They are not
+  saved, and players who join in the middle of a round don't see earlier dodges (the results stay right: your game
+  decides them).
+- A dodge counts as a move (Sprint can follow it) and follows the turn rules of the other actions.
+
 ### Test mode
 
 | Command | Short | Action |
@@ -401,23 +429,24 @@ tiles`).
 | `testmode [on\|off]` | `:tm` | Test mode on / off for the whole table (without an argument it toggles; Tab completes `on` / `off`) |
 
 Test mode is for trying things out without setting up turns and stamina first. While it is on, move actions, the
-recover actions (Recover, Full Recover), attacks and blocks work for everyone at the table:
+recover actions (Recover, Full Recover), attacks, blocks and dodges work for everyone at the table:
 - outside initiative, and for any character, not only the one whose turn it is;
 - when the Major or Minor action is already used this turn;
 - for Sprint without another move action before it;
-- with too little stamina (move actions, attacks and blocks).
+- with too little stamina (move actions, attacks, blocks and dodges).
 
 The actions still have their effects: they use up their Major or Minor action, and they spend stamina, but never
 below 0. A character whose stamina an action brings to 0 is exhausted and its turn ends, as usual; actions at 0
 stamina don't end the turn again.
 
 Still checked in test mode: players only act with their own characters, the move, attack or block stays within the
-action's range, a character with speed 0 can only Step, the recover actions need a character with max stamina
+action's range, a dodge goes to an adjacent tile the character fits on, a character with speed 0 can only Step, the recover actions need a character with max stamina
 whose stamina isn't full, and a failed block's tile stays locked for the blocker's next turn. Players' Shift + click moves keep their rules (refused during initiative). Roll and claim
 limits stay too.
 
 Outside initiative an attack's marks stay until the same character attacks again (its new mark replaces them), and
-a character's blocks until it blocks again (its new block replaces them and ends its failed-block locks).
+a character's blocks until it blocks again (its new block replaces them and ends its failed-block locks), and its
+dodge until it dodges again.
 
 - Only the GM can switch it. Everyone gets `Test mode on: actions ignore turns, used actions and stamina` or
   `Test mode off` in the log, and a gold **TEST MODE** label shows at the top of the map while it is on.
@@ -509,7 +538,7 @@ whose turn it is, else the first. Its four entries, clockwise from the top:
 | Minor action | gold (#84672B) | Step, Sprint, Recover |
 | Info | grey (#5E5E5E) | nothing yet; choosing it only closes the menu |
 | Mental action | violet (#80537E) | nothing yet: greyed out, "Nothing to choose here" |
-| Major action | blue (#355C85) | Walk, Run, Crawl, Full Recover, Attack (a submenu: Test attack), Block (a submenu: Test block, Test block range 1) |
+| Major action | blue (#355C85) | Walk, Run, Crawl, Full Recover, Attack (a submenu: Test attack), Block (a submenu: Test block, Test block range 1), Dodge |
 
 The move and recover actions, attacks, blocks and their rules are in section 6. The centre button closes the menu.
 
@@ -682,7 +711,7 @@ in the name field Enter = Next). `:c` creates a character without them.
 
 Players can:
 - move their own characters (freely outside initiative; while it runs, with move actions on their turn),
-  recover their stamina with Recover and Full Recover, attack and block with them, on their turn;
+  recover their stamina with Recover and Full Recover, attack, block and dodge with them, on their turn;
 - end their turn with `:i next`;
 - roll dice (at most 10 rolls in 10 seconds);
 - ask for existing characters with `:claim`, or for a new one of their own through the bar's **+ Create

@@ -107,8 +107,8 @@ void hud_create_publish(void) {
     case CC_ATTRS:
         for (int a = 0; a < ATTR_COUNT; a++)
             hud_set_stepper(STEPPER_KEYS[a], ATTR_NAMES[a], c->attr[a], ATTR_CREATE_MIN, ATTR_CREATE_MAX);
-        snprintf(line, sizeof(line), "Max HP %d · Stamina %d · Speed %d · Initiative %d", d.maxHealth, d.maxStamina,
-                 d.speed, d.initiative);
+        snprintf(line, sizeof(line), "Max HP %d · Stamina %d · Speed %d · Initiative %d · ET %d", d.maxHealth,
+                 d.maxStamina, d.speed, d.initiative, EVASION_DEFAULT);
         hud_set_label("cc.derived", line);
         break;
     case CC_PICTURE:
@@ -120,9 +120,10 @@ void hud_create_publish(void) {
         hud_set_image("cc.preview", c->picture);
         snprintf(line, sizeof(line), "%s · %s", c->name, SIZE_NAMES[c->size - SIZE_MIN]);
         hud_set_label("cc.summary", line);
-        snprintf(line, sizeof(line), "STR %d AGI %d COG %d SPI %d · HP %d · Stamina %d · Speed %d · Initiative %d",
+        snprintf(line, sizeof(line),
+                 "STR %d AGI %d COG %d SPI %d · HP %d · Stamina %d · Speed %d · Initiative %d · ET %d",
                  c->attr[ATTR_STR], c->attr[ATTR_AGI], c->attr[ATTR_COG], c->attr[ATTR_SPI], d.maxHealth,
-                 d.maxStamina, d.speed, d.initiative);
+                 d.maxStamina, d.speed, d.initiative, EVASION_DEFAULT);
         hud_set_label("cc.stats", line);
         break;
     case CC_STEPS:

@@ -306,6 +306,7 @@ static bool net_from_op(const Op *op, NetOp *o) {
     o->speed = op->speed;
     o->initiative = op->initiative;
     o->max_stamina = op->maxStamina;
+    o->evasion = op->evasion;
     memcpy(o->attr, op->attr, sizeof(o->attr));
     snprintf(o->name, sizeof(o->name), "%s", op->name);
     o->health_mode = (uint8_t)op->healthMode;
@@ -332,6 +333,7 @@ static bool net_from_op(const Op *op, NetOp *o) {
         n->initiative = s->initiative;
         n->max_stamina = s->maxStamina;
         n->stamina = s->stamina;
+        n->evasion = s->evasion;
         memcpy(n->attr, s->attr, sizeof(n->attr));
         snprintf(n->name, sizeof(n->name), "%s", s->name);
         snprintf(n->party, sizeof(n->party), "%s", s->party);
@@ -355,6 +357,7 @@ static bool op_from_net(const NetOp *o, Op *op) {
     op->speed = o->speed;
     op->initiative = o->initiative;
     op->maxStamina = o->max_stamina;
+    op->evasion = o->evasion;
     memcpy(op->attr, o->attr, sizeof(op->attr));
     snprintf(op->name, sizeof(op->name), "%s", o->name);
     op->healthMode = o->health_mode;
@@ -369,7 +372,7 @@ static bool op_from_net(const NetOp *o, Op *op) {
                          .image = cache_find(n->image), .tile = { n->row, n->col }, .size = n->size,
                          .maxHealth = n->max_health, .health = n->health, .attack = n->attack,
                          .speed = n->speed, .initiative = n->initiative,
-                         .maxStamina = n->max_stamina, .stamina = n->stamina };
+                         .maxStamina = n->max_stamina, .stamina = n->stamina, .evasion = n->evasion };
         memcpy(s.attr, n->attr, sizeof(s.attr));
         if (!s.image) return false;
         snprintf(s.name, sizeof(s.name), "%s", n->name);
@@ -638,7 +641,8 @@ static void host_create(Player *p, const NetMsg *m) {
     r.spec = (EntitySpec){ .type = ENTITY_CHARACTER, .image = t, .tile = tile, .size = m->spec.size,
                            .maxHealth = m->spec.max_health, .health = m->spec.max_health,
                            .speed = m->spec.speed, .initiative = m->spec.initiative,
-                           .maxStamina = m->spec.max_stamina, .stamina = m->spec.max_stamina };
+                           .maxStamina = m->spec.max_stamina, .stamina = m->spec.max_stamina,
+                           .evasion = EVASION_DEFAULT };
     memcpy(r.spec.attr, m->spec.attr, sizeof(r.spec.attr));
     snprintf(r.spec.name, sizeof(r.spec.name), "%s", m->spec.name);
     da_push(&S.requests, r);

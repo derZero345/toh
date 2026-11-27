@@ -17,6 +17,7 @@
 #include "recover.h"
 #include "attacks.h"
 #include "blocks.h"
+#include "dodges.h"
 #include "target_ui.h"
 #include "move_ui.h"
 #include "party.h"
@@ -42,6 +43,7 @@ _Static_assert((int)NOP_MOVE == (int)OP_MOVE && (int)NOP_SPAWN == (int)OP_SPAWN 
                (int)NOP_SET_TEST_MODE == (int)OP_SET_TEST_MODE && (int)NOP_RECOVER_ACTION == (int)OP_RECOVER_ACTION &&
                (int)NOP_ATTACK_ACTION == (int)OP_ATTACK_ACTION && (int)NETMSG_ATTACK_DIRS == (int)DIR_COUNT &&
                (int)NOP_BLOCK_ACTION == (int)OP_BLOCK_ACTION && (int)NETMSG_BLOCK_DIRS == (int)BLOCK_DIRS &&
+               (int)NOP_DODGE_ACTION == (int)OP_DODGE_ACTION && (int)NSTAT_EVASION == (int)STAT_EVASION &&
                (int)NETMSG_ATTACK_ROLLS == (int)OUTCOME_COUNT && (int)NETMSG_MAX_DAMAGE == (int)ATTACK_MAX_DAMAGE &&
                (int)NOP_ROLL == (int)OP_COUNT,
                "NetOpType must match OpType");
@@ -2352,6 +2354,13 @@ static void test_test_mode(void) {
     Op orc_blk = { .type = OP_BLOCK_ACTION, .id = orc->id, .action = BLOCK_TEST, .tile = orc->tile,
                    .value = DIR_BIT(DIR_UP) };
     CHECK_R(ops_check(&orc_blk, &GM), OPR_OK);
+    Hex orc_to = hex_neighbor_raw(orc->tile, 0); /* a dodge off-turn, also without stamina; not two tiles away */
+    if (!dodge_in_range(orc, DODGE_BASIC, orc_to)) orc_to = hex_neighbor_raw(orc->tile, 3);
+    Op orc_dg = { .type = OP_DODGE_ACTION, .id = orc->id, .action = DODGE_BASIC, .tile = orc_to };
+    CHECK_R(ops_check(&orc_dg, &GM), OPR_OK);
+    orc_dg.tile = steps_dir(orc->tile, 2, 2);
+    CHECK_R(ops_check(&orc_dg, &GM), OPR_OUT_OF_RANGE); /* adjacency still holds */
+    orc_dg.tile = orc_to;
 
     /* off again: the rules are back */
     ops_apply(&off);
@@ -2360,6 +2369,7 @@ static void test_test_mode(void) {
     CHECK_R(ops_check(&orc_step, &GM), OPR_NOT_YOUR_TURN);
     CHECK_R(ops_check(&orc_atk, &GM), OPR_NOT_YOUR_TURN);
     CHECK_R(ops_check(&orc_blk, &GM), OPR_NOT_YOUR_TURN);
+    CHECK_R(ops_check(&orc_dg, &GM), OPR_NOT_YOUR_TURN);
     game_clear_initiative();
 }
 
@@ -2476,6 +2486,20 @@ static void test_action_menu(void) {
     CHECK(gh->blocks.count == 2 && hex_eq(gh->blocks.items[1].tile, orc->tile) &&
           gh->blocks.items[1].dirs == DIR_BIT(DIR_RIGHT) && !gh->blocks.items[1].occupied);
     rad_settle();
+
+    /* Major -> Dodge: the free neighbours light up, a click there dodges; a click elsewhere cancels */
+    hero->turnUsed = 0;
+    Hex start = hero->tile;
+    CHECK(radial_game_open(hex_center(hero->tile)));
+    CHECK(rad_click("ring.4") && rad_click("ring.7") && !radial_is_open() && target_ui_active());
+    CHECK(gh->targetMode.kind == TARGET_DODGE && !ts_has(&gh->targetMode.range, hero->tile) &&
+          !ts_has(&gh->targetMode.range, orc->tile));
+    rad_settle();
+    CHECK(target_ui_click(steps_from(hero->tile, 3)) && !target_ui_active() && strstr(stub_last_log, "Dodge cancelled"));
+    CHECK(target_ui_start(TARGET_DODGE, hero->id, DODGE_BASIC));
+    Hex to = hex_neighbor_raw(start, 0);
+    if (!ts_has(&gh->targetMode.range, to)) to = hex_neighbor_raw(start, 3);
+    CHECK(target_ui_click(to) && !target_ui_active() && hex_eq(hero->tile, to) && gh->dodges.count == 1);
     game_clear_initiative();
     radial_game_shutdown();
 }
@@ -2666,7 +2690,7 @@ static void test_attack_contests(void) {
     CHECK(attack_dodge_contest(DIR_LEFT, 7, 3, DIR_UP, 5) == OUTCOME_SCRAPE);  /* lost, another direction */
     CHECK(attack_dodge_contest(DIR_UP, 7, 3, DIR_UP, 5) == OUTCOME_SUCCESS);   /* lost, the same direction */
     /* no blocks or dodges exist yet: every attack succeeds */
-    for (int d = 0; d < DIR_COUNT; d++) CHECK(attack_resolve(NULL, (Hex){ 1, 1 }, (AttackDir)d, 0) == OUTCOME_SUCCESS);
+    for (int d = 0; d < DIR_COUNT; d++) CHECK(attack_resolve(NULL, (Hex){ 0, 1 }, (Hex){ 1, 1 }, (AttackDir)d, 0) == OUTCOME_SUCCESS);
 
     /* damage dice */
     CHECK(damage_min((Damage){ 1, 4, 0 }) == 1 && damage_max((Damage){ 1, 4, 0 }) == 4);
@@ -2936,11 +2960,11 @@ static void test_block_actions(void) {
     /* attacks against a block: the right direction misses (BV 2 >= AV 0), another one succeeds */
     TileBlock b = { .tile = orc->tile, .dirs = UP, .value = 2, .blocker = 999, .occupied = true };
     da_push(&gh->blocks, b);
-    CHECK(attack_resolve(orc, orc->tile, DIR_UP, 0) == OUTCOME_MISS);
-    CHECK(attack_resolve(orc, orc->tile, DIR_NEUTRAL, 0) == OUTCOME_MISS); /* neutral is always covered */
-    CHECK(attack_resolve(orc, orc->tile, DIR_LEFT, 0) == OUTCOME_SUCCESS);
+    CHECK(attack_resolve(orc, hex_neighbor_raw(orc->tile, 0), orc->tile, DIR_UP, 0) == OUTCOME_MISS);
+    CHECK(attack_resolve(orc, hex_neighbor_raw(orc->tile, 0), orc->tile, DIR_NEUTRAL, 0) == OUTCOME_MISS); /* neutral is always covered */
+    CHECK(attack_resolve(orc, hex_neighbor_raw(orc->tile, 0), orc->tile, DIR_LEFT, 0) == OUTCOME_SUCCESS);
     gh->blocks.items[0].value = -1; /* BV below the AV: a scrape */
-    CHECK(attack_resolve(orc, orc->tile, DIR_UP, 0) == OUTCOME_SCRAPE);
+    CHECK(attack_resolve(orc, hex_neighbor_raw(orc->tile, 0), orc->tile, DIR_UP, 0) == OUTCOME_SCRAPE);
     blocks_clear();
 
     /* through the ops: the hero blocks the ally's tile (not its own) up; the orc attacks it up: a miss */
@@ -3008,6 +3032,229 @@ static void test_block_actions(void) {
     CHECK(gh->blocks.count == 0);
     gh->testMode = false;
     op_free(&hit);
+}
+
+/* Dodges (dodges.h) and the Evasion Threshold: the action, its checks, the roll, the direction of the step per
+ * attacker, attacks on the tile left (alone and with a block), the lock, lifetime */
+static void test_dodge_actions(void) {
+    reset_table();
+    stub_client = false;
+    Hex a = { 10, 10 };
+    Entity *hero = add_character(a, 6, "Alice");
+    hero->attr[ATTR_AGI] = 2;
+    hero->maxStamina = hero->stamina = 8;
+    Hex orc_at = hex_neighbor_raw(a, 5); /* the hero's tile is the orc's neighbour in direction 2 */
+    Entity *orc = add_character(orc_at, 5, "Bob");
+    OpAuthor alice = player("Alice"), bob = player("Bob");
+
+    /* the row: Notion's Dodge */
+    CHECK(dodge_action_by_id("dodge") == DODGE_BASIC && dodge_action_by_id("block.test") == -1 &&
+          dodge_action_by_id(NULL) == -1);
+    const DodgeActionDef *def = &DODGE_ACTIONS[DODGE_BASIC];
+    CHECK(def->slot == SLOT_MAJOR && def->stamina == 2 && def->dice == 1 && def->sides == 8 && def->attr == ATTR_AGI);
+    CHECK(hero->evasion == EVASION_DEFAULT && EVASION_DEFAULT == 3);
+
+    /* range: the free neighbours, not its own tile, not the orc's (a Normal character fills a tile) */
+    TileSet range = { 0 };
+    dodge_range(hero, DODGE_BASIC, &range);
+    int count = 0;
+    for (int r = 0; r < 20; r++)
+        for (int c = 0; c < 20; c++) count += ts_has(&range, (Hex){ r, c });
+    CHECK(count == 5 && !ts_has(&range, a) && !ts_has(&range, orc_at));
+    ts_free(&range);
+    CHECK(dodge_in_range(hero, DODGE_BASIC, hex_neighbor_raw(a, 2)));
+    CHECK(!dodge_in_range(hero, DODGE_BASIC, hex_neighbor_raw(hex_neighbor_raw(a, 2), 2)));
+
+    /* the roll: 1d8 */
+    bool low = false, high = false;
+    for (int i = 0; i < 400; i++) {
+        int r = dodge_roll(DODGE_BASIC);
+        CHECK(dodge_roll_ok(DODGE_BASIC, r));
+        low |= r == 1, high |= r == 8;
+    }
+    CHECK(low && high && !dodge_roll_ok(DODGE_BASIC, 0) && !dodge_roll_ok(DODGE_BASIC, 9));
+    CHECK(dodge_value(hero, DODGE_BASIC, 4) == 6); /* + AGI */
+
+    /* the direction of the step, as the orc sees it: away = up, beside it = left / right, toward it = none */
+    CHECK(dodge_dir(orc_at, a, 1) == DIR_UP && dodge_dir(orc_at, a, 2) == DIR_UP && dodge_dir(orc_at, a, 3) == DIR_UP);
+    CHECK(dodge_dir(orc_at, a, 5) == DIR_COUNT);
+    int d0 = dodge_dir(orc_at, a, 0), d4 = dodge_dir(orc_at, a, 4);
+    CHECK((d0 == DIR_LEFT && d4 == DIR_RIGHT) || (d0 == DIR_RIGHT && d4 == DIR_LEFT));
+    Hex side[6]; /* the same tile as the attack's direction */
+    CHECK(attack_dir_tiles(orc_at, a, (AttackDir)d0, side) == 1 && hex_eq(side[0], hex_neighbor_raw(a, 0)));
+
+    /* checks */
+    Hex away = hex_neighbor_raw(a, 2);
+    Op dg = { .type = OP_DODGE_ACTION, .id = hero->id, .action = DODGE_BASIC, .tile = away };
+    CHECK_R(ops_check(&dg, &alice), OPR_NOT_IN_COMBAT);
+    Entity *order[2] = { hero, orc };
+    double values[2] = { 0.9, 0.1 };
+    game_initiative_list(order, values, 2);
+    game_next_turn();
+    CHECK(gh->currentTurn == hero);
+    CHECK_R(ops_check(&dg, &bob), OPR_NOT_YOURS);
+    Op bad = dg;
+    bad.tile = hex_neighbor_raw(away, 2);
+    CHECK_R(ops_check(&bad, &alice), OPR_OUT_OF_RANGE);
+    bad = dg;
+    bad.tile = orc_at;
+    CHECK_R(ops_check(&bad, &alice), OPR_OUT_OF_RANGE); /* no room there */
+    bad = dg;
+    bad.value = 9;
+    CHECK_R(ops_check(&bad, &alice), OPR_INVALID); /* not a d8 */
+    bad.value = 8;
+    CHECK_R(ops_check(&bad, &alice), OPR_OK);
+    bad = dg;
+    bad.action = DODGE_COUNT;
+    CHECK_R(ops_check(&bad, &alice), OPR_INVALID);
+    hero->stamina = 1;
+    CHECK_R(ops_check(&dg, &alice), OPR_NO_STAMINA);
+    hero->stamina = 8;
+
+    /* the dodge: the host rolls, the hero moves and leaves its dodge on the tile it left */
+    CHECK_R(ops_check(&dg, &alice), OPR_OK);
+    ops_apply(&dg);
+    CHECK(dodge_roll_ok(DODGE_BASIC, dg.value) && hex_eq(hero->tile, away) && hero->stamina == 6);
+    CHECK((hero->turnUsed & TURN_MAJOR) && (hero->turnUsed & TURN_MOVED));
+    CHECK(gh->dodges.count == 1 && gh->dodges.items[0].dodger == hero->id && gh->dodges.items[0].nfrom == 1 &&
+          hex_eq(gh->dodges.items[0].from[0], a) && gh->dodges.items[0].step == 2 &&
+          gh->dodges.items[0].value == dg.value + 2);
+    char want[96];
+    snprintf(want, sizeof(want), "Dodge from [10|10] to [%d|%d], DV %d (1d8: %d, AGI 2), stamina 6/8", away.row,
+             away.col, dg.value + 2, dg.value);
+    CHECK(strstr(stub_last_log, want));
+    CHECK(dodge_find(hero, a) == &gh->dodges.items[0] && !dodge_find(hero, away) && !dodge_find(orc, a));
+    CHECK_R(ops_check(&dg, &alice), OPR_ACTION_USED);
+    /* a client applies the host's roll */
+    hero->tile = a;
+    hero->turnUsed = 0;
+    dg.value = 5;
+    stub_client = true;
+    ops_apply(&dg);
+    stub_client = false;
+    CHECK(gh->dodges.count == 2 && gh->dodges.items[1].value == 7 && hex_eq(hero->tile, away));
+    da_remove_at(&gh->dodges, 0);
+
+    /* attacks on the tile it left meet the dodge (DV 7 >= AV 0 + ET 3: won; the step is up for the orc) */
+    uint32_t ids[8];
+    int outcomes[8];
+    int n = attack_targets(orc, a, DIR_NEUTRAL, 0, ids, outcomes, 8);
+    CHECK(n == 1 && ids[0] == hero->id && outcomes[0] == OUTCOME_MISS);     /* won, another direction */
+    n = attack_targets(orc, a, DIR_UP, 0, ids, outcomes, 8);
+    CHECK(n == 1 && outcomes[0] == OUTCOME_SCRAPE);                           /* won, the same direction */
+    gh->dodges.items[0].value = 2;                                              /* lost: 2 < 0 + 3 */
+    CHECK(attack_resolve(hero, orc_at, a, DIR_NEUTRAL, 0) == OUTCOME_SCRAPE); /* lost, another direction */
+    CHECK(attack_resolve(hero, orc_at, a, DIR_UP, 0) == OUTCOME_SUCCESS);     /* lost, the same direction */
+    hero->evasion = 0;                                                          /* 2 >= 0 + 0: won */
+    CHECK(attack_resolve(hero, orc_at, a, DIR_UP, 0) == OUTCOME_SCRAPE);
+    hero->evasion = 3;
+    /* the tile it moved to: no dodge there */
+    CHECK(attack_resolve(hero, hex_neighbor_raw(away, 2), away, DIR_UP, 0) == OUTCOME_SUCCESS);
+    n = attack_targets(orc, away, DIR_UP, 0, ids, outcomes, 8);
+    CHECK(n == 1 && outcomes[0] == OUTCOME_SUCCESS);
+
+    /* a block on the tile as well: the better for the defender */
+    gh->dodges.items[0].value = 7;
+    TileBlock b = { .tile = a, .dirs = DIR_BIT(DIR_UP), .value = 2, .blocker = 999, .occupied = false };
+    da_push(&gh->blocks, b);
+    CHECK(attack_resolve(hero, orc_at, a, DIR_UP, 0) == OUTCOME_MISS);      /* block: miss, dodge: scrape */
+    CHECK(attack_resolve(hero, orc_at, a, DIR_LEFT, 0) == OUTCOME_MISS);    /* block: success, dodge: miss */
+    gh->dodges.items[0].value = 2;
+    CHECK(attack_resolve(hero, orc_at, a, DIR_LEFT, 0) == OUTCOME_SCRAPE);  /* block: success, dodge: scrape */
+    CHECK(attack_resolve(hero, orc_at, a, DIR_UP, 0) == OUTCOME_MISS);      /* block: miss, dodge: success */
+
+    /* the failed block's lock: not when the dodge saved everyone hit */
+    int rolled[OUTCOME_COUNT] = { 3, 1, 0 };
+    uint32_t hit[1] = { hero->id };
+    int scraped[1] = { OUTCOME_SCRAPE }, through[1] = { OUTCOME_SUCCESS };
+    gh->testMode = true;
+    hero->health = 10;
+    attack_apply(orc, ATTACK_TEST, a, DIR_LEFT, rolled, hit, scraped, 1);
+    CHECK(gh->blockLocks.count == 0 && hero->health == 9);
+    CHECK(strstr(stub_last_log, " (dodged up, DV 2 against AV 0 + ET 3): scrape, 1 damage, HP 9/10"));
+    attack_apply(orc, ATTACK_TEST, a, DIR_LEFT, rolled, hit, through, 1);
+    CHECK(gh->blockLocks.count == 1 && hero->health == 6);
+    gh->testMode = false;
+    blocks_clear();
+
+    /* a step toward the attacker matches no attack direction: every attack is in "another" one */
+    gh->dodges.items[0].step = 5;
+    for (int d = 0; d < DIR_COUNT; d++) {
+        gh->dodges.items[0].value = 7;
+        CHECK(attack_resolve(hero, orc_at, a, (AttackDir)d, 0) == OUTCOME_MISS);
+        gh->dodges.items[0].value = 2;
+        CHECK(attack_resolve(hero, orc_at, a, (AttackDir)d, 0) == OUTCOME_SCRAPE);
+    }
+    gh->dodges.items[0].step = 2;
+
+    /* lifetime: the hero's next turn ends it */
+    game_next_turn();
+    CHECK(gh->currentTurn == orc && gh->dodges.count == 1);
+    game_next_turn();
+    CHECK(gh->currentTurn == hero && gh->dodges.count == 0);
+    /* the initiative ending, too */
+    hero->tile = a;
+    ops_apply(&dg);
+    CHECK(gh->dodges.count == 1);
+    game_clear_initiative();
+    CHECK(gh->dodges.count == 0);
+
+    /* outside initiative (test mode): the next dodge replaces the earlier one; deleting the dodger ends it */
+    gh->testMode = true;
+    hero->tile = a;
+    hero->turnUsed = 0;
+    CHECK_R(ops_check(&dg, &alice), OPR_OK);
+    ops_apply(&dg);
+    Op back = dg;
+    back.tile = a;
+    hero->turnUsed = 0;
+    CHECK_R(ops_check(&back, &alice), OPR_OK);
+    ops_apply(&back);
+    CHECK(gh->dodges.count == 1 && hex_eq(gh->dodges.items[0].from[0], away) && gh->dodges.items[0].step == 5);
+    hero->stamina = 0; /* test mode: stamina never blocks, and stays at 0 */
+    hero->turnUsed = 0;
+    CHECK_R(ops_check(&dg, &alice), OPR_OK);
+    ops_apply(&dg);
+    CHECK(hero->stamina == 0);
+    entity_delete(hero);
+    CHECK(gh->dodges.count == 0);
+    gh->testMode = false;
+}
+
+/* The Evasion Threshold stat: new characters 3, OP_SET_STATS, spawn specs (snapshots, undo) */
+static void test_evasion_stat(void) {
+    reset_table();
+    Entity *e = add_character((Hex){ 4, 4 }, 5, "Alice");
+    CHECK(e->evasion == 3);
+    OpAuthor alice = player("Alice");
+    Op st = { .type = OP_SET_STATS, .statMask = STAT_EVASION, .evasion = 5 };
+    da_push(&st.ids, e->id);
+    CHECK_R(ops_check(&st, &alice), OPR_GM_ONLY);
+    CHECK_R(ops_check(&st, &GM), OPR_OK);
+    ops_apply(&st);
+    CHECK(e->evasion == 5 && e->speed == 5 && e->maxHealth == 10); /* nothing else changes */
+    st.evasion = EVASION_MAX + 1;
+    CHECK_R(ops_check(&st, &GM), OPR_INVALID);
+    st.evasion = -1;
+    CHECK_R(ops_check(&st, &GM), OPR_INVALID);
+    op_free(&st);
+    /* attributes don't change it */
+    Op agi = { .type = OP_SET_STATS, .statMask = STAT_AGI, .attr = { 0, 3, 0, 0 } };
+    da_push(&agi.ids, e->id);
+    ops_apply(&agi);
+    CHECK(e->evasion == 5);
+    op_free(&agi);
+    /* a spawn keeps the spec's ET */
+    EntitySpec s = op_spec_from_entity(e);
+    CHECK(s.evasion == 5);
+    Op sp = { .type = OP_SPAWN };
+    da_push(&sp.specs, s);
+    CHECK_R(ops_check(&sp, &GM), OPR_OK);
+    ops_apply(&sp);
+    CHECK(gh->entities.count == 2 && gh->entities.items[1]->evasion == 5);
+    sp.specs.items[0].evasion = EVASION_MAX + 1;
+    CHECK_R(ops_check(&sp, &GM), OPR_INVALID);
+    op_free(&sp);
 }
 
 static void test_radial_config(void) {
@@ -3462,7 +3709,7 @@ static void test_hud_create(void) {
     CHECK(c->step == CC_SUMMARY && !strcmp(hud_value("cc.next")->button.label, "Place"));
     CHECK(!strcmp(hud_value("cc.summary")->label.text, "Mao · Normal"));
     CHECK(!strcmp(hud_value("cc.stats")->label.text,
-                  "STR 1 AGI 0 COG 0 SPI 0 · HP 15 · Stamina 8 · Speed 3 · Initiative 0"));
+                  "STR 1 AGI 0 COG 0 SPI 0 · HP 15 · Stamina 8 · Speed 3 · Initiative 0 · ET 3"));
     /* the stats line is below the picture's row, as wide as the panel */
     HudRect pic, stats, panel;
     CHECK(hud_part_rect("cc.preview", &pic) && hud_part_rect("cc.stats", &stats) && stats.y >= pic.y + pic.h);
@@ -3596,6 +3843,8 @@ int main(void) {
     test_attack_contests();
     test_attack_actions();
     test_block_actions();
+    test_dodge_actions();
+    test_evasion_stat();
     test_radial_toggle();
     test_action_menu();
     test_settings();

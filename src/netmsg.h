@@ -21,7 +21,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define NET_PROTOCOL_VERSION 13
+#define NET_PROTOCOL_VERSION 14
 #define NETMSG_ATTRS 4 /* = ATTR_COUNT: STR, AGI, COG, SPI */
 #define NET_DEFAULT_PORT     41234
 #define NET_MAX_FRAME        (64u << 20)            /* one encrypted frame */
@@ -105,6 +105,8 @@ typedef enum {
                            * client nothing more, from the host ids: the characters hit, and values: the damage roll
                            * per outcome (NETMSG_ATTACK_ROLLS), then each character's outcome (0..2) */
     NOP_BLOCK_ACTION,     /* id, row, col, action (BlockAction in blocks.h), value: the directions (bits 1..7) */
+    NOP_DODGE_ACTION,     /* id, row, col (where to), action (DodgeAction in dodges.h), value: 0 from a client, the
+                           * host's roll (0..NETMSG_MAX_DIE) */
     NOP_ROLL,             /* dice: "NdM[+K|-K]" (characters 0-9 d D + -); values: none (client) or
                            * the host's result, every die then the total (at most NETMSG_MAX_ROLLS) */
     NOP_CLAIM,            /* id */
@@ -113,7 +115,7 @@ typedef enum {
 
 /* NetOp.stat_mask bits, the same values as STAT_* in ops.h. Values follow in this order. */
 enum { NSTAT_SIZE = 1, NSTAT_MAXHEALTH = 2, NSTAT_SPEED = 4, NSTAT_INITIATIVE = 8, NSTAT_MAXSTAMINA = 16,
-       NSTAT_STR = 32, NSTAT_AGI = 64, NSTAT_COG = 128, NSTAT_SPI = 256, NSTAT_ALL = 511 };
+       NSTAT_STR = 32, NSTAT_AGI = 64, NSTAT_COG = 128, NSTAT_SPI = 256, NSTAT_EVASION = 512, NSTAT_ALL = 1023 };
 
 /* An entity created by NOP_SPAWN. Walls carry only type, image and tile. */
 typedef struct {
@@ -125,6 +127,7 @@ typedef struct {
     char name[SAVEFMT_CHAR_NAME_MAX]; /* characters: "" = no name */
     char party[SAVEFMT_CHAR_NAME_MAX]; /* characters: "" = no party */
     int32_t attr[NETMSG_ATTRS];        /* characters: SAVEFMT_MIN_ATTR..SAVEFMT_MAX_ATTR */
+    int32_t evasion;                   /* characters: 0..SAVEFMT_MAX_EVASION */
 } NetSpec;
 
 typedef struct {
@@ -142,13 +145,14 @@ typedef struct {
     uint16_t stat_mask;
     int32_t size, max_health, speed, initiative, max_stamina;
     int32_t attr[NETMSG_ATTRS];
+    int32_t evasion; /* SET_STATS: NSTAT_EVASION's value */
     char name[SAVEFMT_NAME_MAX]; /* waypoint or player name */
     char dice[NETMSG_MAX_DICE];
     uint8_t health_mode; /* SET_HEALTH, SET_STAMINA: 0 = set, 1 = change, 2 = spend (stamina only) */
     int32_t value;       /* SET_HEALTH, at most SAVEFMT_MAX_HP either way; SET_TEST_MODE: 0 or 1 */
     char char_name[SAVEFMT_CHAR_NAME_MAX]; /* SET_NAME */
     char party[SAVEFMT_CHAR_NAME_MAX]; /* SET_PARTY: "" = no party */
-    uint8_t action;                    /* MOVE_ACTION, RECOVER_ACTION, ATTACK_ACTION, BLOCK_ACTION */
+    uint8_t action;                    /* MOVE_ACTION, RECOVER_ACTION, ATTACK_ACTION, BLOCK_ACTION, DODGE_ACTION */
 } NetOp;
 
 typedef struct {

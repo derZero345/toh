@@ -1,6 +1,7 @@
 /* Entities (entities package) and markers (fx/Marker). */
 #include "app.h"
 #include "blocks.h"
+#include "dodges.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -86,6 +87,7 @@ Entity *entity_new_character(Texture *image, Hex tile, int size, int maxhealth, 
     e->attack = 0;
     e->speed = speed > MAX_SPEED ? MAX_SPEED : speed;
     e->initiative = initiative;
+    e->evasion = EVASION_DEFAULT;
     return e;
 }
 
@@ -259,6 +261,7 @@ void entity_delete(Entity *e) {
     if (game_is_in_initiative(e)) game_remove_from_initiative(e);
     attack_marks_clear_of(e->id);
     blocks_clear_of(e->id);
+    dodges_clear_of(e->id);
     da_remove_value(&gh->entities, e);
     entity_free(e);
 }

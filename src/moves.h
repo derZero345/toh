@@ -14,8 +14,8 @@
  * the character's turn, a free slot (action_turn_check, also for recover actions), Sprint's earlier move and enough
  * stamina never block. The effects stay: the slot
  * is marked used, stamina is spent down to 0 at most, and the turn ends only when an action uses up the last
- * stamina. Ownership, the range and speed 0 still hold (attacks.h, blocks.h: the same for attacks and blocks; a failed
- * block's lock holds too). Keep this list in the guides
+ * stamina. Ownership, the range and speed 0 still hold (attacks.h, blocks.h, dodges.h: the same for attacks, blocks
+ * and dodges; a failed block's lock and a dodge's adjacent tile with room hold too). Keep this list in the guides
  * when a requirement is added.
  *
  * Add an action: a MoveAction value (before MOVE_COUNT) and its row in MOVE_ACTIONS; the radial menu entry with the

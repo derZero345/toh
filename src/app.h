@@ -105,6 +105,7 @@ typedef struct Entity {
     int size, maxHealth, health, attack, speed, initiative;
     int maxStamina, stamina; /* Tales of Honor stamina; max 0 = no stamina stat */
     int attr[ATTR_COUNT];    /* Tales of Honor attributes (attrs.h); the stats they set follow them (OP_SET_STATS) */
+    int evasion;             /* Tales of Honor Evasion Threshold (dodges.h); EVASION_DEFAULT for new characters */
     int turnUsed;            /* this turn (initiative): TURN_* bits; cleared when its turn starts (moves.h) */
     BarAnim hpAnim, staminaAnim; /* HUD bar animation; memory only */
     unsigned panelFrame;         /* the last frame the HUD showed this entity (0 = never) */
@@ -112,6 +113,9 @@ typedef struct Entity {
 } Entity;
 
 typedef DA(Entity *) EntityList;
+
+#define EVASION_DEFAULT 3 /* the rulebook's base Evasion Threshold */
+#define EVASION_MAX 99    /* = SAVEFMT_MAX_EVASION */
 
 Entity *entity_new_character(Texture *image, Hex tile, int size, int maxhealth, int speed, int initiative);
 Entity *entity_new_wall(Texture *image, Hex tile);
@@ -349,6 +353,13 @@ typedef struct { Hex tile; int dirs, value; uint32_t blocker; bool occupied; } T
 /* A tile the blocker can't block again (blocks.h: a failed block on a tile it didn't occupy); armed once its next
  * turn has started. */
 typedef struct { Hex tile; uint32_t blocker; bool armed; } BlockLock;
+/* A dodge (dodges.h): the tiles the dodger left (from[0] its main tile), the hex direction (0..5, hex_neighbor_raw)
+ * of its first step and its Dodge Value. */
+typedef struct {
+    uint32_t dodger;
+    Hex from[MAX_OCCUPIED];
+    int nfrom, step, value;
+} DodgeRec;
 
 typedef enum {
     ACTION_NONE,
@@ -426,6 +437,7 @@ typedef struct App {
     /* the blocks on tiles and the tiles blockers can't block again (blocks.h); not saved */
     DA(TileBlock) blocks;
     DA(BlockLock) blockLocks;
+    DA(DodgeRec) dodges;
 
     bool hasTileUnderMouse;
     Hex tileUnderMouse;
