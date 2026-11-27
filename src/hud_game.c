@@ -132,6 +132,9 @@ static void on_event(const HudEvent *ev) {
         break;
     case HUD_EV_SLIDER_CHANGED: /* the config has no slider */
         break;
+    case HUD_EV_BUTTON: case HUD_EV_TEXT: case HUD_EV_SUBMIT: case HUD_EV_STEP: case HUD_EV_CHOICE:
+    case HUD_EV_PLUS: /* the config has no controls and no "+" box */
+        break;
     }
 }
 

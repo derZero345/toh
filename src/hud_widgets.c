@@ -282,16 +282,189 @@ static bool hotbar_mouse(const HudElement *e, HudRect r, HudValue *v, HudMouse m
     return false;
 }
 
+/* ---- controls: button, text field, stepper, choice, label, image ---- */
+
+static float fixed_width(const HudElement *e, float s) { return e->width * s; }
+static float control_height(const HudElement *e, float s) { return T->controlH * s; }
+static float image_height(const HudElement *e, float s) { return e->width * s; }
+
+static void control_frame(HudRect r, float s, Color bg, Color line) {
+    round_rect(r, T->slotRadius * s, bg);
+    stroke_round_rect(r, T->slotRadius * s, fmaxf(1, s), line);
+}
+
+static bool button_enabled(const HudValue *v) { return v && v->button.enabled; }
+
+static void button_draw(const HudElement *e, HudRect r, const HudValue *v, const HudUiState *ui, int self, float s) {
+    bool on = button_enabled(v), hover = on && ui->hover == self, pressed = hover && ui->press == self;
+    Color line = pressed ? T->pressed : hover ? T->hover : on ? T->accent[e->accent] : T->emptyLine;
+    control_frame(r, s, pressed ? T->veil : T->slotBg, line);
+    const char *label = v && v->button.label[0] ? v->button.label : e->label ? e->label : "";
+    text_centered(FONT_BOLD, T->font * s, r, on ? T->text : T->textDim, label);
+}
+
+/* UP comes only to the element the press started on: the pointer must still be inside */
+static bool button_mouse(const HudElement *e, HudRect r, HudValue *v, HudMouse m, HudUiState *ui, int self,
+                         float s, HudEvent *ev) {
+    if (m.kind != HUD_MOUSE_UP || !button_enabled(v) || !hud_rect_contains(r, m.x, m.y)) return false;
+    ev->type = HUD_EV_BUTTON;
+    return true;
+}
+
+static const char *button_tip(const HudElement *e, const HudValue *v, const HudUiState *ui, int self) {
+    return v && !v->button.enabled && v->button.why[0] ? v->button.why : NULL;
+}
+
+/* no mouse callback: hud.c focuses the field on the press */
+static void field_draw(const HudElement *e, HudRect r, const HudValue *v, const HudUiState *ui, int self, float s) {
+    bool focused = ui->focus == self;
+    control_frame(r, s, T->barBg, focused ? T->accent[e->accent] : ui->hover == self ? T->hover : T->emptyLine);
+    const char *text = focused ? ui->editText : v ? v->text.text : "";
+    float x = r.x + T->pillPad * s, fs = T->font * s;
+    if (text[0]) text_left(FONT_PLAIN, fs, x, r, T->text, text);
+    else if (!focused && e->label) text_left(FONT_PLAIN, fs, x, r, T->textDim, e->label);
+    if (focused) {
+        char before[HUD_TEXT_MAX];
+        snprintf(before, sizeof(before), "%.*s", ui->caret, text);
+        float cx = x + dr_text_width(FONT_PLAIN, fs, before);
+        dr_line(cx, r.y + r.h * 0.2f, cx, r.y + r.h * 0.8f, fmaxf(1, T->caretW * s), T->text);
+    }
+}
+
+/* [label][-][value][+] */
+HudRect hud_stepper_button(HudRect r, bool plus, float s) {
+    float b = T->stepperBtn * s, y = r.y + (r.h - b) / 2;
+    return plus ? (HudRect){ r.x + r.w - b, y, b, b } : (HudRect){ r.x + T->stepperLabelW * s, y, b, b };
+}
+
+static bool stepper_can(const HudValue *v, bool plus) {
+    return v && (plus ? v->stepper.value < v->stepper.max : v->stepper.value > v->stepper.min);
+}
+
+/* 0 = minus, 1 = plus, -1 = neither */
+static int stepper_at(HudRect r, float x, float y, float s) {
+    if (hud_rect_contains(hud_stepper_button(r, false, s), x, y)) return 0;
+    if (hud_rect_contains(hud_stepper_button(r, true, s), x, y)) return 1;
+    return -1;
+}
+
+static void stepper_draw(const HudElement *e, HudRect r, const HudValue *v, const HudUiState *ui, int self, float s) {
+    const char *label = v && v->stepper.label[0] ? v->stepper.label : e->label ? e->label : "";
+    text_left(FONT_BOLD, T->font * s, r.x, r, T->accent[e->accent], label);
+    for (int p = 0; p < 2; p++) {
+        HudRect b = hud_stepper_button(r, p == 1, s);
+        bool on = stepper_can(v, p == 1), hover = on && ui->hover == self && ui->hoverSub == p;
+        bool pressed = hover && ui->press == self && ui->pressSub == p;
+        control_frame(b, s, pressed ? T->veil : T->slotBg, hover ? T->hover : on ? T->emptyLine : T->veil);
+        text_centered(FONT_BOLD, T->font * s, b, on ? T->text : T->textDim, p ? "+" : "-");
+    }
+    HudRect minus = hud_stepper_button(r, false, s), plus = hud_stepper_button(r, true, s);
+    HudRect mid = { minus.x + minus.w, r.y, plus.x - (minus.x + minus.w), r.h };
+    char val[16];
+    snprintf(val, sizeof(val), "%d", v ? v->stepper.value : 0);
+    text_centered(FONT_BOLD, T->font * s, mid, v ? T->text : T->textDim, val);
+}
+
+static bool stepper_mouse(const HudElement *e, HudRect r, HudValue *v, HudMouse m, HudUiState *ui, int self,
+                          float s, HudEvent *ev) {
+    int at = stepper_at(r, m.x, m.y, s);
+    switch (m.kind) {
+    case HUD_MOUSE_DOWN: ui->pressSub = at; return false;
+    case HUD_MOUSE_MOVE: ui->hoverSub = at; return false;
+    case HUD_MOUSE_UP:
+        if (at < 0 || at != ui->pressSub || !stepper_can(v, at == 1)) return false;
+        ev->type = HUD_EV_STEP;
+        ev->value = at == 1 ? 1 : -1;
+        return true;
+    }
+    return false;
+}
+
+/* the options side by side, equally wide */
+static HudRect choice_option(HudRect r, int i, int n, float s) {
+    float g = T->slotGap * s, w = n > 0 ? (r.w - (float)(n - 1) * g) / (float)n : r.w;
+    return (HudRect){ r.x + (float)i * (w + g), r.y, w, r.h };
+}
+
+static int choice_at(const HudValue *v, HudRect r, float x, float y, float s) {
+    int n = v ? v->choice.count : 0;
+    for (int i = 0; i < n; i++)
+        if (hud_rect_contains(choice_option(r, i, n, s), x, y)) return i;
+    return -1;
+}
+
+static void choice_draw(const HudElement *e, HudRect r, const HudValue *v, const HudUiState *ui, int self, float s) {
+    if (!v || v->choice.count == 0) {
+        control_frame(r, s, T->slotBg, T->emptyLine);
+        return;
+    }
+    for (int i = 0; i < v->choice.count; i++) {
+        HudRect o = choice_option(r, i, v->choice.count, s);
+        bool sel = i == v->choice.selected, hover = ui->hover == self && ui->hoverSub == i;
+        Color line = hover ? T->hover : sel ? T->accent[e->accent] : T->emptyLine;
+        control_frame(o, s, sel ? T->accent[e->accent] : T->slotBg, line);
+        text_centered(sel ? FONT_BOLD : FONT_PLAIN, T->smallFont * s, o, T->text, v->choice.options[i]);
+    }
+}
+
+static bool choice_mouse(const HudElement *e, HudRect r, HudValue *v, HudMouse m, HudUiState *ui, int self,
+                         float s, HudEvent *ev) {
+    int at = choice_at(v, r, m.x, m.y, s);
+    switch (m.kind) {
+    case HUD_MOUSE_DOWN: ui->pressSub = at; return false;
+    case HUD_MOUSE_MOVE: ui->hoverSub = at; return false;
+    case HUD_MOUSE_UP:
+        if (at < 0 || at != ui->pressSub || at == v->choice.selected) return false;
+        ev->type = HUD_EV_CHOICE;
+        ev->value = at;
+        return true;
+    }
+    return false;
+}
+
+static const char *choice_tip(const HudElement *e, const HudValue *v, const HudUiState *ui, int self) {
+    int i = ui->hoverSub;
+    return v && i >= 0 && i < v->choice.count && v->choice.hints[i][0] ? v->choice.hints[i] : NULL;
+}
+
+static void label_draw(const HudElement *e, HudRect r, const HudValue *v, const HudUiState *ui, int self, float s) {
+    const char *text = v ? v->label.text : e->label ? e->label : "";
+    if (text[0]) text_left(FONT_PLAIN, T->font * s, r.x, r, v ? T->text : T->textDim, text);
+}
+
+static void image_draw(const HudElement *e, HudRect r, const HudValue *v, const HudUiState *ui, int self, float s) {
+    if (v && v->image.tex) dr_image(v->image.tex, r.x, r.y, r.w, r.h);
+    else control_frame(r, s, T->slotBg, T->emptyLine);
+}
+
+void hud_draw_tooltip(HudRect r, float s, const char *text) {
+    hud_draw_panel(r, s * 0.6f);
+    text_centered(FONT_PLAIN, T->font * s, r, T->text, text);
+}
+
 /* ---- the component map: a new element type adds one entry ---- */
 
-static const HudComponent BAR = { true, bar_min_width, bar_height, bar_draw, NULL };
-static const HudComponent PILL = { false, pill_min_width, pill_height, pill_draw, NULL };
-static const HudComponent SLIDER = { true, slider_min_width, slider_height, slider_draw, slider_mouse };
-static const HudComponent HOTBAR = { false, hotbar_min_width, hotbar_height, hotbar_draw, hotbar_mouse };
+/* flex, min_width, height, draw, mouse, tooltip */
+static const HudComponent BAR = { true, bar_min_width, bar_height, bar_draw, NULL, NULL };
+static const HudComponent PILL = { false, pill_min_width, pill_height, pill_draw, NULL, NULL };
+static const HudComponent SLIDER = { true, slider_min_width, slider_height, slider_draw, slider_mouse, NULL };
+static const HudComponent HOTBAR = { false, hotbar_min_width, hotbar_height, hotbar_draw, hotbar_mouse, NULL };
+static const HudComponent BUTTON = { false, fixed_width, control_height, button_draw, button_mouse, button_tip };
+static const HudComponent TEXTFIELD = { false, fixed_width, control_height, field_draw, NULL, NULL };
+static const HudComponent STEPPER = { false, fixed_width, control_height, stepper_draw, stepper_mouse, NULL };
+static const HudComponent CHOICE = { false, fixed_width, control_height, choice_draw, choice_mouse, choice_tip };
+static const HudComponent LABEL = { true, fixed_width, control_height, label_draw, NULL, NULL };
+static const HudComponent IMAGE = { false, fixed_width, image_height, image_draw, NULL, NULL };
 
 const HudComponent *const HUD_COMPONENTS[HUD_ELEMENT_COUNT] = {
     [HUD_BAR] = &BAR,
     [HUD_PILL] = &PILL,
     [HUD_SLIDER] = &SLIDER,
     [HUD_HOTBAR] = &HOTBAR,
+    [HUD_BUTTON] = &BUTTON,
+    [HUD_TEXTFIELD] = &TEXTFIELD,
+    [HUD_STEPPER] = &STEPPER,
+    [HUD_CHOICE] = &CHOICE,
+    [HUD_LABEL] = &LABEL,
+    [HUD_IMAGE] = &IMAGE,
 };

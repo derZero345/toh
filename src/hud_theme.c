@@ -8,6 +8,7 @@ const HudTheme HUD_THEME = {
     .pillW = 64, .pillH = 20, .pillEdge = 3, .pillPad = 5,
     .sliderTrack = 6, .sliderKnob = 14, .sliderLabelW = 72, .sliderMinW = 120,
     .slot = 44, .slotGap = 6, .slotRadius = 6, .slotIconPad = 7, .slotTextPad = 4,
+    .controlH = 26, .stepperLabelW = 36, .stepperBtn = 22, .caretW = 1.5f, .tipPad = 6, .tipGap = 6, .plusSize = 44,
     .unavailableAlpha = 0.35f, .cooldownFontScale = 1.3f, .closeInset = 0.28f, .closeLine = 2, .sliderTextPad = 4,
     .tabH = 28, .tabGap = 6, .tabPad = 8, .tabIcon = 18, .closeSize = 18,
     .shadowStep = 2, .shadowLayers = 3,

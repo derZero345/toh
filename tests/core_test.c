@@ -1184,7 +1184,7 @@ static void test_hud_widgets(void) {
     HudValue hv = { .type = HUD_HOTBAR };
     hv.slots[2] = ok;
     hv.slots[3] = off;
-    HudUiState ui = { -1, -1, -1, -1, false, false };
+    HudUiState ui = { .hover = -1, .press = -1, .hoverSub = -1, .pressSub = -1, .focus = -1, .editText = "" };
     HudEvent ev = { 0 };
     ui.press = 7;
     CHECK(!hc->mouse(&hb, r, &hv, (HudMouse){ HUD_MOUSE_DOWN, s3.x + 5, s3.y + 5 }, &ui, 7, 1, &ev));
@@ -1387,10 +1387,10 @@ static void test_hud_layout(void) {
     hud_begin_frame();
 }
 
-static HudEvent hud_events[8];
+static HudEvent hud_events[32];
 static int hud_nevents;
 static void hud_record(const HudEvent *ev) {
-    if (hud_nevents < 8) hud_events[hud_nevents] = *ev;
+    if (hud_nevents < 32) hud_events[hud_nevents] = *ev;
     hud_nevents++;
 }
 
@@ -1565,6 +1565,110 @@ static void test_hud_review(void) {
     hud_use_config(NULL, 0);
     hud_set_event_handler(NULL);
     hud_begin_frame();
+}
+
+static const HudElement CTRL_A[] = {
+    { .type = HUD_TEXTFIELD, .key = "name", .accent = HUD_ACCENT_GOLD, .label = "Name", .width = 200, .max_len = 6 },
+    { .type = HUD_BUTTON, .key = "ok", .accent = HUD_ACCENT_GREEN, .label = "OK", .width = 60 },
+};
+static const HudElement CTRL_B[] = {
+    { .type = HUD_STEPPER, .key = "str", .accent = HUD_ACCENT_RED, .width = 120 },
+    { .type = HUD_CHOICE, .key = "size", .accent = HUD_ACCENT_BLUE, .width = 210 },
+};
+static const HudElement CTRL_C[] = {
+    { .type = HUD_IMAGE, .key = "pic", .width = 44 },
+    { .type = HUD_LABEL, .key = "line", .width = 100 },
+};
+static const HudRow CTRL_ROWS[] = { { CTRL_A, 2 }, { CTRL_B, 2 }, { CTRL_C, 2 } };
+
+static void click_part(const char *part) {
+    HudRect r;
+    CHECK(hud_part_rect(part, &r));
+    float x = r.x + r.w / 2, y = r.y + r.h / 2;
+    hud_mouse_move(x, y);
+    hud_mouse_down(x, y);
+    hud_mouse_up(x, y);
+}
+
+static void test_hud_controls(void) {
+    char err[160];
+    CHECK(hud_config_check(CTRL_ROWS, 3, err, sizeof(err)) == 0);
+    static const HudElement NOWIDTH[] = { { .type = HUD_BUTTON, .key = "b" } };
+    static const HudRow BAD[] = { { NOWIDTH, 1 } };
+    CHECK(hud_config_check(BAD, 1, err, sizeof(err)) == -1 && strstr(err, "width"));
+    static const HudElement LONG[] = { { .type = HUD_TEXTFIELD, .key = "t", .width = 50, .max_len = HUD_TEXT_MAX } };
+    static const HudRow BAD2[] = { { LONG, 1 } };
+    CHECK(hud_config_check(BAD2, 1, err, sizeof(err)) == -1);
+
+    HudScreen scr = { 1000, 700, 700, 0, 1 };
+    hud_set_screen(&scr);
+    hud_use_config(CTRL_ROWS, 3);
+    hud_set_visible(true);
+    hud_set_event_handler(hud_record);
+    hud_nevents = 0;
+    hud_begin_frame();
+    hud_set_textfield("name", "Ab");
+    hud_set_button("ok", "OK", false, "Give a name");
+    hud_set_stepper("str", "STR", 3, -2, 3);
+    static const char *const OPTS[] = { "A", "B", "C" }, *const HINTS[] = { "a hint", "b hint", "c hint" };
+    hud_set_choice("size", OPTS, HINTS, 3, 1);
+    hud_set_label("line", "hello");
+
+    /* a disabled button sends nothing */
+    click_part("ok");
+    CHECK(hud_nevents == 0);
+    /* the field: a click focuses it with the published text; typing and editing send the new text */
+    click_part("name");
+    CHECK(hud_focused());
+    CHECK(hud_text_input("c") && hud_nevents == 1 && hud_events[0].type == HUD_EV_TEXT && !strcmp(hud_events[0].key, "name"));
+    CHECK(!strcmp(hud_events[0].text, "Abc"));
+    CHECK(hud_text_key(HUD_EDIT_HOME) && hud_text_key(HUD_EDIT_DELETE) && !strcmp(hud_events[hud_nevents - 1].text, "bc"));
+    CHECK(hud_text_key(HUD_EDIT_END) && hud_text_key(HUD_EDIT_BACKSPACE) && !strcmp(hud_events[hud_nevents - 1].text, "b"));
+    CHECK(hud_text_input("\xc3\xa4") && hud_text_key(HUD_EDIT_BACKSPACE) && !strcmp(hud_events[hud_nevents - 1].text, "b"));
+    int n = hud_nevents;
+    CHECK(hud_text_input("123456") && hud_nevents == n); /* over max_len (6): ignored, still used */
+    CHECK(hud_text_key(HUD_EDIT_ENTER) && hud_events[hud_nevents - 1].type == HUD_EV_SUBMIT);
+    CHECK(hud_text_key(HUD_EDIT_ESCAPE) && !hud_focused());
+    CHECK(!hud_text_input("x") && !hud_text_key(HUD_EDIT_LEFT)); /* not focused: not used */
+    CHECK(hud_focus("name") && hud_focused() && !hud_focus("ok"));
+    hud_mouse_down(5, 5); /* outside the HUD: blurs */
+    hud_mouse_up(5, 5);
+    CHECK(!hud_focused());
+
+    /* stepper: + at the maximum does nothing, - sends -1 */
+    n = hud_nevents;
+    click_part("str.plus");
+    CHECK(hud_nevents == n);
+    click_part("str.minus");
+    CHECK(hud_nevents == n + 1 && hud_events[n].type == HUD_EV_STEP && hud_events[n].value == -1);
+
+    /* choice: a click on another option sends its index */
+    HudRect c;
+    CHECK(hud_part_rect("size", &c));
+    float x = c.x + c.w * 5 / 6, y = c.y + c.h / 2; /* the third option */
+    hud_mouse_move(x, y);
+    hud_mouse_down(x, y);
+    hud_mouse_up(x, y);
+    CHECK(hud_events[hud_nevents - 1].type == HUD_EV_CHOICE && hud_events[hud_nevents - 1].value == 2);
+    hud_mouse_move(x, y);
+    CHECK(hud_tooltip() && !strcmp(hud_tooltip(), "c hint"));
+
+    /* an enabled button sends HUD_EV_BUTTON; a disabled one's tooltip is its reason */
+    HudRect ok;
+    CHECK(hud_part_rect("ok", &ok));
+    hud_mouse_move(ok.x + 2, ok.y + 2);
+    CHECK(hud_tooltip() && !strcmp(hud_tooltip(), "Give a name"));
+    hud_begin_frame();
+    hud_set_button("ok", "OK", true, NULL);
+    n = hud_nevents;
+    click_part("ok");
+    CHECK(hud_nevents == n + 1 && hud_events[n].type == HUD_EV_BUTTON && !strcmp(hud_events[n].key, "ok"));
+
+    hud_draw(); /* every component draws with and without values */
+    hud_begin_frame();
+    hud_draw();
+    hud_set_event_handler(NULL);
+    hud_use_config(NULL, 0);
 }
 
 static void test_hud_game(void) {
@@ -2487,6 +2591,7 @@ int main(void) {
     test_hud_layout();
     test_hud_input();
     test_hud_review();
+    test_hud_controls();
     test_hud_game();
     test_radial_config();
     test_radial_menu();

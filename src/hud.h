@@ -22,6 +22,7 @@
  *   Real content:          the placeholders (stat pills, the slot states) are published in hud_game.c's
  *                          publish_placeholders(); replace them with game data there, and react to slot events in
  *                          hud_game.c's on_event(). A slider (HUD_SLIDER) is available but not in the config.
+ *   Text fields, buttons and the other controls: see hud_create.c for a config that uses them.
  */
 #ifndef TOH_HUD_H
 #define TOH_HUD_H
@@ -48,16 +49,22 @@ static inline bool hud_rect_contains(HudRect r, float x, float y) {
 
 /* ---- config (hud_config.c) ---- */
 
-typedef enum { HUD_BAR, HUD_PILL, HUD_SLIDER, HUD_HOTBAR, HUD_ELEMENT_COUNT } HudElementType;
+typedef enum {
+    HUD_BAR, HUD_PILL, HUD_SLIDER, HUD_HOTBAR,
+    HUD_BUTTON, HUD_TEXTFIELD, HUD_STEPPER, HUD_CHOICE, HUD_LABEL, HUD_IMAGE,
+    HUD_ELEMENT_COUNT
+} HudElementType;
 
 typedef struct {
     HudElementType type;
     const char *key;   /* which published value it shows; unique */
     HudAccent accent;
-    const char *label; /* placeholder text where the element has one (pill, slider); may be NULL */
+    const char *label; /* placeholder text (pill, slider, button, text field when empty, label); may be NULL */
     int slots;         /* hotbar: 1..HUD_MAX_SLOTS */
     bool two_sided;    /* bar: -max..max; the left half is the zone below 0 */
     bool thin;         /* bar: the thin variant */
+    float width;  /* button, text field, stepper, choice, label, image: width in logical pixels (image: also height) */
+    int max_len;  /* text field: at most this many bytes (0 = HUD_TEXT_MAX - 1) */
 } HudElement;
 
 typedef struct {
@@ -93,6 +100,19 @@ typedef struct {
 typedef struct { char label[HUD_TEXT_MAX], value[HUD_TEXT_MAX]; } HudPill;
 typedef struct { char label[HUD_TEXT_MAX]; int value, min, max; } HudSlider;
 
+#define HUD_MAX_CHOICES 8
+#define HUD_LABEL_MAX 128
+typedef struct { char label[HUD_TEXT_MAX]; bool enabled; char why[2 * HUD_TEXT_MAX]; } HudButton;
+typedef struct { char text[HUD_TEXT_MAX]; } HudText;
+typedef struct { char label[HUD_TEXT_MAX]; int value, min, max; } HudStepper;
+typedef struct {
+    char options[HUD_MAX_CHOICES][16];
+    char hints[HUD_MAX_CHOICES][HUD_TEXT_MAX]; /* hover text per option; "" = none */
+    int count, selected;
+} HudChoice;
+typedef struct { char text[HUD_LABEL_MAX]; } HudLabel;
+typedef struct { Texture *tex; } HudImage; /* borrowed; must stay alive for the frame */
+
 typedef enum { HUD_SLOT_EMPTY, HUD_SLOT_UNAVAILABLE, HUD_SLOT_AVAILABLE } HudSlotState;
 typedef struct {
     HudSlotState state;
@@ -109,6 +129,12 @@ typedef struct {
         HudPill pill;
         HudSlider slider;
         HudSlot slots[HUD_MAX_SLOTS]; /* HUD_HOTBAR */
+        HudButton button;
+        HudText text;
+        HudStepper stepper;
+        HudChoice choice;
+        HudLabel label;
+        HudImage image;
     };
 } HudValue;
 
@@ -118,6 +144,12 @@ void hud_set_bar(const char *key, const HudBar *bar);
 void hud_set_pill(const char *key, const char *label, const char *value);
 void hud_set_slider(const char *key, const char *label, int value, int min, int max);
 void hud_set_slot(const char *key, int index, const HudSlot *slot); /* other slots of that key stay */
+void hud_set_button(const char *key, const char *label, bool enabled, const char *why); /* why: tooltip when disabled */
+void hud_set_textfield(const char *key, const char *text); /* the text while the field has no focus */
+void hud_set_stepper(const char *key, const char *label, int value, int min, int max);
+void hud_set_choice(const char *key, const char *const *options, const char *const *hints, int n, int selected);
+void hud_set_label(const char *key, const char *text);
+void hud_set_image(const char *key, Texture *tex);
 /* Published this frame under key, or NULL. The pointer is valid until the next hud_begin_frame. */
 const HudValue *hud_value(const char *key);
 
@@ -143,7 +175,8 @@ void hud_set_visible(bool on);
 /* The outline of the panel and tab; HUD_THEME.border until set. The game sets its colour theme's border colour. */
 void hud_set_border(Color c);
 Color hud_border(void);
-/* A part of the current layout: an element key, "<hotbar key>.<1..slots>", "panel", "tab" or "tab.close".
+/* A part of the current layout: an element key, "<hotbar key>.<1..slots>", "<stepper key>.minus" / ".plus",
+ * "panel", "tab" or "tab.close".
  * False if the HUD is hidden, there is no such part, or the tab (or its close button) is not shown. */
 bool hud_part_rect(const char *part, HudRect *out);
 bool hud_contains(float x, float y); /* over the panel or the tab; false while hidden */
@@ -153,12 +186,16 @@ void hud_draw(void);
 
 /* ---- input and events ---- */
 
-typedef enum { HUD_EV_TARGET_CLOSED, HUD_EV_SLOT_USED, HUD_EV_SLIDER_CHANGED } HudEventType;
+typedef enum {
+    HUD_EV_TARGET_CLOSED, HUD_EV_SLOT_USED, HUD_EV_SLIDER_CHANGED,
+    HUD_EV_BUTTON, HUD_EV_TEXT, HUD_EV_SUBMIT, HUD_EV_STEP, HUD_EV_CHOICE, HUD_EV_PLUS
+} HudEventType;
 typedef struct {
     HudEventType type;
-    const char *key; /* the config's static key string (compare with strcmp); NULL for HUD_EV_TARGET_CLOSED */
-    int slot;        /* HUD_EV_SLOT_USED: 0..9 */
-    int value;       /* HUD_EV_SLIDER_CHANGED */
+    const char *key;  /* the config's static key string (compare with strcmp); NULL for HUD_EV_TARGET_CLOSED */
+    int slot;         /* HUD_EV_SLOT_USED: 0..9 */
+    int value;        /* SLIDER_CHANGED; STEP: -1 or +1; CHOICE: the option */
+    const char *text; /* TEXT: the field's new text, valid during the handler */
 } HudEvent;
 
 /* The handler runs in the middle of input handling: it must not call hud_set_visible, hud_use_config or
@@ -177,12 +214,29 @@ void hud_clear_hover(void);
 /* Number key for slot 0..9 (keys 1..9, 0). True if the slot was used. */
 bool hud_key(int slot);
 
+/* Text fields: a left press on one focuses it, a press anywhere else (or Esc) takes the focus away. While a field
+ * has the focus, the game sends it text and editing keys; it sends HUD_EV_TEXT on every change, HUD_EV_SUBMIT on
+ * Enter. Changing the config or hiding the HUD drops the focus. */
+typedef enum { HUD_EDIT_LEFT, HUD_EDIT_RIGHT, HUD_EDIT_HOME, HUD_EDIT_END, HUD_EDIT_BACKSPACE, HUD_EDIT_DELETE,
+               HUD_EDIT_ENTER, HUD_EDIT_ESCAPE } HudEditKey;
+bool hud_focus(const char *key); /* focuses that text field with its published text; false if there is none */
+void hud_blur(void);
+bool hud_focused(void);
+bool hud_text_input(const char *utf8); /* true = used (the field has the focus) */
+bool hud_text_key(HudEditKey k);       /* true = used */
+/* The hovered element's or tab's tooltip, or NULL (tests; hud_draw draws it). */
+const char *hud_tooltip(void);
+
 /* ---- components (hud_widgets.c) ---- */
 
 typedef struct {
     int hover, press;            /* flat element index row * HUD_MAX_ROW_ELEMENTS + element, -1 = none */
     int hoverSub, pressSub;      /* inside it, e.g. the hotbar slot; -1 = none */
     bool hoverClose, pressClose; /* the tab's close button */
+    int focus;                   /* the focused text field's flat index, -1 = none */
+    const char *editText;        /* its text while focused */
+    int caret;                   /* in editText, a byte offset */
+    bool hoverTab, hoverPlus, pressPlus; /* the tab itself and the "+" box */
 } HudUiState;
 
 typedef enum { HUD_MOUSE_DOWN, HUD_MOUSE_MOVE, HUD_MOUSE_UP } HudMouseKind;
@@ -203,6 +257,8 @@ typedef struct {
      * slot, value; hud.c adds the key) to send an event. v may be NULL. */
     bool (*mouse)(const HudElement *e, HudRect r, HudValue *v, HudMouse m, HudUiState *ui, int self, float scale,
                   HudEvent *ev);
+    /* Optional: the tooltip while the pointer is over the element (ui->hoverSub says where inside), or NULL. */
+    const char *(*tooltip)(const HudElement *e, const HudValue *v, const HudUiState *ui, int self);
 } HudComponent;
 
 extern const HudComponent *const HUD_COMPONENTS[HUD_ELEMENT_COUNT];
@@ -215,6 +271,9 @@ void hud_draw_tab(HudRect r, HudRect close, const HudTarget *t, const HudUiState
 HudRect hud_slot_rect(HudRect hotbar, int i, float scale);
 int hud_slot_at(const HudElement *e, HudRect hotbar, float x, float y, float scale); /* -1 = none */
 bool hud_slot_usable(const HudSlot *s);
+/* a stepper's - or + button, shared by drawing, input and hud_part_rect */
+HudRect hud_stepper_button(HudRect stepper, bool plus, float scale);
+void hud_draw_tooltip(HudRect r, float scale, const char *text); /* a small panel with the text */
 
 /* ---- icons (hud_icons.c) ---- */
 

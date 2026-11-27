@@ -2,6 +2,8 @@
  * No game state here; see hud.h for how the parts fit together. */
 #include "hud.h"
 
+#include "draw.h"
+
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,7 +42,18 @@ int hud_config_check(const HudRow *r, int n, char *err, size_t cap) {
                          HUD_KEY_MAX - 1);
                 return -1;
             }
-            if (strcmp(e->key, "panel") == 0 || strcmp(e->key, "tab") == 0 || strcmp(e->key, "tab.close") == 0) {
+            bool sized = e->type == HUD_BUTTON || e->type == HUD_TEXTFIELD || e->type == HUD_STEPPER ||
+                         e->type == HUD_CHOICE || e->type == HUD_LABEL || e->type == HUD_IMAGE;
+            if (sized && !(e->width > 0)) {
+                snprintf(err, cap, "row %d element %d: needs a width", i + 1, k + 1);
+                return -1;
+            }
+            if (e->type == HUD_TEXTFIELD && (e->max_len < 0 || e->max_len > HUD_TEXT_MAX - 1)) {
+                snprintf(err, cap, "row %d element %d: max_len 0 to %d", i + 1, k + 1, HUD_TEXT_MAX - 1);
+                return -1;
+            }
+            if (strcmp(e->key, "panel") == 0 || strcmp(e->key, "tab") == 0 || strcmp(e->key, "tab.close") == 0 ||
+                strcmp(e->key, "plus") == 0) {
                 snprintf(err, cap, "key \"%s\" is reserved", e->key);
                 return -1;
             }
@@ -151,13 +164,59 @@ void hud_set_slot(const char *key, int index, const HudSlot *slot) {
     if (v) v->slots[index] = *slot;
 }
 
+void hud_set_button(const char *key, const char *label, bool enabled, const char *why) {
+    HudValue *v = value_for(key, HUD_BUTTON);
+    if (!v) return;
+    snprintf(v->button.label, sizeof(v->button.label), "%s", label ? label : "");
+    v->button.enabled = enabled;
+    snprintf(v->button.why, sizeof(v->button.why), "%s", why ? why : "");
+}
+
+void hud_set_textfield(const char *key, const char *text) {
+    HudValue *v = value_for(key, HUD_TEXTFIELD);
+    if (v) snprintf(v->text.text, sizeof(v->text.text), "%s", text ? text : "");
+}
+
+void hud_set_stepper(const char *key, const char *label, int value, int min, int max) {
+    HudValue *v = value_for(key, HUD_STEPPER);
+    if (!v) return;
+    snprintf(v->stepper.label, sizeof(v->stepper.label), "%s", label ? label : "");
+    v->stepper.value = value;
+    v->stepper.min = min;
+    v->stepper.max = max;
+}
+
+void hud_set_choice(const char *key, const char *const *options, const char *const *hints, int n, int selected) {
+    HudValue *v = value_for(key, HUD_CHOICE);
+    if (!v) return;
+    if (n > HUD_MAX_CHOICES) n = HUD_MAX_CHOICES;
+    v->choice.count = n < 0 ? 0 : n;
+    v->choice.selected = selected;
+    for (int i = 0; i < v->choice.count; i++) {
+        snprintf(v->choice.options[i], sizeof(v->choice.options[i]), "%s", options[i] ? options[i] : "");
+        snprintf(v->choice.hints[i], sizeof(v->choice.hints[i]), "%s", hints && hints[i] ? hints[i] : "");
+    }
+}
+
+void hud_set_label(const char *key, const char *text) {
+    HudValue *v = value_for(key, HUD_LABEL);
+    if (v) snprintf(v->label.text, sizeof(v->label.text), "%s", text ? text : "");
+}
+
+void hud_set_image(const char *key, Texture *tex) {
+    HudValue *v = value_for(key, HUD_IMAGE);
+    if (v) v->image.tex = tex;
+}
+
 /* ---- screen, visibility and layout ---- */
 
 static HudScreen screen = { 800, 600, 600, 0, 1 };
 static bool visible = true;
 static Color border;
 static bool border_set;
-static HudUiState ui = { -1, -1, -1, -1, false, false };
+static const HudUiState UI_NONE = { .hover = -1, .press = -1, .hoverSub = -1, .pressSub = -1, .focus = -1,
+                                    .editText = "" };
+static HudUiState ui = { .hover = -1, .press = -1, .hoverSub = -1, .pressSub = -1, .focus = -1, .editText = "" };
 static bool pressActive; /* a left press started on the HUD and is still held */
 
 typedef struct {
@@ -176,9 +235,13 @@ typedef struct {
 static Layout layout;
 static int layout_count;
 
+/* the focused text field: its flat element index, its text and the caret (a byte offset) */
+static struct { int idx; char text[HUD_TEXT_MAX]; int caret; } edit = { -1, "", 0 };
+
 static void ui_reset(void) {
-    ui = (HudUiState){ -1, -1, -1, -1, false, false };
+    ui = UI_NONE;
     pressActive = false;
+    edit.idx = -1;
 }
 
 static bool config_checked, config_ok;
@@ -342,6 +405,18 @@ bool hud_part_rect(const char *part, HudRect *out) {
                 *out = layout.elems[i][k];
                 return true;
             }
+    /* "<stepper key>.minus" / ".plus" */
+    const char *sdot = strrchr(part, '.');
+    if (sdot && (strcmp(sdot, ".minus") == 0 || strcmp(sdot, ".plus") == 0))
+        for (int i = 0; i < row_count(); i++)
+            for (int k = 0; k < rows[i].count; k++) {
+                const HudElement *e = &rows[i].elements[k];
+                if (e->type == HUD_STEPPER && strlen(e->key) == (size_t)(sdot - part) &&
+                    strncmp(e->key, part, (size_t)(sdot - part)) == 0) {
+                    *out = hud_stepper_button(layout.elems[i][k], sdot[1] == 'p', layout.scale);
+                    return true;
+                }
+            }
     /* "<hotbar key>.<slot>" with slot 1..slots */
     const char *dot = strrchr(part, '.');
     if (!dot || !dot[1]) return false;
@@ -404,6 +479,110 @@ static void element_mouse(int idx, HudMouseKind kind, float x, float y) {
     }
 }
 
+/* ---- text fields: focus and editing ---- */
+
+static void sync_edit(void) {
+    ui.focus = edit.idx;
+    ui.editText = edit.text;
+    ui.caret = edit.caret;
+}
+
+static void focus_index(int idx) {
+    HudValue *v = element_value(element(idx));
+    edit.idx = idx;
+    snprintf(edit.text, sizeof(edit.text), "%s", v ? v->text.text : "");
+    edit.caret = (int)strlen(edit.text);
+    sync_edit();
+}
+
+bool hud_focus(const char *key) {
+    if (!active()) return false;
+    ensure_layout();
+    for (int i = 0; i < row_count(); i++)
+        for (int k = 0; k < rows[i].count; k++)
+            if (rows[i].elements[k].type == HUD_TEXTFIELD && strcmp(rows[i].elements[k].key, key) == 0) {
+                focus_index(i * HUD_MAX_ROW_ELEMENTS + k);
+                return true;
+            }
+    return false;
+}
+
+void hud_blur(void) {
+    edit.idx = -1;
+    sync_edit();
+}
+
+bool hud_focused(void) { return edit.idx >= 0 && active(); }
+
+static int field_max(const HudElement *e) { return e->max_len > 0 ? e->max_len : HUD_TEXT_MAX - 1; }
+
+static void text_changed(void) {
+    sync_edit();
+    send(&(HudEvent){ .type = HUD_EV_TEXT, .key = element(edit.idx)->key, .text = edit.text });
+}
+
+bool hud_text_input(const char *s) {
+    if (!hud_focused()) return false;
+    size_t n = strlen(s), len = strlen(edit.text);
+    if (n == 0 || len + n > (size_t)field_max(element(edit.idx))) return true; /* too long: ignored */
+    memmove(edit.text + edit.caret + n, edit.text + edit.caret, len - (size_t)edit.caret + 1);
+    memcpy(edit.text + edit.caret, s, n);
+    edit.caret += (int)n;
+    text_changed();
+    return true;
+}
+
+/* UTF-8: the start of the character before / after byte i */
+static int char_before(const char *t, int i) {
+    if (i <= 0) return 0;
+    do i--; while (i > 0 && ((unsigned char)t[i] & 0xC0) == 0x80);
+    return i;
+}
+static int char_after(const char *t, int i) {
+    int n = (int)strlen(t);
+    if (i >= n) return n;
+    do i++; while (i < n && ((unsigned char)t[i] & 0xC0) == 0x80);
+    return i;
+}
+
+bool hud_text_key(HudEditKey k) {
+    if (!hud_focused()) return false;
+    int len = (int)strlen(edit.text);
+    switch (k) {
+    case HUD_EDIT_LEFT: edit.caret = char_before(edit.text, edit.caret); break;
+    case HUD_EDIT_RIGHT: edit.caret = char_after(edit.text, edit.caret); break;
+    case HUD_EDIT_HOME: edit.caret = 0; break;
+    case HUD_EDIT_END: edit.caret = len; break;
+    case HUD_EDIT_BACKSPACE:
+        if (edit.caret > 0) {
+            int p = char_before(edit.text, edit.caret);
+            memmove(edit.text + p, edit.text + edit.caret, (size_t)(len - edit.caret + 1));
+            edit.caret = p;
+            text_changed();
+            return true;
+        }
+        break;
+    case HUD_EDIT_DELETE:
+        if (edit.caret < len) {
+            int nx = char_after(edit.text, edit.caret);
+            memmove(edit.text + edit.caret, edit.text + nx, (size_t)(len - nx + 1));
+            text_changed();
+            return true;
+        }
+        break;
+    case HUD_EDIT_ENTER:
+        send(&(HudEvent){ .type = HUD_EV_SUBMIT, .key = element(edit.idx)->key });
+        return true;
+    case HUD_EDIT_ESCAPE:
+        hud_blur();
+        return true;
+    }
+    sync_edit();
+    return true;
+}
+
+/* ---- pointer ---- */
+
 /* hover as if the pointer moved to x, y with no press held */
 static void refresh_hover(float x, float y) {
     ui.hoverClose = target.shown && target.canClose && hud_rect_contains(layout.close, x, y);
@@ -417,7 +596,7 @@ static void refresh_hover(float x, float y) {
 
 void hud_clear_hover(void) {
     ui.hover = ui.hoverSub = -1;
-    ui.hoverClose = false;
+    ui.hoverClose = ui.hoverTab = ui.hoverPlus = false;
 }
 
 void hud_cancel_press(void) {
@@ -433,11 +612,20 @@ bool hud_mouse_down(float x, float y) {
     if (target.shown && hud_rect_contains(layout.tab, x, y)) {
         ui.pressClose = target.canClose && hud_rect_contains(layout.close, x, y);
         pressActive = true;
+        hud_blur();
         return true;
     }
-    if (!hud_rect_contains(layout.panel, x, y)) return false;
+    if (!hud_rect_contains(layout.panel, x, y)) {
+        hud_blur();
+        return false;
+    }
     pressActive = true;
     ui.press = element_at(x, y);
+    if (ui.press >= 0 && element(ui.press)->type == HUD_TEXTFIELD) {
+        if (edit.idx != ui.press) focus_index(ui.press);
+    } else {
+        hud_blur();
+    }
     if (ui.press >= 0) element_mouse(ui.press, HUD_MOUSE_DOWN, x, y);
     return true;
 }
@@ -485,7 +673,16 @@ bool hud_key(int slot) {
     return false;
 }
 
-/* ---- drawing ---- */
+/* ---- tooltips and drawing ---- */
+
+const char *hud_tooltip(void) {
+    if (!active()) return NULL;
+    ensure_layout();
+    if (ui.hover < 0) return NULL;
+    const HudElement *e = element(ui.hover);
+    const HudComponent *c = component(e);
+    return c->tooltip ? c->tooltip(e, element_value(e), &ui, ui.hover) : NULL;
+}
 
 void hud_draw(void) {
     if (!active()) return;
@@ -498,4 +695,16 @@ void hud_draw(void) {
             component(e)->draw(e, layout.elems[i][k], element_value(e), &ui, i * HUD_MAX_ROW_ELEMENTS + k, s);
         }
     hud_draw_tab(layout.tab, layout.close, &target, &ui, s);
+    const char *tip = hud_tooltip();
+    if (tip) {
+        float fs = HUD_THEME.font * s, pad = HUD_THEME.tipPad * s;
+        float w = dr_text_width(FONT_PLAIN, fs, tip) + 2 * pad, h = fs + 2 * pad;
+        HudRect over = ui.hover >= 0 ? element_rect(ui.hover) : layout.tab;
+        float x = over.x + over.w / 2 - w / 2;
+        float y = (ui.hover >= 0 ? layout.panel.y : layout.tab.y) - HUD_THEME.tipGap * s - h;
+        if (ui.hoverTab) y = layout.tab.y + layout.tab.h + HUD_THEME.tipGap * s; /* below the tab, over the panel */
+        if (x + w > screen.winW - 2) x = screen.winW - 2 - w;
+        if (x < screen.left + 2) x = screen.left + 2;
+        hud_draw_tooltip((HudRect){ x, y, w, h }, s, tip);
+    }
 }

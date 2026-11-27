@@ -30,6 +30,8 @@ typedef struct {
     float sliderTrack, sliderKnob, sliderLabelW, sliderMinW;
     /* hotbar */
     float slot, slotGap, slotRadius, slotIconPad, slotTextPad;
+    /* controls: buttons, text fields, steppers, choices; tooltips; the "+" box */
+    float controlH, stepperLabelW, stepperBtn, caretW, tipPad, tipGap, plusSize;
     /* details: icon alpha of an unavailable slot, cooldown number size (times font), close cross inset (fraction of
      * the close box), close cross line width, extra slider height beyond the font */
     float unavailableAlpha, cooldownFontScale, closeInset, closeLine, sliderTextPad;
