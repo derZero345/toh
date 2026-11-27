@@ -48,6 +48,8 @@ _Static_assert(PLAYER_NAME_MAX == SAVEFMT_OWNER_MAX && WAYPOINT_NAME_MAX == SAVE
 _Static_assert(CHAR_NAME_MAX == SAVEFMT_CHAR_NAME_MAX, "character name sizes");
 
 extern char stub_last_log[1024];
+extern int stub_clip_sets;
+extern bool stub_clip_on;
 extern int stub_log_count;
 extern Texture *stub_background;
 extern int stub_bad_releases;
@@ -1578,8 +1580,9 @@ static const HudElement CTRL_B[] = {
 static const HudElement CTRL_C[] = {
     { .type = HUD_IMAGE, .key = "pic", .width = 44 },
     { .type = HUD_LABEL, .key = "line", .width = 100 },
+    { .type = HUD_TEXTFIELD, .key = "note", .width = 40 }, /* narrow: a long text scrolls */
 };
-static const HudRow CTRL_ROWS[] = { { CTRL_A, 2 }, { CTRL_B, 2 }, { CTRL_C, 2 } };
+static const HudRow CTRL_ROWS[] = { { CTRL_A, 2 }, { CTRL_B, 2 }, { CTRL_C, 3 } };
 
 static void click_part(const char *part) {
     HudRect r;
@@ -1663,6 +1666,36 @@ static void test_hud_controls(void) {
     n = hud_nevents;
     click_part("ok");
     CHECK(hud_nevents == n + 1 && hud_events[n].type == HUD_EV_BUTTON && !strcmp(hud_events[n].key, "ok"));
+
+    /* the caret moves over a whole multi-byte character; text up to exactly max_len fits */
+    hud_set_textfield("name", "a\xc3\xa4" "b");
+    CHECK(hud_focus("name") && !hud_text_input(NULL));
+    CHECK(hud_text_key(HUD_EDIT_LEFT) && hud_text_key(HUD_EDIT_LEFT) && hud_text_input("x"));
+    CHECK(!strcmp(hud_events[hud_nevents - 1].text, "ax\xc3\xa4" "b"));
+    CHECK(hud_text_key(HUD_EDIT_RIGHT) && hud_text_input("y")); /* 6 bytes: max_len */
+    CHECK(!strcmp(hud_events[hud_nevents - 1].text, "ax\xc3\xa4y" "b"));
+    n = hud_nevents;
+    CHECK(hud_text_input("z") && hud_nevents == n);
+    int clips = stub_clip_sets;
+    hud_draw(); /* a focused field: text and caret, clipped */
+    CHECK(stub_clip_sets > clips && !stub_clip_on);
+    /* a press on the focused field keeps the edited text */
+    click_part("name");
+    CHECK(hud_focused() && hud_text_key(HUD_EDIT_END) && hud_text_key(HUD_EDIT_BACKSPACE));
+    CHECK(!strcmp(hud_events[hud_nevents - 1].text, "ax\xc3\xa4y"));
+    /* a long text in a narrow field: drawn with the caret at the end and at the start */
+    hud_set_textfield("note", "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW");
+    CHECK(hud_focus("note"));
+    hud_draw();
+    CHECK(hud_text_key(HUD_EDIT_HOME));
+    hud_draw();
+    CHECK(!stub_clip_on);
+    /* a new config or hiding the HUD drops the focus */
+    hud_use_config(CTRL_ROWS, 3);
+    CHECK(!hud_focused() && hud_focus("name"));
+    hud_set_visible(false);
+    hud_set_visible(true);
+    CHECK(!hud_focused());
 
     hud_draw(); /* every component draws with and without values */
     hud_begin_frame();

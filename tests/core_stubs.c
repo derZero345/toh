@@ -158,6 +158,14 @@ void dr_line(float x1, float y1, float x2, float y2, float th, Color c) {
     (void)x1, (void)y1, (void)x2, (void)y2, (void)th, (void)c;
 }
 void dr_image(Texture *t, float x, float y, float w, float h) { (void)t, (void)x, (void)y, (void)w, (void)h; }
+int stub_clip_sets;
+bool stub_clip_on;
+void dr_set_clip(float x, float y, float w, float h) {
+    (void)x, (void)y, (void)w, (void)h;
+    stub_clip_sets++;
+    stub_clip_on = true;
+}
+void dr_clear_clip(void) { stub_clip_on = false; }
 void dr_text(FontStyle style, float size, float x, float y, Color c, const char *text) {
     (void)style, (void)size, (void)x, (void)y, (void)c, (void)text;
 }

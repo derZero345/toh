@@ -522,7 +522,7 @@ static void text_changed(void) {
 }
 
 bool hud_text_input(const char *s) {
-    if (!hud_focused()) return false;
+    if (!s || !hud_focused()) return false;
     size_t n = strlen(s), len = strlen(edit.text);
     if (n == 0 || len + n > (size_t)field_max(element(edit.idx))) return true; /* too long: ignored */
     memmove(edit.text + edit.caret + n, edit.text + edit.caret, len - (size_t)edit.caret + 1);
@@ -609,6 +609,7 @@ bool hud_mouse_down(float x, float y) {
     hud_cancel_press(); /* a press whose release was lost must not stay captured */
     if (!active()) return false;
     ensure_layout();
+    refresh_hover(x, y); /* the pressed element is the hovered one, so its hoverSub follows the held press */
     if (target.shown && hud_rect_contains(layout.tab, x, y)) {
         ui.pressClose = target.canClose && hud_rect_contains(layout.close, x, y);
         pressActive = true;
@@ -699,10 +700,16 @@ void hud_draw(void) {
     if (tip) {
         float fs = HUD_THEME.font * s, pad = HUD_THEME.tipPad * s;
         float w = dr_text_width(FONT_PLAIN, fs, tip) + 2 * pad, h = fs + 2 * pad;
+        float gap = HUD_THEME.tipGap * s;
         HudRect over = ui.hover >= 0 ? element_rect(ui.hover) : layout.tab;
         float x = over.x + over.w / 2 - w / 2;
-        float y = (ui.hover >= 0 ? layout.panel.y : layout.tab.y) - HUD_THEME.tipGap * s - h;
-        if (ui.hoverTab) y = layout.tab.y + layout.tab.h + HUD_THEME.tipGap * s; /* below the tab, over the panel */
+        /* above the panel, and above the tab when it is shown */
+        float top = target.shown && layout.tab.y < layout.panel.y ? layout.tab.y : layout.panel.y;
+        float y = top - gap - h;
+        if (ui.hoverTab) y = layout.tab.y + layout.tab.h + gap; /* below the tab, over the panel */
+        if (y < 2) y = over.y + over.h + gap;                   /* no room above: below what it belongs to */
+        if (y < 2) y = 2;
+        /* keep it right of the toolbox; wider than the window: cut at the right, not on the left */
         if (x + w > screen.winW - 2) x = screen.winW - 2 - w;
         if (x < screen.left + 2) x = screen.left + 2;
         hud_draw_tooltip((HudRect){ x, y, w, h }, s, tip);

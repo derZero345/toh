@@ -219,10 +219,12 @@ bool hud_key(int slot);
  * Enter. Changing the config or hiding the HUD drops the focus. */
 typedef enum { HUD_EDIT_LEFT, HUD_EDIT_RIGHT, HUD_EDIT_HOME, HUD_EDIT_END, HUD_EDIT_BACKSPACE, HUD_EDIT_DELETE,
                HUD_EDIT_ENTER, HUD_EDIT_ESCAPE } HudEditKey;
-bool hud_focus(const char *key); /* focuses that text field with its published text; false if there is none */
+/* Focuses that text field with the text published for it this frame, so call it after hud_set_textfield; false if
+ * there is no such field. */
+bool hud_focus(const char *key);
 void hud_blur(void);
 bool hud_focused(void);
-bool hud_text_input(const char *utf8); /* true = used (the field has the focus) */
+bool hud_text_input(const char *utf8); /* true = used (the field has the focus); NULL: false */
 bool hud_text_key(HudEditKey k);       /* true = used */
 /* The hovered element's or tab's tooltip, or NULL (tests; hud_draw draws it). */
 const char *hud_tooltip(void);

@@ -315,20 +315,28 @@ static const char *button_tip(const HudElement *e, const HudValue *v, const HudU
     return v && !v->button.enabled && v->button.why[0] ? v->button.why : NULL;
 }
 
-/* no mouse callback: hud.c focuses the field on the press */
+/* No mouse callback: hud.c focuses the field on the press. The text is clipped to the inside of the frame; while
+ * focused it is shifted left as far as the caret needs to stay visible (worked out each frame, no scroll state). */
 static void field_draw(const HudElement *e, HudRect r, const HudValue *v, const HudUiState *ui, int self, float s) {
     bool focused = ui->focus == self;
     control_frame(r, s, T->barBg, focused ? T->accent[e->accent] : ui->hover == self ? T->hover : T->emptyLine);
     const char *text = focused ? ui->editText : v ? v->text.text : "";
-    float x = r.x + T->pillPad * s, fs = T->font * s;
-    if (text[0]) text_left(FONT_PLAIN, fs, x, r, T->text, text);
-    else if (!focused && e->label) text_left(FONT_PLAIN, fs, x, r, T->textDim, e->label);
+    float pad = T->pillPad * s, fs = T->font * s, caret = fmaxf(1, T->caretW * s);
+    HudRect in = { r.x + pad, r.y, r.w - 2 * pad, r.h };
+    if (in.w <= 0) return;
+    float x = in.x, cx = 0;
     if (focused) {
         char before[HUD_TEXT_MAX];
         snprintf(before, sizeof(before), "%.*s", ui->caret, text);
-        float cx = x + dr_text_width(FONT_PLAIN, fs, before);
-        dr_line(cx, r.y + r.h * 0.2f, cx, r.y + r.h * 0.8f, fmaxf(1, T->caretW * s), T->text);
+        cx = dr_text_width(FONT_PLAIN, fs, before);
+        float over = x + cx + caret - (in.x + in.w);
+        if (over > 0) x -= over;
     }
+    dr_set_clip(in.x, in.y, in.w, in.h); /* the HUD is drawn without a clip; clips don't nest */
+    if (text[0]) text_left(FONT_PLAIN, fs, x, r, T->text, text);
+    else if (!focused && e->label) text_left(FONT_PLAIN, fs, x, r, T->textDim, e->label);
+    if (focused) dr_line(x + cx, r.y + r.h * 0.2f, x + cx, r.y + r.h * 0.8f, caret, T->text);
+    dr_clear_clip();
 }
 
 /* [label][-][value][+] */
