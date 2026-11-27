@@ -848,6 +848,8 @@ static void answer_create(const Request *r, Player *p, bool yes) {
         send_log(p, "The GM accepted your character.");
         send_create_answer(p, r->seq, true);
         console_log("Created %s's character.", p->name);
+    } else {
+        send_create_answer(p, r->seq, false); /* ops_submit logged why; the player's request isn't waiting now */
     }
     op_free(&spawn);
 }
