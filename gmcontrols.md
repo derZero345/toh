@@ -499,7 +499,8 @@ anything else asks again). Several requests wait in line; each player can have a
 - If the character no longer fits there (see **Sharing tiles**), nothing is created and the log says so.
 - Change its stats afterwards with `:c` like any other character.
 - These requests share the limit of 3 waiting requests per player with claims. With 3 new characters waiting, the
-  player's **+ Create character** is greyed out ("Wait for the GM to answer your requests").
+  player's **+ Create character** is greyed out ("Wait for the GM to answer your requests"); a request over the
+  limit (claims counted too) is refused with "Wait for the GM to answer your earlier requests".
 
 **Ownership rings:**
 - During a session every owned character has a ring in its owner's color: blue, red, …, or grey if the owner isn't
