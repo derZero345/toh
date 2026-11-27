@@ -504,6 +504,7 @@ void io_handle_event(const SDL_Event *e) {
             lmb_pressed();
         } else if (e->button.button == SDL_BUTTON_RIGHT) {
             rclick_pending = false;
+            hud_game_right_down(); /* the name field loses the focus */
             if (radial_game_right_down(gh->mousePos)) break; /* closed the menu */
             if (move_ui_active()) { /* a right click cancels choosing a tile */
                 move_ui_cancel();

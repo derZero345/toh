@@ -2940,6 +2940,29 @@ static void test_hud_create(void) {
     app.console.active = false;
     cc_cancel();
 
+    /* a restart on the same step (the tile menu's Create character) is a new draft: the field gets the focus again
+     * with the new draft's empty name, not the old text; a right press (opening the menu) takes the focus away */
+    hud_game_update(0);
+    click_part("cc.start");
+    hud_game_update(0);
+    hud_text_input("Mao");
+    hud_game_update(0);
+    hud_game_right_down();
+    CHECK(!hud_focused());
+    int logs = stub_log_count;
+    cc_start(&(Hex){ 4, 4 });
+    CHECK(stub_log_count == logs); /* nothing logged for a restart */
+    hud_game_update(0);
+    CHECK(hud_focused() && c->name[0] == '\0');
+    hud_text_input("K");
+    CHECK(!strcmp(c->name, "K"));
+    hud_game_update(0);
+    cc_start(NULL); /* again, while the field has the focus */
+    hud_game_update(0);
+    hud_text_input("L");
+    CHECK(hud_focused() && !strcmp(c->name, "L"));
+    cc_cancel();
+
     /* "+" starts creation while characters exist; the normal bar shows STR / AGI and the tab tooltip */
     Entity *a = add_character((Hex){ 2, 2 }, 3, "");
     a->attr[ATTR_STR] = 2;

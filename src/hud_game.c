@@ -118,6 +118,7 @@ void hud_game_refresh_screen(void) {
 static const HudRow *shown_rows;
 static int shown_n;
 static int focused_step = -1; /* the step whose name field got the focus; -1 = none */
+static unsigned focused_gen;   /* and the draft's (CharCreate.gen) */
 
 static void use_rows(const HudRow *r, int n) {
     if (r == shown_rows && n == shown_n) return;
@@ -156,8 +157,10 @@ bool hud_game_update(float dt) {
         hud_create_rows(&r, &n);
         use_rows(r, n);
         hud_create_publish();
-        if ((int)c->step != focused_step) { /* a step opens: the name field gets the focus */
+        /* a step opens, or a new draft on the same step: the name field gets the focus (and the draft's text) */
+        if ((int)c->step != focused_step || c->gen != focused_gen) {
             focused_step = (int)c->step;
+            focused_gen = c->gen;
             if (c->step == CC_NAME && !gh->console.active) hud_focus("cc.name");
         }
         return false;
@@ -220,6 +223,8 @@ bool hud_game_mouse_down(Vec2 p) {
     hud_game_refresh_screen();
     return hud_mouse_down((float)p.x, (float)p.y);
 }
+
+void hud_game_right_down(void) { hud_blur(); }
 
 bool hud_game_mouse_move(Vec2 p) {
     hud_game_refresh_screen();

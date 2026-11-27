@@ -17,12 +17,15 @@ bool cc_placing(void) { return C.active && C.placing; }
 static void reset(void) {
     if (C.picture) vkr_texture_release(C.picture);
     image_free(&C.small);
+    unsigned gen = C.gen;
     memset(&C, 0, sizeof(C));
+    C.gen = gen;
 }
 
 void cc_start(const Hex *tile) {
     reset();
     move_ui_cancel(); /* choosing a move's tile would take the placing click */
+    C.gen++;
     C.active = true;
     C.step = CC_NAME;
     C.size = SIZE_NORMAL;

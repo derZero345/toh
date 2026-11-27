@@ -19,6 +19,9 @@ bool hud_can_see(const Entity *e);
 Entity *hud_pick_character(int *others, bool *from_selection);
 /* Input from input.c; each true = the map must ignore it. */
 bool hud_game_mouse_down(Vec2 p);
+/* A right press anywhere (map, menu, HUD) takes the focus from the text field, like a left press elsewhere: Esc
+ * then closes the tile menu and typing doesn't go into a field the menu hides. */
+void hud_game_right_down(void);
 bool hud_game_mouse_move(Vec2 p);
 bool hud_game_mouse_up(Vec2 p);
 bool hud_game_contains(Vec2 p);

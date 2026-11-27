@@ -20,6 +20,7 @@ typedef struct {
     Hex tile;
     Texture *picture; /* one reference, or NULL */
     Image small;      /* players: the picture for the request (px NULL = none) */
+    unsigned gen;     /* counts cc_start calls: a restart on the same step is a new draft (hud_game.c refocuses) */
 } CharCreate;
 
 const CharCreate *cc_state(void);

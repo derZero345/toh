@@ -77,11 +77,12 @@ Many commands act on the selection: `:c` (edit characters), `:w` (walls on the s
 **In the bar.** With no character on the board, the bar at the bottom shows **+ Create character**. The small
 **+** box at the bottom left of the bar starts the same steps; it is always there for you (players never see it)
 and hides while you create. In the tile menu of an empty tile (right click, Drag tool) **Create character** starts
-them with that tile already chosen. The steps are shown inside the bar; the tab says `New character · 2/5`.
+them with that tile already chosen (while you are creating one, that starts over: the draft is dropped). The
+steps are shown inside the bar; the tab says `New character · 2/5`.
 
 | Step | What you do |
 |---|---|
-| 1 Name | Type it (1 to 32 bytes; typing past 32 does nothing). Enter = Next, Ctrl + V pastes (line breaks become spaces). The field gets the focus when the step opens; while it has it, keys go to it, not to the map (W A S D don't move the view, `:` doesn't open the console; Ctrl + Enter and Alt + Enter still work). Esc or a click elsewhere takes the focus away. |
+| 1 Name | Type it (1 to 32 bytes; typing past 32 does nothing). Enter = Next, Ctrl + V pastes (line breaks become spaces). The field gets the focus when the step opens; while it has it, keys go to it, not to the map (W A S D don't move the view, `:` doesn't open the console; Ctrl + Enter and Alt + Enter still work). Esc, a click elsewhere or any right click takes the focus away. |
 | 2 Size | Wee to Gigantic; Normal is chosen. Hover a size for its tiles and bulk, e.g. "Huge: 3 tiles in a triangle, bulk 3", "Gigantic: 7 tiles, bulk 5 centre, 3 around". |
 | 3 Attributes | STR, AGI, COG, SPI with − / +, −2 to 3; the line below shows Max HP, Stamina, Speed and Initiative (see **Attributes**) |
 | 4 Picture | **Choose picture…** opens the PNG dialog; the preview shows the round cut |
