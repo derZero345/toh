@@ -706,8 +706,8 @@ static void cmd_help(Args *a) {
     } else if (!strcmp(arg, "init") || !strcmp(arg, ":i")) {
         console_log(":i  or init # Add all entities to the initiative order");
         console_log("  add | remove | clear | show | next");
-        console_log("  While it runs, right click your character on its turn for move actions,");
-        console_log("  Recover (1d4 stamina) and Full Recover");
+        console_log("  A round: everyone declares in order (right click your character on its turn for its");
+        console_log("  actions; next ends your turn), then the GM resolves them in order with next");
     } else if (!strcmp(arg, "clear") || !strcmp(arg, ":cl")) {
         console_log(":cl or clear # Clear the command log and history");
     } else if (!strcmp(arg, "theme") || !strcmp(arg, ":t")) {
@@ -753,7 +753,7 @@ static void cmd_help(Args *a) {
         console_log(":tm or testmode [on|off] # GM: test mode for the whole table (no argument: switch)");
         console_log("  move and recover actions, attacks, blocks and dodges work outside initiative and off-turn,");
         console_log("  and used actions or too little stamina don't stop them; they still use the action and");
-        console_log("  spend stamina (not below 0)");
+        console_log("  spend stamina (not below 0). Nothing can be declared during the resolution phase");
     } else {
         console_log("Available commands:");
         console_log(":q  or quit       # Quit the application");
@@ -859,6 +859,7 @@ static void cmd_init(Args *a) {
         /* names the current turn, so a repeated or crossing "next" can't skip a turn */
         Op op = { .type = OP_INIT_NEXT, .id = gh->currentTurn ? gh->currentTurn->id : 0 };
         ops_submit(&op);
+        op_free(&op); /* the host's resolution results (phases.h) */
     }
     da_free(&sel);
 }

@@ -40,5 +40,8 @@ int recover_roll(RecoverAction a);
 /* Uses the slot and raises e's stamina by rolled (Full Recover: to the maximum); logs what happened.
  * Requires recover_check == OPR_OK. */
 void recover_apply(Entity *e, RecoverAction a, int rolled);
+/* Only the effect (the resolution phase, phases.h): raises e's stamina by rolled (Full Recover: to the maximum) and
+ * logs it. */
+void recover_gain(Entity *e, RecoverAction a, int rolled);
 
 #endif

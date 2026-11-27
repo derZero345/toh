@@ -106,6 +106,10 @@ typedef struct Entity {
     int maxStamina, stamina; /* Tales of Honor stamina; max 0 = no stamina stat */
     int attr[ATTR_COUNT];    /* Tales of Honor attributes (attrs.h); the stats they set follow them (OP_SET_STATS) */
     int evasion;             /* Tales of Honor Evasion Threshold (dodges.h); EVASION_DEFAULT for new characters */
+    /* phases.h: while its declared moves wait for the resolution phase, tile is where they end (the planned tile)
+     * and the token is drawn at shown */
+    Hex shown;
+    bool hasShown;
     int turnUsed;            /* this turn (initiative): TURN_* bits; cleared when its turn starts (moves.h) */
     BarAnim hpAnim, staminaAnim; /* HUD bar animation; memory only */
     unsigned panelFrame;         /* the last frame the HUD showed this entity (0 = never) */
@@ -345,8 +349,9 @@ void console_key_edit(SDL_Keycode key); /* caret movement / deletion */
 typedef struct { char name[16]; Color primary, secondary; } Theme;
 
 typedef struct { Entity *entity; double value; } InitEntry;
-/* A tile an attack hit this round (attacks.h): dir is an AttackDir, from the attacker's tile nearest to it. */
-typedef struct { Hex tile, from; int dir; uint32_t attacker; } AttackMark;
+/* A tile an attack hit this round (attacks.h): dir is an AttackDir, from the attacker's tile nearest to it; pending:
+ * declared, not resolved yet (phases.h). */
+typedef struct { Hex tile, from; int dir; uint32_t attacker; bool pending; } AttackMark;
 /* A block on a tile (blocks.h): dirs are DIR_BIT bits (neutral is always covered), value its Block Value; occupied:
  * the blocker stood on the tile when it blocked. */
 typedef struct { Hex tile; int dirs, value; uint32_t blocker; bool occupied; } TileBlock;
@@ -360,6 +365,18 @@ typedef struct {
     Hex from[MAX_OCCUPIED];
     int nfrom, step, value;
 } DodgeRec;
+
+/* An action declared this round (phases.h): the op that declared it and what is needed to resolve it or take it back.
+ * start: the actor's tile before it; origin: an attack's tile (attack_origin then); path: a move's tiles, start and
+ * end included; turnUsed / stamina: before it; nblocks: the blocks it added. */
+typedef struct {
+    uint32_t actor;
+    int type, action, value; /* OpType, the action, the op's value */
+    Hex tile, start, origin;
+    HexList path;
+    int turnUsed, stamina, nblocks;
+    bool resolved;
+} Declared;
 
 typedef enum {
     ACTION_NONE,
@@ -438,6 +455,7 @@ typedef struct App {
     DA(TileBlock) blocks;
     DA(BlockLock) blockLocks;
     DA(DodgeRec) dodges;
+    DA(Declared) declared; /* this round's declarations, in the order made (phases.h) */
 
     bool hasTileUnderMouse;
     Hex tileUnderMouse;
@@ -469,6 +487,10 @@ typedef struct App {
     MarkerList initMarkers;
     Entity *currentTurn;
     int currentTurnIndex;
+    /* phases.h: the phase of the round (PHASE_DECLARE / PHASE_RESOLVE); resolveDone: every character of the
+     * resolution phase has resolved, the next :i next starts the next round */
+    int phase;
+    bool resolveDone;
 
     /* pending asynchronous actions (replaces Java's blocking dialogs / AnswerWaiter) */
     PendingAction dialog;  /* waiting for the file dialog */

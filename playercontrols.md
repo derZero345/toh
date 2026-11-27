@@ -20,11 +20,17 @@ The GM gives you the code (it starts with `toh1-`); you can paste it with Ctrl +
 You can only move your own characters: the ones with a **thick ring in your color**. Every owned character has
 a ring in its owner's color (grey if that player isn't at the table); characters without a ring belong to the GM.
 
-**While initiative is running**, you move with move actions, on your character's turn:
+**While initiative is running**, each round has two phases, shown by a label at the top of the map. In the
+**declaration** phase everyone, in order, declares what their character does: on your character's turn you choose
+its actions (below), and they happen later, in the **resolution** phase, when the GM steps through everyone in the
+same order. A declared move leaves your token where it is and shows a faded copy where the move ends; later actions
+you declare start from there.
+
+You move with move actions, on your character's turn:
 
 1. **Right click** your character (with the Drag tool, selected at start). Its action menu opens: **Minor action**
-   at the top, **Info** on the right, **Mental action** at the bottom, **Major action** on the left. Info and
-   Mental action have nothing in them yet.
+   at the top, **Info** and **Mental action** on the right, **Major action** and **Take back** on the left. Info
+   and Mental action have nothing in them yet.
 2. Left click Major action or Minor action, then the move:
 
    | Action | Type | Moves | Stamina |
@@ -36,35 +42,39 @@ a ring in its owner's color (grey if that player isn't at the table); characters
    | Sprint | Minor | your speed; only after another move action this turn | 3 |
 
 3. The tiles it can reach light up in the action's color, with the way to the tile under the mouse. **Left click**
-   one of them to move there. **Esc**, a right click or a click outside the lit tiles cancels.
+   one of them to declare the move there. **Esc**, a right click or a click outside the lit tiles cancels.
 
-Each turn your character has one Major and one Minor action. When the Minor one is used, a Minor action (Step,
-Sprint) can take the Major one instead. An action that can't be used right now is greyed out; hover it to see
-why. When your character's stamina reaches 0 it is exhausted and its turn ends. A character without stamina pays
-nothing.
+Each round your character has one Major and one Minor action. When the Minor one is used, a Minor action (Step,
+Sprint) can take the Major one instead. Stamina is paid when you declare. An action that can't be used right now is
+greyed out; hover it to see why. When your character's stamina reaches 0 it is exhausted and its turn ends. A
+character without stamina pays nothing. Changed your mind? **Take back** in the action menu undoes your last
+declaration (again for the one before), as long as it is still your turn.
 
-To get stamina back on your turn, choose **Recover** (Minor action: 1d4 stamina) or **Full Recover** (Major action:
-all of it) in the same menus. They work at once and are greyed out when your stamina is already full.
+To get stamina back, choose **Recover** (Minor action: 1d4 stamina) or **Full Recover** (Major action: all of it)
+in the same menus. They are greyed out when your stamina is already full; the stamina comes when they resolve.
 
 To **attack** on your turn, choose Major action, then **Attack**, then the attack (so far only a placeholder, Test
 attack: 1 tile, 1d4 damage). Left click a lit tile in range, then its direction in the ring that opens on it (Up:
 away from you, Right, Neutral: the tile itself, Left). An attack hits the tile: **every character on it**, your
-friends too. The tile gets a red arrow (a ring for neutral) until your next turn. Esc goes back one step.
+friends too, and also anyone who is on it at some point of the round (moving through it in the middle of a move
+still gets scraped). The tile gets a red arrow (a ring for neutral), hollow until the attack resolves, and it stays
+until the next round. Esc goes back one step.
 
 To **block**, choose Major action, then **Block**, then the block (placeholders so far: Test block on your own tile,
 or Test block (range 1) on a tile next to you, which you click first). In the ring, switch **Up**, **Right** and/or
 **Left** on, then click the centre **Block**. Neutral is always blocked. Attacks on that tile in a blocked direction
-then miss or scrape, until your next turn; the tile shows a blue hexagon. If you block a tile you don't stand on and
-an attack gets through, you can't block that tile again on your next turn.
+then miss or scrape, for the whole round (also attacks resolved before your turn); the tile shows a blue hexagon. If
+you block a tile you don't stand on and an attack gets through, you can't block that tile again in the next round.
 
 To **dodge**, choose Major action, then **Dodge** (2 stamina), and click an adjacent tile: your character moves
-there. Until your next turn, an attack on the tile you left still targets you, against your Dodge Value (1d8 + AGI)
+there (the token when the dodge resolves). For the whole round, an attack on the tile you left still targets you, against your Dodge Value (1d8 + AGI)
 and your Evasion Threshold (ET): it misses or scrapes when you win, and the direction of your step (as the attacker
 sees it) counts. The tile you left shows a green hexagon.
 
 While a gold **TEST MODE** label shows at the top, the GM has turned on test mode: you can use move actions,
-Recover / Full Recover, attacks, blocks and dodges at any time, even when it isn't your turn or you lack the action or
-stamina. They still use up the action and stamina, and a failed block's tile stays locked.
+Recover / Full Recover, attacks, blocks and dodges at any time (outside initiative they happen at once), even when
+it isn't your turn or you lack the action or stamina. They still use up the action and stamina, a failed block's
+tile stays locked, and nothing can be declared during the resolution phase.
 
 **Outside initiative** you move freely:
 
@@ -101,8 +111,9 @@ Select your character and type `:c damage <n>`, `:c heal <n>` or `:c hp <n>` to 
 :i next
 ```
 
-Ends your character's turn, so the next one in the initiative order is up. While initiative runs, a marker above
-each character shows the order: **green** = whose turn it is, **yellow** = next, **red** = later.
+Ends your character's declaring turn, so the next one in the initiative order declares. The resolution phase is
+stepped by the GM. While initiative runs, a marker above each character shows the order: **green** = whose turn it
+is, **yellow** = next, **red** = later.
 
 ## 5. Roll dice
 

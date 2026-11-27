@@ -44,6 +44,7 @@ static inline int floor_div2(int v) { return (v >= 0) ? v / 2 : -((-v + 1) / 2);
 /* ---- growable arrays -------------------------------------------------- */
 
 #define DA(T) struct { T *items; int count, cap; }
+typedef DA(double) DoubleList;
 
 #define da_reserve(a, n) do {                                                  \
         if ((n) > (a)->cap) {                                                  \

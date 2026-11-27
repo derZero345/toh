@@ -18,6 +18,7 @@
 #include "attacks.h"
 #include "blocks.h"
 #include "dodges.h"
+#include "phases.h"
 #include "target_ui.h"
 #include "move_ui.h"
 #include "party.h"
@@ -44,6 +45,7 @@ _Static_assert((int)NOP_MOVE == (int)OP_MOVE && (int)NOP_SPAWN == (int)OP_SPAWN 
                (int)NOP_ATTACK_ACTION == (int)OP_ATTACK_ACTION && (int)NETMSG_ATTACK_DIRS == (int)DIR_COUNT &&
                (int)NOP_BLOCK_ACTION == (int)OP_BLOCK_ACTION && (int)NETMSG_BLOCK_DIRS == (int)BLOCK_DIRS &&
                (int)NOP_DODGE_ACTION == (int)OP_DODGE_ACTION && (int)NSTAT_EVASION == (int)STAT_EVASION &&
+               (int)NOP_TAKE_BACK == (int)OP_TAKE_BACK && (int)NETMSG_MAX_RESULTS == (int)PHASES_MAX_RESULTS &&
                (int)NETMSG_ATTACK_ROLLS == (int)OUTCOME_COUNT && (int)NETMSG_MAX_DAMAGE == (int)ATTACK_MAX_DAMAGE &&
                (int)NOP_ROLL == (int)OP_COUNT,
                "NetOpType must match OpType");
@@ -2122,6 +2124,25 @@ static Op action_op(const Entity *e, MoveAction a, Hex to) {
     return (Op){ .type = OP_MOVE_ACTION, .id = e->id, .action = a, .tile = to };
 }
 
+/* :i next as the GM (phases.h: in the resolution phase it resolves the current character) */
+static void init_next(void) {
+    Op n = { .type = OP_INIT_NEXT, .id = gh->currentTurn ? gh->currentTurn->id : 0 };
+    ops_apply(&n);
+    da_free(&n.values);
+}
+
+/* :i next until the next round's declaration starts (with the first character): the rest of this round's
+ * declaration and all of its resolution */
+static void next_round(void) {
+    do init_next();
+    while (!(gh->phase == PHASE_DECLARE && gh->currentTurnIndex == 0));
+}
+
+/* :i next until the resolution phase starts */
+static void to_resolution(void) {
+    while (gh->phase != PHASE_RESOLVE) init_next();
+}
+
 /* the tile `n` steps away in direction dir */
 static Hex steps_dir(Hex h, int dir, int n) {
     for (int i = 0; i < n; i++) h = hex_neighbor_raw(h, dir);
@@ -2187,7 +2208,7 @@ static void test_move_actions(void) {
     /* the next turn: a Minor action can use the Major slot (two Steps), then no Major action is left */
     game_next_turn();
     CHECK(gh->currentTurn == orc && orc->turnUsed == 0);
-    game_next_turn();
+    next_round();
     CHECK(gh->currentTurn == hero && hero->turnUsed == 0);
     step = action_op(hero, MOVE_STEP, steps_from(hero->tile, 1));
     ops_apply(&step);
@@ -2198,8 +2219,7 @@ static void test_move_actions(void) {
     CHECK(hero->turnUsed == TURN_ALL && hero->stamina == 3 && move_slot(hero, MOVE_WALK) < 0);
 
     /* not enough stamina; reaching 0 makes it exhausted and ends the turn */
-    game_next_turn();
-    game_next_turn();
+    next_round();
     hero->stamina = 1;
     run = action_op(hero, MOVE_RUN, steps_from(hero->tile, 6));
     CHECK_R(ops_check(&run, &alice), OPR_NO_STAMINA);
@@ -2336,13 +2356,21 @@ static void test_test_mode(void) {
     CHECK(gh->currentTurn == hero && hero->turnUsed == 0);
     Op orc_step = action_op(orc, MOVE_STEP, steps_from(orc->tile, 1));
     CHECK_R(ops_check(&orc_step, &GM), OPR_OK); /* not its turn */
+    Hex orc_was = orc->tile;
     ops_apply(&orc_step);
     CHECK(gh->currentTurn == hero);
+    /* taking it back off-turn too (phases.h), then declaring it again */
+    Op orc_back = { .type = OP_TAKE_BACK, .id = orc->id };
+    CHECK_R(ops_check(&orc_back, &GM), OPR_OK);
+    ops_apply(&orc_back);
+    CHECK(hex_eq(orc->tile, orc_was) && orc->turnUsed == 0 && !orc->hasShown);
+    CHECK_R(ops_check(&orc_back, &GM), OPR_NOTHING_DECLARED);
+    ops_apply(&orc_step);
     Op sprint = action_op(hero, MOVE_SPRINT, steps_from(hero->tile, 6));
     CHECK_R(ops_check(&sprint, &alice), OPR_OK); /* no move before it, 2 stamina for 3 */
     ops_apply(&sprint);
     CHECK(hero->stamina == 0 && gh->currentTurn == orc && strstr(stub_last_log, "exhausted")); /* not below 0 */
-    while (gh->currentTurn != hero) game_next_turn();
+    next_round();
     Op step = action_op(hero, MOVE_STEP, steps_from(hero->tile, 1));
     CHECK_R(ops_check(&step, &alice), OPR_OK); /* at 0 stamina */
     ops_apply(&step);
@@ -2362,6 +2390,21 @@ static void test_test_mode(void) {
     CHECK_R(ops_check(&orc_dg, &GM), OPR_OUT_OF_RANGE); /* adjacency still holds */
     orc_dg.tile = orc_to;
 
+    /* the resolution phase: nothing can be declared or taken back, not even in test mode */
+    ops_apply(&orc_step);
+    to_resolution();
+    CHECK_R(ops_check(&orc_atk, &GM), OPR_RESOLVING);
+    CHECK_R(ops_check(&orc_blk, &GM), OPR_RESOLVING);
+    CHECK_R(ops_check(&orc_dg, &GM), OPR_RESOLVING);
+    CHECK_R(ops_check(&orc_back, &GM), OPR_RESOLVING);
+    next_round();
+    CHECK(gh->currentTurn == hero && gh->phase == PHASE_DECLARE);
+    orc_atk.tile = hex_neighbor_raw(orc->tile, 0);
+    orc_blk.tile = orc->tile;
+    orc_dg.tile = hex_neighbor_raw(orc->tile, 0);
+    if (!dodge_in_range(orc, DODGE_BASIC, orc_dg.tile)) orc_dg.tile = hex_neighbor_raw(orc->tile, 3);
+    orc_step = action_op(orc, MOVE_STEP, steps_from(orc->tile, 1));
+
     /* off again: the rules are back */
     ops_apply(&off);
     CHECK(!gh->testMode && strstr(stub_last_log, "Test mode off"));
@@ -2370,6 +2413,8 @@ static void test_test_mode(void) {
     CHECK_R(ops_check(&orc_atk, &GM), OPR_NOT_YOUR_TURN);
     CHECK_R(ops_check(&orc_blk, &GM), OPR_NOT_YOUR_TURN);
     CHECK_R(ops_check(&orc_dg, &GM), OPR_NOT_YOUR_TURN);
+    ops_apply(&orc_step); /* (applied without a check) */
+    CHECK_R(ops_check(&orc_back, &GM), OPR_NOT_YOUR_TURN);
     game_clear_initiative();
 }
 
@@ -2388,7 +2433,7 @@ static void test_action_menu(void) {
     /* outside initiative the move entries are disabled */
     CHECK(radial_game_open(hex_center(hero->tile)) && !strcmp(radial_menu_id(), "actions"));
     CHECK(radial_game_actor() == hero->id);
-    CHECK(radial_part_point("ring.4", &x, &y) && !radial_part_point("ring.5", &x, &y)); /* four entries */
+    CHECK(radial_part_point("ring.5", &x, &y) && !radial_part_point("ring.6", &x, &y)); /* five entries */
     CHECK(rad_click("ring.4") && radial_depth() == 1 && !strcmp(radial_submenu_id(), "major"));
     CHECK(rad_click("ring.1") && radial_is_open() && !move_ui_active()); /* Walk is disabled: nothing happens */
     radial_close();
@@ -2415,7 +2460,12 @@ static void test_action_menu(void) {
     CHECK(move_ui_active() && gh->moveMode.action == MOVE_STEP);
     move_ui_cancel();
     rad_settle();
-    /* Major -> Full Recover: at full stamina it is disabled; below, it is used at once */
+    /* Take back: nothing declared yet, disabled */
+    CHECK(radial_game_open(hex_center(hero->tile)));
+    CHECK(rad_click("ring.5") && radial_is_open());
+    radial_close();
+    rad_settle();
+    /* Major -> Full Recover: at full stamina it is disabled; below, it is declared at once (phases.h) */
     CHECK(radial_game_open(hex_center(hero->tile)));
     CHECK(rad_click("ring.4") && rad_click("ring.4") && radial_is_open()); /* disabled: nothing happens */
     radial_close();
@@ -2423,7 +2473,12 @@ static void test_action_menu(void) {
     hero->stamina = 2;
     CHECK(radial_game_open(hex_center(hero->tile)));
     CHECK(rad_click("ring.4") && rad_click("ring.4") && !radial_is_open() && !move_ui_active());
-    CHECK(hero->stamina == 8 && (hero->turnUsed & TURN_MAJOR) && strstr(stub_last_log, "Full Recover"));
+    CHECK(hero->stamina == 2 && (hero->turnUsed & TURN_MAJOR) && strstr(stub_last_log, "declares Full Recover"));
+    rad_settle();
+    /* ...and taken back again from the menu */
+    CHECK(radial_game_open(hex_center(hero->tile)));
+    CHECK(rad_click("ring.5") && !radial_is_open() && hero->turnUsed == 0 && gh->declared.count == 0);
+    CHECK(strstr(stub_last_log, "takes back Full Recover"));
     rad_settle();
 
     /* Major -> Attack -> Test attack: the range shows; a tile in it opens the direction menu there */
@@ -2442,8 +2497,9 @@ static void test_action_menu(void) {
     CHECK(target_ui_active() && !gh->targetMode.hasTarget);
     /* Right (the second entry) attacks the tile */
     CHECK(target_ui_click(orc->tile) && rad_click("ring.2") && !target_ui_active());
-    CHECK(orc->health < 10 && (hero->turnUsed & TURN_MAJOR) && gh->attackMarks.count == 1 &&
-          gh->attackMarks.items[0].dir == DIR_RIGHT && hex_eq(gh->attackMarks.items[0].tile, orc->tile));
+    CHECK(orc->health == 10 && (hero->turnUsed & TURN_MAJOR) && gh->attackMarks.count == 1 &&
+          gh->attackMarks.items[0].dir == DIR_RIGHT && hex_eq(gh->attackMarks.items[0].tile, orc->tile) &&
+          gh->attackMarks.items[0].pending);
     rad_settle();
     /* used up: the entry is disabled */
     CHECK(radial_game_open(hex_center(hero->tile)));
@@ -2539,45 +2595,63 @@ static void test_recover_actions(void) {
     bad.value = RECOVER_DIE + 1;
     CHECK_R(ops_check(&bad, &alice), OPR_INVALID);
 
-    /* Recover: the Minor action, 1d4 (the host's roll is stored in the op for the players) */
+    /* Recover: the Minor action, declared (phases.h): the 1d4 is rolled when it resolves */
     CHECK_R(ops_check(&rec, &alice), OPR_OK);
     ops_apply(&rec);
-    CHECK(rec.value >= 1 && rec.value <= RECOVER_DIE && hero->stamina == 1 + rec.value);
-    CHECK(hero->turnUsed == TURN_MINOR && strstr(stub_last_log, "Recover 1d4 = "));
+    CHECK(hero->stamina == 1 && hero->turnUsed == TURN_MINOR && strstr(stub_last_log, "declares Recover"));
     /* a second Recover uses the Major action; then nothing is left, Full Recover neither */
-    hero->stamina = 1;
-    rec.value = 0;
     CHECK_R(ops_check(&rec, &alice), OPR_OK);
     ops_apply(&rec);
     CHECK(hero->turnUsed == (TURN_MINOR | TURN_MAJOR) && !(hero->turnUsed & TURN_MOVED));
     CHECK_R(ops_check(&rec, &alice), OPR_ACTION_USED);
     CHECK_R(ops_check(&full, &alice), OPR_ACTION_USED);
 
-    /* a client applies the host's roll instead of rolling */
-    hero->turnUsed = 0;
+    /* resolving: the host rolls both (the results travel in the op), never past the maximum */
+    to_resolution();
+    CHECK(gh->currentTurn == hero);
+    CHECK_R(ops_check(&rec, &alice), OPR_RESOLVING);
+    Op res = { .type = OP_INIT_NEXT, .id = hero->id };
+    CHECK_R(ops_check(&res, &alice), OPR_GM_ONLY); /* only the GM steps the resolution */
+    CHECK_R(ops_check(&res, &GM), OPR_OK);
+    ops_apply(&res);
+    CHECK(res.values.count == 6 && res.values.items[0] == OP_RECOVER_ACTION && res.values.items[1] == RECOVER_SMALL);
+    int r1 = (int)res.values.items[2], r2 = (int)res.values.items[5], want = 1 + r1 + r2 > 8 ? 8 : 1 + r1 + r2;
+    CHECK(r1 >= 1 && r1 <= RECOVER_DIE && r2 >= 1 && r2 <= RECOVER_DIE);
+    CHECK(hero->stamina == want && gh->currentTurn == orc);
+    da_free(&res.values);
+
+    /* a client applies the host's results instead of rolling; bad results are refused */
+    next_round();
     hero->stamina = 2;
-    rec.value = 3;
+    ops_apply(&rec);
+    to_resolution();
+    Op res2 = { .type = OP_INIT_NEXT, .id = hero->id };
+    double bad_roll[] = { OP_RECOVER_ACTION, RECOVER_SMALL, RECOVER_DIE + 1 };
+    for (int k = 0; k < 3; k++) da_push(&res2.values, bad_roll[k]);
+    CHECK_R(ops_check(&res2, &GM), OPR_INVALID);
+    res2.values.items[2] = 3;
+    CHECK_R(ops_check(&res2, &GM), OPR_OK);
     stub_client = true;
-    ops_apply(&rec);
+    ops_apply(&res2);
     stub_client = false;
-    CHECK(hero->stamina == 5 && rec.value == 3);
-    /* the roll never goes past the maximum */
-    hero->turnUsed = 0;
-    hero->stamina = 7;
-    rec.value = 0;
-    ops_apply(&rec);
-    CHECK(hero->stamina == 8);
+    CHECK(hero->stamina == 5 && res2.values.items[2] == 3 && strstr(stub_last_log, "Recover 1d4 = 3"));
+    da_free(&res2.values);
 
     /* Full Recover: the Major action, to the maximum (also from below 0) */
-    hero->turnUsed = 0;
+    next_round();
+    hero->stamina = 8;
     CHECK_R(ops_check(&full, &alice), OPR_STAMINA_FULL); /* nothing to recover */
     hero->stamina = -3;
     CHECK_R(ops_check(&full, &alice), OPR_OK);
     ops_apply(&full);
-    CHECK(hero->stamina == 8 && full.value == 0 && hero->turnUsed == TURN_MAJOR && strstr(stub_last_log, "Full Recover"));
+    CHECK(hero->stamina == -3 && hero->turnUsed == TURN_MAJOR);
     CHECK_R(ops_check(&full, &alice), OPR_ACTION_USED);
+    to_resolution();
+    init_next();
+    CHECK(hero->stamina == 8 && strstr(stub_last_log, "Full Recover"));
 
     /* without a stamina stat there is nothing to recover */
+    next_round();
     game_next_turn();
     CHECK(gh->currentTurn == orc && orc->maxStamina == 0);
     Op orc_rec = { .type = OP_RECOVER_ACTION, .id = orc->id, .action = RECOVER_SMALL };
@@ -2589,10 +2663,12 @@ static void test_recover_actions(void) {
     hero->stamina = 1;
     hero->turnUsed = TURN_ALL;
     CHECK_R(ops_check(&full, &alice), OPR_OK); /* not its turn, no action left */
-    ops_apply(&full);
-    CHECK(hero->stamina == 8 && hero->turnUsed == TURN_ALL);
+    hero->stamina = 8;
     CHECK_R(ops_check(&full, &alice), OPR_STAMINA_FULL);
     CHECK_R(ops_check(&orc_rec, &bob), OPR_NO_STAMINA_STAT);
+    to_resolution();
+    hero->stamina = 1;
+    CHECK_R(ops_check(&full, &alice), OPR_RESOLVING); /* not even in test mode */
     game_clear_initiative();
     hero->stamina = 1;
     CHECK_R(ops_check(&rec, &alice), OPR_OK); /* outside initiative */
@@ -2762,79 +2838,116 @@ static void test_attack_actions(void) {
     CHECK_R(ops_check(&bad, &alice), OPR_OK);
     op_free(&bad);
 
-    /* the host rolls; every character on the tile takes the damage of its outcome (a success) */
+    /* declared (phases.h): the slot is used and the tile marked (hollow until it resolves), nothing is rolled yet */
     CHECK_R(ops_check(&atk, &alice), OPR_OK);
     ops_apply(&atk);
-    /* the op now carries the rolls, the characters hit and their outcomes, for the players */
-    CHECK(atk.values.count == OUTCOME_COUNT + 2 && atk.values.items[0] >= 1 && atk.values.items[0] <= 4);
-    CHECK(atk.ids.count == 2 && atk.ids.items[0] == orc->id && atk.ids.items[1] == wolf->id);
-    CHECK(atk.values.items[OUTCOME_COUNT] == OUTCOME_SUCCESS && atk.values.items[OUTCOME_COUNT + 1] == OUTCOME_SUCCESS);
-    CHECK_R(ops_check(&atk, &GM), OPR_ACTION_USED); /* the host's op is well-formed (only the slot is used now) */
-    int dmg = (int)atk.values.items[0];
-    CHECK(orc->health == 10 - dmg && wolf->health == 10 - dmg && hero->health == 10);
+    CHECK(atk.values.count == 0 && atk.ids.count == 0 && orc->health == 10 && wolf->health == 10);
     CHECK(hero->turnUsed == TURN_MAJOR && hero->stamina == 4); /* the Major slot; the test attack is free */
-    CHECK(strstr(stub_last_log, ": success, ") && strstr(stub_last_log, " damage, HP "));
+    CHECK(strstr(stub_last_log, "declares Test attack on ["));
     CHECK(gh->attackMarks.count == 1 && hex_eq(gh->attackMarks.items[0].tile, target) &&
           gh->attackMarks.items[0].dir == DIR_LEFT && gh->attackMarks.items[0].attacker == hero->id &&
-          hex_eq(gh->attackMarks.items[0].from, a));
+          hex_eq(gh->attackMarks.items[0].from, a) && gh->attackMarks.items[0].pending);
     CHECK_R(ops_check(&atk, &alice), OPR_ACTION_USED); /* a Major attack can't use the Minor slot */
+    /* the orc declares an attack back on its turn */
+    game_next_turn();
+    Op orc_atk = attack_op(orc, a, DIR_RIGHT);
+    CHECK_R(ops_check(&orc_atk, &bob), OPR_OK);
+    ops_apply(&orc_atk);
+    CHECK(hero->health == 10 && gh->attackMarks.count == 2);
 
-    /* a client applies the host's rolls; HP may go below 0 */
+    /* resolving the hero: the host rolls; every character on the tile takes the damage of its outcome (a success);
+     * the op carries the results for the players */
+    game_next_turn();
+    CHECK(gh->phase == PHASE_RESOLVE && gh->currentTurn == hero);
+    Op res = { .type = OP_INIT_NEXT, .id = hero->id };
+    ops_apply(&res);
+    CHECK(res.values.count == 11 + 4 && res.values.items[0] == OP_ATTACK_ACTION && res.values.items[1] == ATTACK_TEST);
+    CHECK(res.values.items[2] == target.row && res.values.items[3] == target.col && res.values.items[4] == DIR_LEFT);
+    CHECK(res.values.items[5] == a.row && res.values.items[6] == a.col && res.values.items[10] == 2);
+    CHECK(res.values.items[11] == orc->id && res.values.items[12] == OUTCOME_SUCCESS);
+    CHECK(res.values.items[13] == wolf->id && res.values.items[14] == OUTCOME_SUCCESS);
+    int dmg = (int)res.values.items[7];
+    CHECK(dmg >= 1 && dmg <= 4 && orc->health == 10 - dmg && wolf->health == 10 - dmg && hero->health == 10);
+    CHECK(strstr(stub_last_log, ": success, ") && strstr(stub_last_log, " damage, HP "));
+    CHECK(!gh->attackMarks.items[0].pending && gh->attackMarks.items[1].pending && gh->currentTurn == orc);
+    CHECK_R(ops_check(&res, &GM), OPR_STALE); /* the hero's resolution is over */
+
+    /* a client applies the host's results as they are (the orc's attack scrapes) */
+    Op res2 = { .type = OP_INIT_NEXT, .id = orc->id };
+    double r2[] = { OP_ATTACK_ACTION, ATTACK_TEST, a.row, a.col, DIR_RIGHT, target.row, target.col, 3, 1, 0,
+                    1, hero->id, OUTCOME_SCRAPE };
+    for (size_t k = 0; k < sizeof(r2) / sizeof(r2[0]); k++) da_push(&res2.values, r2[k]);
+    CHECK_R(ops_check(&res2, &GM), OPR_OK);
+    res2.values.items[7] = 5; /* 1d4 can't roll 5 */
+    CHECK_R(ops_check(&res2, &GM), OPR_INVALID);
+    res2.values.items[7] = 3;
+    res2.values.items[12] = OUTCOME_COUNT;
+    CHECK_R(ops_check(&res2, &GM), OPR_INVALID);
+    res2.values.items[12] = OUTCOME_SCRAPE;
+    stub_client = true;
+    ops_apply(&res2);
+    stub_client = false;
+    CHECK(hero->health == 9 && strstr(stub_last_log, ": scrape, 1 damage, HP 9/10") && gh->resolveDone);
+    CHECK(!gh->attackMarks.items[1].pending);
+    da_free(&res.values);
+    da_free(&res2.values);
+
+    /* the marks go when the next round's declaration starts */
+    init_next();
+    CHECK(gh->currentTurn == hero && gh->phase == PHASE_DECLARE && gh->attackMarks.count == 0);
+    /* ...when the attacker is deleted, and when the initiative ends */
+    ops_apply(&atk);
+    game_next_turn();
+    ops_apply(&orc_atk);
+    CHECK(gh->attackMarks.count == 2);
+    entity_delete(orc);
+    CHECK(gh->attackMarks.count == 1 && gh->declared.count == 1);
+    game_clear_initiative();
+    CHECK(gh->attackMarks.count == 0 && gh->declared.count == 0);
+    orc = add_character(target, 5, "Bob");
+    orc->health = 10;
+
+    /* outside initiative (test mode) it happens at once: the host rolls, the op carries the results */
     hero->turnUsed = 0;
-    orc->health = 2;
+    op_free(&atk);
+    atk = attack_op(hero, target, DIR_LEFT);
+    ops_apply(&atk);
+    CHECK(atk.values.count == OUTCOME_COUNT + 2 && atk.values.items[0] >= 1 && atk.values.items[0] <= 4);
+    CHECK(atk.ids.count == 2 && atk.ids.items[0] == wolf->id && atk.ids.items[1] == orc->id);
+    CHECK(atk.values.items[OUTCOME_COUNT] == OUTCOME_SUCCESS && atk.values.items[OUTCOME_COUNT + 1] == OUTCOME_SUCCESS);
+    CHECK(orc->health == 10 - (int)atk.values.items[0] && gh->attackMarks.count == 1 && !gh->attackMarks.items[0].pending);
+
+    /* a client applies the host's rolls; HP may go below 0; the newest attack replaces the attacker's mark */
+    hero->turnUsed = 0;
+    wolf->health = 2;
     set_rolls(&atk, 3, 1, 0);
     stub_client = true;
     ops_apply(&atk);
     stub_client = false;
-    CHECK(orc->health == -1 && atk.values.items[0] == 3 && gh->attackMarks.count == 2); /* the marks add up */
-    stub_client = true;
-    CHECK(strstr(stub_last_log, ": success, 3 damage, HP ")); /* the last line is the wolf's */
-    wolf->health = 1;
-    hero->turnUsed = 0;
-    ops_apply(&atk);
-    stub_client = false;
-    CHECK(strstr(stub_last_log, "HP -2/10 (Dying)") && orc->health == -4 && gh->attackMarks.count == 3);
-    /* the client takes the host's outcomes as they are: the wolf scrapes */
+    CHECK(wolf->health == -1 && atk.values.items[0] == 3 && gh->attackMarks.count == 1);
+    /* the client takes the host's outcomes as they are: the orc scrapes */
     atk.values.items[OUTCOME_COUNT + 1] = OUTCOME_SCRAPE;
-    wolf->health = 5;
+    orc->health = 5;
     hero->turnUsed = 0;
     stub_client = true;
     ops_apply(&atk);
     stub_client = false;
-    CHECK(wolf->health == 4 && strstr(stub_last_log, ": scrape, 1 damage, HP 4/10") && orc->health == -7);
+    CHECK(orc->health == 4 && strstr(stub_last_log, ": scrape, 1 damage, HP 4/10") && wolf->health == -4);
+    CHECK(strstr(stub_last_log, "HP 4/10"));
 
     /* a character without max HP has nothing to lose */
-    wolf->maxHealth = 0;
-    wolf->health = 0;
+    orc->maxHealth = 0;
+    orc->health = 0;
     hero->turnUsed = 0;
     ops_apply(&atk);
-    CHECK(wolf->health == 0 && strstr(stub_last_log, " damage (no HP)"));
+    CHECK(orc->health == 0 && strstr(stub_last_log, " damage (no HP)"));
 
     /* an empty tile: nobody is hurt */
     hero->turnUsed = 0;
     Op miss = attack_op(hero, empty, DIR_NEUTRAL);
-    CHECK_R(ops_check(&miss, &alice), OPR_OK);
     ops_apply(&miss);
     CHECK(strstr(stub_last_log, "Test attack on [") && strstr(stub_last_log, "] neutral, nobody there"));
     op_free(&miss);
-
-    /* the marks go when the attacker's next turn starts */
-    game_next_turn();
-    CHECK(gh->currentTurn == orc && gh->attackMarks.count == 6);
-    Op orc_atk = attack_op(orc, a, DIR_RIGHT);
-    CHECK_R(ops_check(&orc_atk, &bob), OPR_OK);
-    ops_apply(&orc_atk);
-    CHECK(hero->health < 10 && gh->attackMarks.count == 7);
-    game_next_turn();
-    CHECK(gh->currentTurn == hero && gh->attackMarks.count == 1 && gh->attackMarks.items[0].attacker == orc->id);
-    /* ...when the attacker is deleted, and when the initiative ends */
-    ops_apply(&atk);
-    CHECK(gh->attackMarks.count == 2);
-    entity_delete(wolf);
-    entity_delete(orc);
-    CHECK(gh->attackMarks.count == 1);
-    game_clear_initiative();
-    CHECK(gh->attackMarks.count == 0);
     op_free(&atk);
     op_free(&orc_atk);
 }
@@ -2967,33 +3080,41 @@ static void test_block_actions(void) {
     CHECK(attack_resolve(orc, hex_neighbor_raw(orc->tile, 0), orc->tile, DIR_UP, 0) == OUTCOME_SCRAPE);
     blocks_clear();
 
-    /* through the ops: the hero blocks the ally's tile (not its own) up; the orc attacks it up: a miss */
+    /* through the ops: the hero blocks the ally's tile (not its own) up, at once for the whole round (phases.h) */
     hero->turnUsed = 0;
     Op guard = block_op(hero, BLOCK_TEST_RANGE, mid, UP);
     CHECK_R(ops_check(&guard, &alice), OPR_OK);
     ops_apply(&guard);
-    CHECK(gh->blocks.count == 1 && !gh->blocks.items[0].occupied);
-    gh->testMode = true; /* the orc attacks out of turn */
+    CHECK(gh->blocks.count == 1 && !gh->blocks.items[0].occupied && strstr(stub_last_log, "Test block (range 1) on ["));
+    /* the orc declares attacks on it up and (test mode: a second Major) left */
+    game_next_turn();
+    CHECK(gh->currentTurn == orc);
     Op hit = { .type = OP_ATTACK_ACTION, .id = orc->id, .action = ATTACK_TEST, .tile = mid, .value = DIR_UP };
-    CHECK_R(ops_check(&hit, &GM), OPR_OK);
+    CHECK_R(ops_check(&hit, &bob), OPR_OK);
     ops_apply(&hit);
-    CHECK(ally->health == 10 && hit.values.items[OUTCOME_COUNT] == OUTCOME_MISS);
-    CHECK(strstr(stub_last_log, ": miss, 0 damage") && gh->blockLocks.count == 0);
-    /* ...left: the block is in another direction, a success, and the hero can't block that tile next turn */
-    orc->turnUsed = 0;
     hit.value = DIR_LEFT;
-    op_free(&hit);
+    gh->testMode = true;
+    CHECK_R(ops_check(&hit, &bob), OPR_OK);
     ops_apply(&hit);
-    CHECK(ally->health < 10 && gh->blockLocks.count == 1 && gh->blockLocks.items[0].blocker == hero->id);
     gh->testMode = false;
+    CHECK(ally->health == 10 && gh->blockLocks.count == 0);
+    /* resolving: up misses; left is in another direction, a success, and the hero can't block that tile next round */
+    to_resolution();
+    init_next(); /* the hero: its block needs nothing */
+    CHECK(gh->currentTurn == orc);
+    Op res = { .type = OP_INIT_NEXT, .id = orc->id };
+    ops_apply(&res);
+    CHECK(res.values.count == 26 && res.values.items[10] == 1 && res.values.items[11] == ally->id);
+    CHECK(res.values.items[12] == OUTCOME_MISS && res.values.items[24] == ally->id && res.values.items[25] == OUTCOME_SUCCESS);
+    CHECK(ally->health < 10 && gh->blockLocks.count == 1 && gh->blockLocks.items[0].blocker == hero->id);
+    da_free(&res.values);
+    CHECK(gh->blocks.count == 1); /* still there until the next round */
 
-    /* the hero's next turn: its block is gone, the tile is locked (also in test mode), other tiles are not */
-    game_next_turn();
-    game_next_turn();
-    CHECK(gh->currentTurn == ally);
-    CHECK(gh->blocks.count == 1); /* still there until the hero's turn */
-    game_next_turn();
-    CHECK(gh->currentTurn == hero && gh->blocks.count == 0);
+    /* the next round: the block is gone, the tile is locked (also in test mode), other tiles are not */
+    init_next();
+    CHECK(gh->resolveDone);
+    init_next();
+    CHECK(gh->currentTurn == hero && gh->phase == PHASE_DECLARE && gh->blocks.count == 0);
     CHECK_R(ops_check(&guard, &alice), OPR_BLOCK_LOCKED);
     gh->testMode = true;
     CHECK_R(ops_check(&guard, &alice), OPR_BLOCK_LOCKED); /* test mode keeps the lock */
@@ -3003,10 +3124,8 @@ static void test_block_actions(void) {
     hero->tile = mid; /* standing on it lifts the lock */
     CHECK_R(ops_check(&guard, &alice), OPR_OK);
     hero->tile = a;
-    /* the turn after: the lock is over */
-    game_next_turn();
-    game_next_turn();
-    game_next_turn();
+    /* the round after: the lock is over */
+    next_round();
     CHECK(gh->currentTurn == hero && gh->blockLocks.count == 0);
     CHECK_R(ops_check(&guard, &alice), OPR_OK);
 
@@ -3138,9 +3257,9 @@ static void test_dodge_actions(void) {
     /* attacks on the tile it left meet the dodge (DV 7 >= AV 0 + ET 3: won; the step is up for the orc) */
     uint32_t ids[8];
     int outcomes[8];
-    int n = attack_targets(orc, a, DIR_NEUTRAL, 0, ids, outcomes, 8);
+    int n = attack_targets(attack_origin(orc, a), a, DIR_NEUTRAL, 0, ids, outcomes, 8);
     CHECK(n == 1 && ids[0] == hero->id && outcomes[0] == OUTCOME_MISS);     /* won, another direction */
-    n = attack_targets(orc, a, DIR_UP, 0, ids, outcomes, 8);
+    n = attack_targets(attack_origin(orc, a), a, DIR_UP, 0, ids, outcomes, 8);
     CHECK(n == 1 && outcomes[0] == OUTCOME_SCRAPE);                           /* won, the same direction */
     gh->dodges.items[0].value = 2;                                              /* lost: 2 < 0 + 3 */
     CHECK(attack_resolve(hero, orc_at, a, DIR_NEUTRAL, 0) == OUTCOME_SCRAPE); /* lost, another direction */
@@ -3150,7 +3269,7 @@ static void test_dodge_actions(void) {
     hero->evasion = 3;
     /* the tile it moved to: no dodge there */
     CHECK(attack_resolve(hero, hex_neighbor_raw(away, 2), away, DIR_UP, 0) == OUTCOME_SUCCESS);
-    n = attack_targets(orc, away, DIR_UP, 0, ids, outcomes, 8);
+    n = attack_targets(attack_origin(orc, away), away, DIR_UP, 0, ids, outcomes, 8);
     CHECK(n == 1 && outcomes[0] == OUTCOME_SUCCESS);
 
     /* a block on the tile as well: the better for the defender */
@@ -3187,11 +3306,11 @@ static void test_dodge_actions(void) {
     }
     gh->dodges.items[0].step = 2;
 
-    /* lifetime: the hero's next turn ends it */
-    game_next_turn();
-    CHECK(gh->currentTurn == orc && gh->dodges.count == 1);
-    game_next_turn();
-    CHECK(gh->currentTurn == hero && gh->dodges.count == 0);
+    /* lifetime: through the resolution; the next round's declaration ends it */
+    to_resolution();
+    CHECK(gh->dodges.count == 1);
+    next_round();
+    CHECK(gh->currentTurn == hero && gh->dodges.count == 0 && !hero->hasShown);
     /* the initiative ending, too */
     hero->tile = a;
     ops_apply(&dg);
@@ -3219,6 +3338,163 @@ static void test_dodge_actions(void) {
     entity_delete(hero);
     CHECK(gh->dodges.count == 0);
     gh->testMode = false;
+}
+
+/* The phases of a round (phases.h): the order, planned tiles, the round-wide footprint, taking back, who steps */
+static void test_phases(void) {
+    reset_table();
+    stub_client = false;
+    Hex a = { 10, 10 }, dest = steps_dir(a, 0, 3);
+    Entity *hero = add_character(a, 6, "Alice");
+    Entity *orc = add_character((Hex){ 3, 3 }, 5, "Bob");
+    snprintf(hero->name, sizeof(hero->name), "Mao");
+    snprintf(orc->name, sizeof(orc->name), "Grak");
+    hero->maxStamina = hero->stamina = 8;
+    OpAuthor alice = player("Alice"), bob = player("Bob");
+    char label[CHAR_NAME_MAX + 48];
+
+    Entity *order[2] = { hero, orc };
+    double values[2] = { 0.9, 0.1 };
+    game_initiative_list(order, values, 2);
+    CHECK(!phases_label(label, sizeof(label))); /* the first turn has not started */
+    init_next();
+    CHECK(gh->currentTurn == hero && gh->phase == PHASE_DECLARE);
+    CHECK(phases_label(label, sizeof(label)) && !strcmp(label, "DECLARATION · Mao"));
+
+    /* a declared Walk: the planned tile is where it ends, the token stays where it stood */
+    Op walk = action_op(hero, MOVE_WALK, dest);
+    CHECK_R(ops_check(&walk, &alice), OPR_OK);
+    ops_apply(&walk);
+    CHECK(hex_eq(hero->tile, dest) && hero->hasShown && hex_eq(hero->shown, a) && strstr(stub_last_log, "declares Walk"));
+    CHECK(phases_shown_on(hero, a) && !phases_shown_on(hero, dest) && phases_has_declared(hero->id));
+    /* the round-wide footprint: start and end, and the tiles passed in the middle */
+    CHECK(phases_presence(hero, a) == PRESENCE_STOP && phases_presence(hero, dest) == PRESENCE_STOP);
+    CHECK(phases_presence(hero, steps_dir(a, 0, 1)) == PRESENCE_PASSED);
+    CHECK(phases_presence(hero, steps_dir(a, 0, 2)) == PRESENCE_PASSED);
+    CHECK(phases_presence(hero, steps_dir(a, 3, 1)) == PRESENCE_NONE);
+    CHECK(phases_presence(orc, orc->tile) == PRESENCE_STOP); /* where it stays */
+
+    /* later declarations start from the planned tile; taking back refunds the slot, stamina and tile */
+    Op step = action_op(hero, MOVE_STEP, steps_dir(dest, 0, 1));
+    CHECK_R(ops_check(&step, &alice), OPR_OK);
+    ops_apply(&step);
+    CHECK(hero->stamina == 7 && hex_eq(hero->tile, steps_dir(dest, 0, 1)) && hero->turnUsed == TURN_ALL);
+    Op back = { .type = OP_TAKE_BACK, .id = hero->id };
+    CHECK_R(ops_check(&back, &bob), OPR_NOT_YOURS);
+    CHECK_R(ops_check(&back, &alice), OPR_OK);
+    ops_apply(&back);
+    CHECK(hero->stamina == 8 && hex_eq(hero->tile, dest) && hero->turnUsed == (TURN_MAJOR | TURN_MOVED));
+    CHECK(hero->hasShown && hex_eq(back.tile, dest) && back.value == 8 && strstr(stub_last_log, "takes back Step"));
+    /* a block and an attack go too */
+    hero->turnUsed = 0;
+    Op blk = block_op(hero, BLOCK_TEST, dest, DIR_BIT(DIR_UP));
+    ops_apply(&blk);
+    CHECK(gh->blocks.count == 1);
+    ops_apply(&back);
+    CHECK(gh->blocks.count == 0 && hero->turnUsed == 0);
+    Op hatk = attack_op(hero, steps_dir(dest, 0, 1), DIR_NEUTRAL);
+    ops_apply(&hatk);
+    CHECK(gh->attackMarks.count == 1 && gh->attackMarks.items[0].pending);
+    ops_apply(&back);
+    CHECK(gh->attackMarks.count == 0);
+    hero->turnUsed = TURN_MAJOR | TURN_MOVED;
+    /* a client is told what to go back to (it may have joined this round and know no declarations) */
+    ops_apply(&step);
+    Op told = { .type = OP_TAKE_BACK, .id = hero->id, .tile = dest, .value = 8, .action = TURN_MAJOR | TURN_MOVED };
+    phases_clear_of(hero->id); /* it knows nothing */
+    stub_client = true;
+    ops_apply(&told);
+    stub_client = false;
+    CHECK(hex_eq(hero->tile, dest) && hero->stamina == 8 && hero->turnUsed == (TURN_MAJOR | TURN_MOVED));
+    ops_apply(&walk); /* declared again for the rest of the test (the start is the planned tile now: a no-op path) */
+    phases_clear_of(hero->id);
+    hero->tile = a;
+    hero->hasShown = false;
+    hero->turnUsed = 0;
+    ops_apply(&walk);
+    CHECK(phases_presence(hero, steps_dir(a, 0, 1)) == PRESENCE_PASSED);
+
+    /* a player ends its own declaring turn, then can't take back any more */
+    Op nx = { .type = OP_INIT_NEXT, .id = hero->id };
+    CHECK_R(ops_check(&nx, &bob), OPR_NOT_YOUR_TURN);
+    CHECK_R(ops_check(&nx, &alice), OPR_OK);
+    ops_apply(&nx);
+    CHECK(gh->currentTurn == orc && gh->phase == PHASE_DECLARE);
+    CHECK_R(ops_check(&back, &alice), OPR_NOT_YOUR_TURN);
+
+    /* the orc declares attacks on a tile the hero passes, its start, a tile beside the way and its end */
+    Hex at[4] = { steps_dir(a, 0, 1), a, steps_dir(a, 3, 1), dest };
+    gh->testMode = true; /* four Major actions */
+    for (int k = 0; k < 4; k++) {
+        Op o = attack_op(orc, at[k], DIR_NEUTRAL);
+        ops_apply(&o);
+        op_free(&o);
+    }
+    gh->testMode = false;
+    CHECK(hero->health == 10 && gh->attackMarks.count == 4);
+    nx.id = orc->id;
+    CHECK_R(ops_check(&nx, &bob), OPR_OK);
+    ops_apply(&nx);
+
+    /* the resolution from the top; only the GM steps it */
+    CHECK(gh->phase == PHASE_RESOLVE && gh->currentTurn == hero);
+    CHECK(phases_label(label, sizeof(label)) && !strcmp(label, "RESOLUTION · Mao"));
+    nx.id = hero->id;
+    CHECK_R(ops_check(&nx, &alice), OPR_GM_ONLY);
+    CHECK_R(ops_check(&step, &alice), OPR_RESOLVING);
+    init_next(); /* the hero's Walk: the token goes to where it stands */
+    CHECK(!hero->hasShown && hex_eq(hero->tile, dest) && strstr(stub_last_log, "Mao: Walk to [") && gh->currentTurn == orc);
+    Op res = { .type = OP_INIT_NEXT, .id = orc->id };
+    ops_apply(&res);
+    /* passed: a scrape; the start and the end: the normal result (a success); beside the way: nobody */
+    int k = 0, n[4] = { -1, -1, -1, -1 }, out[4] = { -1, -1, -1, -1 }, idx = 0;
+    while (k < res.values.count && idx < 4) {
+        const double *v = res.values.items + k;
+        CHECK(v[0] == OP_ATTACK_ACTION);
+        n[idx] = (int)v[10];
+        if (n[idx] > 0) out[idx] = (int)v[12];
+        k += 11 + 2 * n[idx];
+        idx++;
+    }
+    CHECK(idx == 4 && k == res.values.count);
+    CHECK(n[0] == 1 && out[0] == OUTCOME_SCRAPE && n[1] == 1 && out[1] == OUTCOME_SUCCESS);
+    CHECK(n[2] == 0 && n[3] == 1 && out[3] == OUTCOME_SUCCESS && hero->health < 10);
+    CHECK(gh->resolveDone && phases_label(label, sizeof(label)) && !strcmp(label, "RESOLUTION · done"));
+    da_free(&res.values);
+    /* malformed results are refused */
+    double junk[] = { OP_ATTACK_ACTION, ATTACK_TEST, 1, 1, DIR_UP, 1, 1, 1, 1, 0, 3, 7, 0 }; /* 3 hit, 1 given */
+    CHECK(!phases_results_ok(junk, 13) && !phases_results_ok(junk, 2) && phases_results_ok(junk, 0));
+    double unknown[] = { OP_SET_NAME, 0 };
+    CHECK(!phases_results_ok(unknown, 2));
+
+    /* the next round: everything of the last one goes */
+    init_next();
+    CHECK(gh->phase == PHASE_DECLARE && gh->currentTurn == hero && hero->turnUsed == 0);
+    CHECK(gh->declared.count == 0 && gh->attackMarks.count == 0 && !phases_has_declared(orc->id));
+    CHECK(phases_presence(hero, a) == PRESENCE_NONE);
+
+    /* removed from initiative: the last declarer -> the resolution starts; the last to resolve -> done */
+    game_next_turn();
+    CHECK(gh->currentTurn == orc);
+    game_remove_from_initiative(orc);
+    CHECK(gh->phase == PHASE_RESOLVE && gh->currentTurn == hero && !gh->resolveDone);
+    game_initiative_list(order, values, 2);
+    CHECK(gh->phase == PHASE_RESOLVE && gh->currentTurn == hero); /* joining keeps the phase and the turn */
+    to_resolution();
+    init_next();
+    CHECK(gh->currentTurn == orc);
+    game_remove_from_initiative(orc);
+    CHECK(gh->currentTurn == hero && gh->resolveDone);
+    game_clear_initiative();
+    CHECK(gh->phase == PHASE_DECLARE && !gh->resolveDone && gh->declared.count == 0);
+
+    /* outside initiative actions happen at once */
+    hero->turnUsed = 0;
+    Op now = action_op(hero, MOVE_STEP, steps_dir(hero->tile, 0, 1));
+    ops_apply(&now);
+    CHECK(!hero->hasShown && gh->declared.count == 0 && hex_eq(hero->tile, now.tile));
+    op_free(&walk);
+    op_free(&step);
 }
 
 /* The Evasion Threshold stat: new characters 3, OP_SET_STATS, spawn specs (snapshots, undo) */
@@ -3844,6 +4120,7 @@ int main(void) {
     test_attack_actions();
     test_block_actions();
     test_dodge_actions();
+    test_phases();
     test_evasion_stat();
     test_radial_toggle();
     test_action_menu();

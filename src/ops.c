@@ -3,6 +3,7 @@
 #include "attacks.h"
 #include "blocks.h"
 #include "dodges.h"
+#include "phases.h"
 #include "moves.h"
 #include "recover.h"
 #include "savefmt.h"
@@ -64,6 +65,8 @@ const char *ops_result_text(OpResult r) {
     case OPR_NO_STAMINA_STAT: return "That character has no stamina";
     case OPR_STAMINA_FULL:  return "Stamina is already full";
     case OPR_BLOCK_LOCKED:  return "Can't block this tile this turn: its last block there failed";
+    case OPR_RESOLVING:     return "Not now: the resolution phase is running";
+    case OPR_NOTHING_DECLARED: return "Nothing declared to take back";
     }
     return "Unknown error";
 }
@@ -164,8 +167,12 @@ static OpResult check_structure(const Op *op) {
     case OP_WAYPOINT_DELETE:
         return op->name[0] != '\0' ? OPR_OK : OPR_INVALID;
     case OP_INIT_NEXT:
+        /* the resolution's results (from the host; a client sends none: the host works them out) */
+        if (!phases_results_ok(op->values.items, op->values.count)) return OPR_INVALID;
         /* op->id names the entity whose turn it is now, so a stale op is not applied twice */
         return op->id == (gh->currentTurn ? gh->currentTurn->id : 0) ? OPR_OK : OPR_STALE;
+    case OP_TAKE_BACK:
+        return phases_take_back_check(entity_by_id(op->id));
     case OP_MOVE_ACTION: /* the rules of the action hold for the GM too; only free moves (OP_MOVE) ignore them */
         if (!tile_ok(op->tile) || op->action < 0 || op->action >= MOVE_COUNT) return OPR_INVALID;
         return move_check_to(entity_by_id(op->id), (MoveAction)op->action, op->tile);
@@ -225,13 +232,15 @@ static OpResult check_player(const Op *op, const OpAuthor *a) {
         ts_free(&range);
         return in_range ? OPR_OK : OPR_OUT_OF_RANGE;
     }
-    case OP_INIT_NEXT:
+    case OP_INIT_NEXT: /* a player ends its own declaring turn; the GM steps the resolution */
+        if (gh->init.count > 0 && gh->currentTurn && gh->phase == PHASE_RESOLVE) return OPR_GM_ONLY;
         return is_owner(gh->currentTurn, a) ? OPR_OK : OPR_NOT_YOUR_TURN;
     case OP_MOVE_ACTION:
     case OP_RECOVER_ACTION:
     case OP_ATTACK_ACTION:
     case OP_BLOCK_ACTION:
     case OP_DODGE_ACTION:
+    case OP_TAKE_BACK:
         return is_owner(entity_by_id(op->id), a) ? OPR_OK : OPR_NOT_YOURS;
     case OP_SET_HEALTH:
     case OP_SET_STAMINA:
@@ -249,7 +258,7 @@ OpResult ops_check(const Op *op, const OpAuthor *author) {
     bool player_op = op->type == OP_MOVE || op->type == OP_INIT_NEXT || op->type == OP_SET_HEALTH ||
                      op->type == OP_SET_NAME || op->type == OP_SET_STAMINA || op->type == OP_MOVE_ACTION ||
                      op->type == OP_RECOVER_ACTION || op->type == OP_ATTACK_ACTION || op->type == OP_BLOCK_ACTION ||
-                     op->type == OP_DODGE_ACTION;
+                     op->type == OP_DODGE_ACTION || op->type == OP_TAKE_BACK;
     if (!author->gm && !player_op) return OPR_GM_ONLY;
     OpResult r = check_structure(op);
     if (r != OPR_OK || author->gm) return r;
@@ -521,8 +530,32 @@ void ops_apply(Op *op) {
         game_toggle_show_initiative();
         break;
     case OP_INIT_NEXT:
+        /* the resolution phase (phases.h): the current character's declarations happen first; the host (or
+         * offline) works out the results, everyone applies the ones it sent */
+        if (gh->init.count > 0 && gh->currentTurn && gh->phase == PHASE_RESOLVE && !gh->resolveDone) {
+            uint32_t actor = gh->currentTurn->id;
+            if (!session_is_client()) phases_results(actor, &op->values);
+            phases_apply_results(actor, op->values.items, op->values.count);
+        } else if (!session_is_client()) {
+            da_clear(&op->values); /* nothing to resolve: a client's values are not passed on */
+        }
         game_next_turn();
         break;
+    case OP_TAKE_BACK: {
+        Entity *e = entity_by_id(op->id);
+        if (!e) break;
+        bool was_selected = e == selected_entity();
+        /* the host says what the character goes back to: a player who joined this round has no declarations */
+        if (!session_is_client()) phases_take_back_state(e, &op->tile, &op->value, &op->action);
+        phases_take_back(e);
+        if (session_is_client()) {
+            e->tile = op->tile;
+            e->stamina = op->value;
+            e->turnUsed = op->action & TURN_ALL;
+        }
+        if (was_selected) entities_clear_highlights(); /* the range shown belonged to the planned tile */
+        break;
+    }
     case OP_SET_OWNER:
         for (int i = 0; i < op->ids.count; i++) {
             Entity *e = character_at(op, i);
@@ -548,13 +581,18 @@ void ops_apply(Op *op) {
         Entity *e = entity_by_id(op->id);
         if (!e) break;
         bool was_selected = e == selected_entity();
-        move_apply(e, (MoveAction)op->action, op->tile, op->remote ? NULL : &gh->path, !op->remote);
-        if (op->remote && was_selected) entities_clear_highlights(); /* the range shown belonged to the old tile */
+        if (phases_declaring()) phases_declare_move(e, (MoveAction)op->action, op->tile); /* phases.h */
+        else move_apply(e, (MoveAction)op->action, op->tile, op->remote ? NULL : &gh->path, !op->remote);
+        if ((op->remote || phases_declaring()) && was_selected) entities_clear_highlights(); /* the old tile's range */
         break;
     }
     case OP_RECOVER_ACTION: {
         Entity *e = entity_by_id(op->id);
         if (!e) break;
+        if (phases_declaring()) { /* phases.h: the roll comes when it resolves */
+            phases_declare_recover(e, (RecoverAction)op->action);
+            break;
+        }
         /* the host (or offline) rolls; clients apply the roll the host sent */
         if (!session_is_client()) op->value = recover_roll((RecoverAction)op->action);
         recover_apply(e, (RecoverAction)op->action, op->value);
@@ -563,6 +601,10 @@ void ops_apply(Op *op) {
     case OP_ATTACK_ACTION: {
         Entity *e = entity_by_id(op->id);
         if (!e) break;
+        if (phases_declaring()) { /* phases.h: it hits when it resolves */
+            phases_declare_attack(e, (AttackAction)op->action, op->tile, (AttackDir)op->value);
+            break;
+        }
         /* the host (or offline) rolls the damage and resolves the tile; clients apply what the host sent */
         if (!session_is_client()) {
             int rolled[OUTCOME_COUNT], cap = gh->entities.count > 0 ? gh->entities.count : 1;
@@ -570,7 +612,7 @@ void ops_apply(Op *op) {
             uint32_t *ids = malloc(sizeof(uint32_t) * (size_t)cap);
             int *outcomes = malloc(sizeof(int) * (size_t)cap);
             if (!ids || !outcomes) abort();
-            int n = attack_targets(e, op->tile, (AttackDir)op->value, ATTACK_ACTIONS[op->action].value, ids, outcomes, cap);
+            int n = attack_targets(attack_origin(e, op->tile), op->tile, (AttackDir)op->value, ATTACK_ACTIONS[op->action].value, ids, outcomes, cap);
             da_clear(&op->ids);
             da_clear(&op->values);
             for (int o = 0; o < OUTCOME_COUNT; o++) da_push(&op->values, rolled[o]);
@@ -593,7 +635,8 @@ void ops_apply(Op *op) {
     }
     case OP_BLOCK_ACTION: {
         Entity *e = entity_by_id(op->id);
-        if (e) block_apply(e, (BlockAction)op->action, op->tile, op->value);
+        if (e && phases_declaring()) phases_declare_block(e, (BlockAction)op->action, op->tile, op->value);
+        else if (e) block_apply(e, (BlockAction)op->action, op->tile, op->value);
         break;
     }
     case OP_DODGE_ACTION: {
@@ -602,7 +645,8 @@ void ops_apply(Op *op) {
         /* the host (or offline) rolls the Dodge Value's die; clients apply the roll the host sent */
         if (!session_is_client()) op->value = dodge_roll((DodgeAction)op->action);
         bool was_selected = e == selected_entity();
-        dodge_apply(e, (DodgeAction)op->action, op->tile, op->value);
+        if (phases_declaring()) phases_declare_dodge(e, (DodgeAction)op->action, op->tile, op->value); /* phases.h */
+        else dodge_apply(e, (DodgeAction)op->action, op->tile, op->value);
         if (was_selected) entities_clear_highlights(); /* the range shown belonged to the old tile */
         break;
     }

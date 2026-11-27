@@ -21,7 +21,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define NET_PROTOCOL_VERSION 14
+#define NET_PROTOCOL_VERSION 15
 #define NETMSG_ATTRS 4 /* = ATTR_COUNT: STR, AGI, COG, SPI */
 #define NET_DEFAULT_PORT     41234
 #define NET_MAX_FRAME        (64u << 20)            /* one encrypted frame */
@@ -36,6 +36,7 @@
 #define NETMSG_BLOCK_DIRS    7                      /* BLOCK_ACTION: the direction bits (BLOCK_DIRS in blocks.h) */
 #define NETMSG_MAX_REASON    31                     /* OP_REJECTED reason codes are 1..31 */
 #define NETMSG_MAX_ROLLS     1001                   /* NOP_ROLL values: up to 1000 dice and the total */
+#define NETMSG_MAX_RESULTS   400000                 /* NOP_INIT_NEXT values: a resolution's results (phases.h) */
 #define NET_CREATE_MAX_BLOB  (1u << 20)          /* CREATE: the picture's WebP bytes */
 #define NET_CREATE_MAX_DIM   512                    /* CREATE: the picture's width and height */
 #define NET_HASH_SIZE        32                     /* BLAKE2b-256 of an image's WebP bytes */
@@ -92,7 +93,8 @@ typedef enum {
     NOP_INIT_REMOVE,      /* ids */
     NOP_INIT_CLEAR,
     NOP_INIT_SHOW,
-    NOP_INIT_NEXT,        /* id (0 = no current turn) */
+    NOP_INIT_NEXT,        /* id (0 = no current turn); values: none from a client, from the host in the resolution
+                           * phase the current character's results (phases.h; ops_check checks them) */
     NOP_SET_OWNER,        /* ids, name ("" = no owner) */
     NOP_SET_HEALTH,       /* ids, mode (HEALTH_*), value */
     NOP_SET_NAME,         /* ids, char_name */
@@ -107,6 +109,8 @@ typedef enum {
     NOP_BLOCK_ACTION,     /* id, row, col, action (BlockAction in blocks.h), value: the directions (bits 1..7) */
     NOP_DODGE_ACTION,     /* id, row, col (where to), action (DodgeAction in dodges.h), value: 0 from a client, the
                            * host's roll (0..NETMSG_MAX_DIE) */
+    NOP_TAKE_BACK,        /* id; from the host what the character goes back to: row, col, value: stamina,
+                           * action: what it used this turn (bits 0..7) */
     NOP_ROLL,             /* dice: "NdM[+K|-K]" (characters 0-9 d D + -); values: none (client) or
                            * the host's result, every die then the total (at most NETMSG_MAX_ROLLS) */
     NOP_CLAIM,            /* id */

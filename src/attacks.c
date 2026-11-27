@@ -2,6 +2,7 @@
 #include "attacks.h"
 #include "blocks.h"
 #include "dodges.h"
+#include "phases.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -181,35 +182,29 @@ bool attack_rolls_ok(AttackAction a, const int rolled[OUTCOME_COUNT]) {
 
 /* ---- using it ---- */
 
-int attack_targets(const Entity *attacker, Hex tile, AttackDir d, int av, uint32_t *ids, int *outcomes, int cap) {
+int attack_targets(Hex from, Hex tile, AttackDir d, int av, uint32_t *ids, int *outcomes, int cap) {
     int n = 0;
-    Hex from = attack_origin(attacker, tile);
     for (int i = 0; i < gh->entities.count && n < cap; i++) {
         const Entity *t = gh->entities.items[i];
-        /* the characters on the tile and those who dodged from it (they dodge on the original tile) */
-        if (t->type != ENTITY_CHARACTER || (!entity_occupies(t, tile) && !dodge_find(t, tile))) continue;
+        if (t->type != ENTITY_CHARACTER) continue;
+        /* everyone on the tile at some point of the round (phases.h), and those who dodged from it */
+        bool dodged = dodge_find(t, tile) != NULL;
+        int at = phases_presence(t, tile);
+        if (!dodged && at == PRESENCE_NONE) continue;
+        AttackOutcome o = attack_resolve(t, from, tile, d, av);
+        if (!dodged && at == PRESENCE_PASSED && o < OUTCOME_SCRAPE) o = OUTCOME_SCRAPE; /* hit while moving through */
         ids[n] = t->id;
-        outcomes[n] = attack_resolve(t, from, tile, d, av);
+        outcomes[n] = o;
         n++;
     }
     return n;
 }
 
-void attack_apply(Entity *e, AttackAction a, Hex tile, AttackDir d, const int rolled[OUTCOME_COUNT],
-                  const uint32_t *ids, const int *outcomes, int n) {
+void attack_hit(const Entity *e, AttackAction a, Hex from, Hex tile, AttackDir d, const int rolled[OUTCOME_COUNT],
+                const uint32_t *ids, const int *outcomes, int n, const char *note) {
     const AttackActionDef *def = &ATTACK_ACTIONS[a];
-    action_use_slot(e, def->slot);
-    int before;
-    bool spent = action_spend_stamina(e, def->stamina, &before);
-
-    if (gh->init.count == 0) attack_marks_clear_of(e->id); /* no rounds: the newest attack replaces the old */
-    AttackMark m = { .tile = tile, .from = attack_origin(e, tile), .dir = d, .attacker = e->id };
-    da_push(&gh->attackMarks, m);
-
     char name[CHAR_NAME_MAX + 16];
     entity_display_name(e, name, sizeof(name));
-    char stamina[48] = "";
-    if (spent) snprintf(stamina, sizeof(stamina), ", stamina %d/%d", e->stamina, e->maxStamina);
     int dirs, bv;
     char blocked[64] = "";
     bool block = block_on_tile(tile, &dirs, &bv);
@@ -223,7 +218,7 @@ void attack_apply(Entity *e, AttackAction a, Hex tile, AttackDir d, const int ro
         if (bx == OUTCOME_SUCCESS && through) block_failed(tile);
     }
     console_log("%s: %s on [%d|%d] %s%s%s%s", name, def->name, tile.row, tile.col, ATTACK_DIR_NAMES[d], blocked,
-                stamina, n ? "" : ", nobody there");
+                note ? note : "", n ? "" : ", nobody there");
 
     /* attacks apply to the tile: every character on it, with the outcome the host decided */
     for (int i = 0; i < n; i++) {
@@ -234,7 +229,7 @@ void attack_apply(Entity *e, AttackAction a, Hex tile, AttackDir d, const int ro
         entity_display_name(t, tname, sizeof(tname));
         const DodgeRec *dg = dodge_find(t, tile); /* a player who joined later may not know it: no note then */
         if (dg) {
-            int dd = dodge_dir(attack_origin(e, tile), tile, dg->step);
+            int dd = dodge_dir(from, tile, dg->step);
             size_t len = strlen(tname);
             snprintf(tname + len, sizeof(tname) - len, " (dodged %s, DV %d against AV %d + ET %d)",
                      dd < DIR_COUNT ? ATTACK_DIR_NAMES[dd] : "toward the attacker", dg->value, def->value, t->evasion);
@@ -247,6 +242,25 @@ void attack_apply(Entity *e, AttackAction a, Hex tile, AttackDir d, const int ro
         console_log("  %s: %s, %d damage, HP %d/%d (%s)", tname, ATTACK_OUTCOME_NAMES[o], rolled[o], t->health,
                     t->maxHealth, hp_stage_name(hp_stage(t->health, t->maxHealth)));
     }
+}
+
+void attack_declare(Entity *e, AttackAction a, Hex tile, AttackDir d, bool pending, int *before, bool *spent) {
+    const AttackActionDef *def = &ATTACK_ACTIONS[a];
+    action_use_slot(e, def->slot);
+    *spent = action_spend_stamina(e, def->stamina, before);
+    if (gh->init.count == 0) attack_marks_clear_of(e->id); /* no rounds: the newest attack replaces the old */
+    AttackMark m = { .tile = tile, .from = attack_origin(e, tile), .dir = d, .attacker = e->id, .pending = pending };
+    da_push(&gh->attackMarks, m);
+}
+
+void attack_apply(Entity *e, AttackAction a, Hex tile, AttackDir d, const int rolled[OUTCOME_COUNT],
+                  const uint32_t *ids, const int *outcomes, int n) {
+    int before;
+    bool spent;
+    attack_declare(e, a, tile, d, false, &before, &spent);
+    char stamina[48] = "";
+    if (spent) snprintf(stamina, sizeof(stamina), ", stamina %d/%d", e->stamina, e->maxStamina);
+    attack_hit(e, a, attack_origin(e, tile), tile, d, rolled, ids, outcomes, n, stamina);
     action_end_if_exhausted(e, before, spent);
 }
 

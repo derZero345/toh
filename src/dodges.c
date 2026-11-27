@@ -130,7 +130,6 @@ int dodge_dir(Hex from, Hex tile, int step) {
 
 /* ---- lifetime ---- */
 
-void dodges_turn_started(uint32_t id) { dodges_clear_of(id); }
 
 void dodges_clear_of(uint32_t id) {
     for (int i = gh->dodges.count - 1; i >= 0; i--)

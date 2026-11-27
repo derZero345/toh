@@ -8,6 +8,7 @@
 #include "target_ui.h"
 #include "blocks.h"
 #include "dodges.h"
+#include "phases.h"
 #include "moves.h"
 #include "radial_game.h"
 #include "settings.h"
@@ -145,6 +146,8 @@ void gfx_shutdown(void) {
     da_free(&gh->blocks);
     da_free(&gh->blockLocks);
     da_free(&gh->dodges);
+    phases_clear();
+    da_free(&gh->declared);
     cc_shutdown(); /* the draft's picture */
     da_free(&gh->moveMode.path);
     da_free(&gh->init);
@@ -592,6 +595,15 @@ static void draw_entities(void) {
         if (e->type == ENTITY_CHARACTER) {
             float x, y, d;
             gfx_entity_rect(e, &x, &y, &d);
+            if (e->hasShown) { /* phases.h: a faded copy where its declared moves end; the token stays */
+                dr_set_alpha(0.4f);
+                dr_image(e->image, (int)x, (int)y, (int)d, (int)d);
+                dr_set_alpha(1);
+                Hex planned = e->tile;
+                e->tile = e->shown;
+                gfx_entity_rect(e, &x, &y, &d);
+                e->tile = planned;
+            }
             e->location = (Vec2){ x, y };
             e->drawSize = d;
             dr_image(e->image, (int)e->location.x, (int)e->location.y, (int)d, (int)d);
@@ -705,7 +717,8 @@ static void draw_debug_labels(int r0, int r1, int c0, int c1) {
 }
 
 /* The tiles attacked this round (attacks.h): an arrow from the tile's centre in the attack's direction (towards the
- * tile or tiles the direction names), a ring for neutral. */
+ * tile or tiles the direction names), a ring for neutral. Declared attacks that have not resolved yet (phases.h) are
+ * hollow: an outlined arrow, a thin double ring. */
 static void draw_attack_marks(void) {
     float hs = (float)gh->hexSize, th = (float)gh->thickness;
     Color col = HUD_THEME.accent[HUD_ACCENT_RED];
@@ -715,7 +728,13 @@ static void draw_attack_marks(void) {
         Vec2 c = hex_center(m->tile);
         if (m->dir == DIR_NEUTRAL) {
             float r = hs * 0.3f;
-            dr_stroke_oval(c.x - r, c.y - r, 2 * r, 2 * r, th * 2.5f, col);
+            if (m->pending) {
+                float r2 = r - th * 2.5f;
+                dr_stroke_oval(c.x - r, c.y - r, 2 * r, 2 * r, th, col);
+                dr_stroke_oval(c.x - r2, c.y - r2, 2 * r2, 2 * r2, th, col);
+            } else {
+                dr_stroke_oval(c.x - r, c.y - r, 2 * r, 2 * r, th * 2.5f, col);
+            }
             continue;
         }
         Hex to[6];
@@ -733,6 +752,16 @@ static void draw_attack_marks(void) {
         uy /= len;
         float tail = hs * 0.35f, head = hs * 0.55f, wing = hs * 0.25f;
         float ex = (float)(c.x + ux * head), ey = (float)(c.y + uy * head);
+        if (m->pending) { /* the outline of the shaft and the head */
+            double vx = -uy, vy = ux, w1 = th * 2, w2 = wing * 0.8, nx = ex - ux * wing, ny = ey - uy * wing;
+            double tx = c.x - ux * tail, ty = c.y - uy * tail;
+            Vec2 pts[7] = { { tx + vx * w1, ty + vy * w1 }, { nx + vx * w1, ny + vy * w1 },
+                            { nx + vx * w2, ny + vy * w2 }, { ex, ey },
+                            { nx - vx * w2, ny - vy * w2 }, { nx - vx * w1, ny - vy * w1 },
+                            { tx - vx * w1, ty - vy * w1 } };
+            dr_polygon(pts, 7, th, col);
+            continue;
+        }
         dr_line((float)(c.x - ux * tail), (float)(c.y - uy * tail), ex, ey, th * 2.5f, col);
         for (int s = -1; s <= 1; s += 2) { /* the head: two strokes back at +-35 degrees */
             double a = atan2(-uy, -ux) + s * 0.6;
@@ -1016,6 +1045,17 @@ static void draw_fx(void) {
         Vec2 a = hex_center(gh->moveMode.path.items[i]), b = hex_center(gh->moveMode.path.items[i + 1]);
         dr_line((int)a.x, (int)a.y, (int)b.x, (int)b.y, th * 3, rgb_hex(0xFFFFFF));
     }
+    /* declared moves and dodges (phases.h): their way, until they resolve */
+    for (int i = 0; i < gh->declared.count; i++) {
+        const Declared *d = &gh->declared.items[i];
+        if (d->resolved) continue;
+        for (int k = 0; k + 1 < d->path.count; k++) {
+            Vec2 a = hex_center(d->path.items[k]), b = hex_center(d->path.items[k + 1]);
+            dr_set_alpha(0.6f);
+            dr_line((int)a.x, (int)a.y, (int)b.x, (int)b.y, th * 2, rgb_hex(0xFFFFFF));
+            dr_set_alpha(1);
+        }
+    }
     draw_block_marks();
     draw_dodge_marks();
     draw_attack_marks();
@@ -1124,16 +1164,23 @@ static void draw_hud(void) {
     hud_draw();
 }
 
-/* ":tm": a label at the top of the map while test mode is on, so nobody forgets it */
-static void draw_test_mode(void) {
-    if (!gh->testMode) return;
-    const char *text = "TEST MODE";
+/* A label at the top of the map, centred, row 0 or 1 (below the first). */
+static void draw_top_label(const char *text, int row, Color bg) {
     float fs = 16, pad = 8, ascent, descent;
     dr_font_metrics(FONT_BOLD, fs, &ascent, &descent);
     float w = dr_text_width(FONT_BOLD, fs, text) + 2 * pad, h = ascent + descent + pad;
-    float left = (float)gh->toolbox.size, x = left + ((float)gh->winW - left - w) / 2, y = 8;
-    dr_fill_round_rect(x, y, w, h, 8, 8, HUD_THEME.accent[HUD_ACCENT_GOLD]);
+    float left = (float)gh->toolbox.size, x = left + ((float)gh->winW - left - w) / 2, y = 8 + row * (h + 6);
+    dr_fill_round_rect(x, y, w, h, 8, 8, bg);
     dr_text(FONT_BOLD, fs, x + pad, y + pad / 2 + ascent, HUD_THEME.panel, text);
+}
+
+/* ":tm": a label while test mode is on, so nobody forgets it; below it the round's phase (phases.h) */
+static void draw_test_mode(void) {
+    int row = 0;
+    if (gh->testMode) draw_top_label("TEST MODE", row++, HUD_THEME.accent[HUD_ACCENT_GOLD]);
+    char phase[CHAR_NAME_MAX + 48];
+    if (phases_label(phase, sizeof(phase)))
+        draw_top_label(phase, row, HUD_THEME.accent[gh->phase == PHASE_RESOLVE ? HUD_ACCENT_RED : HUD_ACCENT_BLUE]);
 }
 
 /* ---- radial menu (on top of everything) --------------------------------------------------------------------- */

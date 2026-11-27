@@ -1,5 +1,6 @@
 /* Move actions (see moves.h). */
 #include "moves.h"
+#include "phases.h"
 
 #include <string.h>
 
@@ -37,6 +38,8 @@ int action_slot(const Entity *e, ActionSlot s) {
 }
 
 OpResult action_turn_check(const Entity *e, ActionSlot s) {
+    /* phases.h: nothing is declared while the round resolves, not even in test mode */
+    if (gh->init.count > 0 && gh->currentTurn && gh->phase == PHASE_RESOLVE) return OPR_RESOLVING;
     if (gh->testMode) return OPR_OK; /* test mode: these requirements never block (moves.h) */
     if (gh->init.count == 0) return OPR_NOT_IN_COMBAT;
     if (gh->currentTurn != e) return OPR_NOT_YOUR_TURN;
@@ -126,6 +129,8 @@ const char *move_result_text(OpResult r) {
     case OPR_NO_STAMINA:    return "Not enough stamina";
     case OPR_CANT_MOVE:     return "This character can't move (speed 0)";
     case OPR_NO_STAMINA_STAT: return "This character has no stamina";
+    case OPR_RESOLVING:     return "Not during the resolution phase";
+    case OPR_NOTHING_DECLARED: return "Nothing declared this round";
     default:                return ops_result_text(r);
     }
 }

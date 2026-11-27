@@ -4,14 +4,15 @@
  *
  * A block covers one, two or all three of the directions up, left and right on a tile (DIR_BIT bits of attacks.h);
  * neutral is always covered. Range 0 blocks the blocker's own tiles (all of them for a big character), a larger range
- * one tile within it (own tiles included). Blocks stay on their tiles, also when the blocker moves away, until its
- * next turn starts, the initiative ends or it is deleted; outside initiative (test mode) its next block replaces
+ * one tile within it (own tiles included). Blocks stay on their tiles, also when the blocker moves away, until the
+ * next round's declaration starts (phases.h), the initiative ends or it is deleted; outside initiative (test mode)
+ * its next block replaces
  * them. Several blocks on one tile act as one: their directions combine and the highest Block Value applies
  * (block_on_tile, which attacks.c's block hook asks).
  *
  * The failed block: when an attack's block contest on a tile gives success (block_failed), every blocker there that
- * didn't occupy the tile when it blocked can't block that tile again until the end of its next turn, unless it
- * occupies it then (a BlockLock). During initiative the lock ends when its turn after next starts; outside
+ * didn't occupy the tile when it blocked can't block that tile again in the next round, unless it occupies it then
+ * (a BlockLock). During initiative the lock ends when the round after next starts; outside
  * initiative its next block somewhere else ends it; the initiative ending and deleting the blocker end it too.
  *
  * Blocks follow the turn rules of moves.h and cost stamina. Test mode lifts initiative, the turn, the slot and
@@ -75,7 +76,8 @@ void block_dirs_text(int dirs, char *buf, size_t cap);
 
 /* ---- lifetime ---- */
 
-void blocks_turn_started(uint32_t id); /* its blocks go; its locks from before this turn end, newer ones arm */
+/* A round starts (phases.h, for every character): its blocks go; its armed locks end, newer ones arm */
+void blocks_turn_started(uint32_t id);
 void blocks_clear_of(uint32_t id);     /* it was deleted */
 void blocks_clear(void);               /* the initiative ends, a table is loaded */
 

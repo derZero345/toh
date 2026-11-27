@@ -3,7 +3,7 @@
  * docs/superpowers/specs/2026-11-27-dodges-design.md.
  *
  * A dodge moves the character to an adjacent tile it fits on, and rolls its Dodge Value (the host rolls, the op
- * carries the die). "You always dodge on the original tile": until its next turn starts, an attack on a tile it left
+ * carries the die). "You always dodge on the original tile": for the rest of the round, an attack on a tile it left
  * meets the dodge contest (attacks.h) there. The dodge's direction is its first step as seen from that attacker
  * (dodge_dir): away from it = up, the same-distance neighbour on its left / right = left / right; a step toward the
  * attacker matches no attack direction. Attacks on the tile it moved to hit it normally. With a block on the attacked
@@ -11,7 +11,8 @@
  *
  * The contest needs the dodger's Evasion Threshold: Entity.evasion (EVASION_DEFAULT for new characters, :c et).
  *
- * Dodges stay until the dodger's next turn starts, the initiative ends or it is deleted; outside initiative (test
+ * Dodges stay until the next round's declaration starts (phases.h), the initiative ends or it is deleted; outside
+ * initiative (test
  * mode) its next dodge replaces them. Not saved. A dodge counts as a move (TURN_MOVED: Sprint).
  *
  * Dodges follow the turn rules of moves.h and cost stamina. Test mode lifts initiative, the turn, the slot and
@@ -73,7 +74,6 @@ int dodge_dir(Hex from, Hex tile, int step);
 
 /* ---- lifetime ---- */
 
-void dodges_turn_started(uint32_t id); /* its dodges end */
 void dodges_clear_of(uint32_t id);     /* it was deleted, or it dodges again outside initiative */
 void dodges_clear(void);               /* the initiative ends, a table is loaded */
 

@@ -42,7 +42,7 @@ in the Java version.
 | Left click (or Enter in keyboard mode) | select tile / entity |
 | Right click (or Right-Shift + Enter) | tool action (drag start, measure point, place attack) |
 | Right click without moving (Drag tool) | tile menu: a ring of entries around the tile; Esc / click outside closes; the GM's Create character on empty tiles |
-| Right click your character (Drag tool) | action menu: Minor / Info / Mental / Major; during initiative its move actions (Walk, Run, Crawl, Step, Sprint) move it on its turn, Recover (1d4) / Full Recover restore its stamina, Major action -> Attack attacks a tile in range in a direction (up / left / right / neutral), and Major action -> Block blocks directions on a tile (switch Up / Right / Left on, confirm in the centre; so far only placeholder attacks and blocks), and Major action -> Dodge steps to an adjacent tile; attacks on the tile left meet the dodge (DV 1d8 + AGI against AV + ET) |
+| Right click your character (Drag tool) | action menu: Minor / Info / Mental / Major / Take back; during initiative actions are declared on the character's turn and happen in the resolution phase (Take back undoes the last declaration); its move actions (Walk, Run, Crawl, Step, Sprint) move it on its turn, Recover (1d4) / Full Recover restore its stamina, Major action -> Attack attacks a tile in range in a direction (up / left / right / neutral), and Major action -> Block blocks directions on a tile (switch Up / Right / Left on, confirm in the centre; so far only placeholder attacks and blocks), and Major action -> Dodge steps to an adjacent tile; attacks on the tile left meet the dodge (DV 1d8 + AGI against AV + ET) |
 | + Create character (bar, when you have no character) / + box left of the bar (GM) | create a character in steps: name, size, attributes (STR / AGI shown beside the HP bar), picture, then place it (left click a green tile; Esc / right click back; Enter / Right-Shift + Enter in keyboard mode, but the steps need the mouse) |
 | Shift + left click | move the selected character inside its (green) range (players: outside initiative) |
 | Hold Left Shift | preview footprint and path of the selected character |
@@ -63,7 +63,7 @@ Console commands: `:q` quit, `:b [file.png]` background, `:d` debug, `:c` charac
 (`delete`, `size n`, `maxhealth n`, `maxstamina n`, `stamina n`, `spend n`, `recover n`, `speed n`, `initiative n`, `icon`, `owner <player|none>`, `name <name>`, `party <name>` (GM), `evasion n` / `et n` (Evasion Threshold, default 3), `str / agi / cog / spi n` (attributes; they set max HP, max stamina, speed, initiative; GM only on a selection),
 `hp n`, `damage n`, `heal n`; the HUD at the bottom shows the selected (your own, or a party member's) character's HP and stamina),
 `:w [delete]` wall, `:e delete`, `:r 2d6+3` roll, `:g` grid orientation, `:gm` gamemaster,
-`:i [add|remove|clear|show|next]` initiative, `:tm [on|off]` test mode (GM: move and recover actions, attacks, blocks and dodges without turn, action or stamina requirements, for the whole table), `:cl` clear, `:t [name]` theme (remembered in `settings.txt`), `:h [command]` help, `:hud [on|off]` HUD on/off,
+`:i [add|remove|clear|show|next]` initiative (a round: everyone declares in order, `next` ends a declaring turn; then the GM resolves everyone in order with `next`), `:tm [on|off]` test mode (GM: move and recover actions, attacks, blocks and dodges without turn, action or stamina requirements, for the whole table; nothing is declared during the resolution phase), `:cl` clear, `:t [name]` theme (remembered in `settings.txt`), `:h [command]` help, `:hud [on|off]` HUD on/off,
 `:save [file]` / `:load[!] [file]` save files (see below), `:q!` quit without saving,
 `:host`, `:join`, `:leave`, `:unhost`, `:players`, `:kick`, `:ban`, `:unban`, `:claim`, `:party` multiplayer (see below).
 
@@ -87,7 +87,7 @@ along and cannot read the game.
 
 Players can move their own characters (Shift + click inside the green range; while initiative runs only on their
 turn), change the HP, stamina and name of their own characters, see the HP of characters in a party with one of
-theirs (the GM sets parties with `:c party <name>`; `:party` lists them), end their turn with `:i next`, roll dice (`:r`, rolled by the host and shown to everyone) and save a copy of
+theirs (the GM sets parties with `:c party <name>`; `:party` lists them), end their declaring turn with `:i next` (the GM steps the resolution), roll dice (`:r`, rolled by the host and shown to everyone) and save a copy of
 the table. Everything else is the GM's. `:players` lists who is at the table, `:kick <name>` removes someone,
 `:leave` / `:unhost` end it; players keep the last table as an unsaved offline table.
 A kicked player can rejoin with the same code; `:ban <name>` removes them and turns away both that name and their
@@ -114,12 +114,12 @@ Like nvim, `:q` and `:load` refuse to throw away unsaved changes: `No write sinc
 Use `:q!` / `:load!` to discard them. Camera, zoom and theme are saved but don't count as changes. The window's
 close button always quits.
 
-A save contains the background, characters (image, stats, attributes, current HP and stamina, name, owner and party), walls, the initiative order, waypoints, grid
+A save contains the background, characters (image, stats, attributes, current HP and stamina, name, owner and party), walls, the initiative order (and the round's phase; not the declarations), waypoints, grid
 orientation, camera and theme (loading shows it, but the theme remembered for the next start stays the one from `:t`);
 not the console, selections, clipboard or measurements. `:c owner <player>` gives the
 selected characters to a player; pasted copies have no owner (but keep their party).
 
-The format (`src/savefmt.h`, version 10; files from older versions still load) is binary and compact: the game state is packed with varints and zstd-compressed, and
+The format (`src/savefmt.h`, version 11; files from older versions still load) is binary and compact: the game state is packed with varints and zstd-compressed, and
 every image is stored once as WebP (lossless for characters and walls, quality 90 for the background; images over
 16383 px are scaled down). Saves are written to `file.tmp` first and then renamed, and a load only replaces the
 table once the whole file has been checked.

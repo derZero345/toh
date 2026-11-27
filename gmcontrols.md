@@ -266,7 +266,8 @@ then move with move actions (below).
 
 ### Move actions (during initiative)
 
-While initiative runs, a character moves with the move actions of Tales of Honor, on its turn. **Right click** the
+While initiative runs, a character moves with the move actions of Tales of Honor, declared on its turn and carried
+out in the resolution phase (see **Rounds** in section 8). **Right click** the
 character with the Drag tool: its action menu opens (see **The action menu** in section 10). Choose Major action
 or Minor action, then the move:
 
@@ -279,21 +280,26 @@ or Minor action, then the move:
 | Sprint | Minor | its speed | 3 | another move action earlier this turn |
 
 The tiles the action can reach light up in its color (Major blue, Minor gold) and the way to the tile under the
-mouse is drawn in white. Left click a lit tile to move there; Esc, a right click or a left click elsewhere cancels
-("Move cancelled"). Starting to create a character, or placing one, also ends it (without a log line). The log
-shows e.g. `Mao: Walk up to 3 tiles; click where to go (Esc cancels)` and then `Mao: Run, stamina 6/8`.
+mouse is drawn in white. Left click a lit tile to declare the move there; Esc, a right click or a left click
+elsewhere cancels ("Move cancelled"). Starting to create a character, or placing one, also ends it (without a log
+line). The log shows e.g. `Mao: Walk up to 3 tiles; click where to go (Esc cancels)`, then `Mao declares Run to
+[3|7], stamina 6/8` and, when it resolves, `Mao: Run to [3|7]`.
 
-- Each turn a character has one Major and one Minor action; both are free again when its turn starts. When the
-  Minor one is used, a Minor action uses the Major one instead.
+- Each round a character has one Major and one Minor action; both are free again when its declaring turn starts.
+  When the Minor one is used, a Minor action uses the Major one instead.
+- A declared move doesn't move the token yet: it stays where it stood, and a faded copy with the way drawn in white
+  shows where the move ends (the planned tile). The character's later declarations start from the planned tile, and
+  other characters' moves count it there. Its action menu opens on both tiles. The token goes there when the move
+  resolves.
 - The move goes from tile to adjacent tile, only over tiles the character fits on, like the green range.
-- The stamina cost is paid when the character moves. It needs that much stamina ("Not enough stamina"). At 0 it is
-  exhausted, the log says `Mao is exhausted; the turn ends` and the turn goes to the next one in the order. A
+- The stamina cost is paid when the move is declared. It needs that much stamina ("Not enough stamina"). At 0 it is
+  exhausted, the log says `Mao is exhausted; the turn ends` and the next character in the order declares. A
   character without max stamina pays nothing.
 - Speed 0: Walk, Run, Crawl and Sprint are greyed out ("This character can't move (speed 0)"); Step still moves 1 tile.
 - Outside initiative the move actions are greyed out ("Only during initiative"); characters move freely then.
   Test mode (`:tm`, below) lifts this and the other requirements.
 - Greyed-out actions say why when hovered: "Not this character's turn", "No action of that kind left this turn",
-  "Needs another move action first this turn", "Not enough stamina".
+  "Needs another move action first this turn", "Not enough stamina", "Not during the resolution phase".
 - The rules hold for you too when you use a move action. Your Shift + click and `:gm` moves stay free and use no
   action.
 - Players' Shift + click moves are refused during initiative with "During initiative, move with a move action:
@@ -303,21 +309,22 @@ shows e.g. `Mao: Walk up to 3 tiles; click where to go (Esc cancels)` and then `
 
 ### Recovering stamina (during initiative)
 
-The same menus hold the two personal actions of Tales of Honor that only recover stamina. They take effect as soon as
-you choose them; there is no tile to pick.
+The same menus hold the two personal actions of Tales of Honor that only recover stamina. Choosing one declares it
+(there is no tile to pick); the die is rolled and the stamina recovered when it resolves.
 
 | Action | Type | Effect | Stamina |
 |---|---|---|---|
 | Recover | Minor | recovers the Stamina Recovery Die, 1d4 | 0 |
 | Full Recover | Major | stamina back to its maximum | 0 |
 
-The log shows e.g. `Mao: Recover 1d4 = 3, stamina 5/8` or `Mao: Full Recover, stamina 8/8`.
+The log shows e.g. `Mao declares Recover` and, when it resolves, `Mao: Recover 1d4 = 3, stamina 5/8` or
+`Mao: Full Recover, stamina 8/8`.
 
 - They follow the turn rules of the move actions: only during initiative, on the character's turn, one Major and
   one Minor action per turn, and a second Recover can use the Major action. Recover doesn't count as a move action
   for Sprint.
-- Greyed out with "Stamina is already full" at full stamina, and with "This character has no stamina" for a
-  character without max stamina.
+- Greyed out with "Stamina is already full" at full stamina (when declaring), and with "This character has no
+  stamina" for a character without max stamina.
 - Stamina never goes above the maximum. From below 0, Recover adds the roll and Full Recover goes straight to the
   maximum.
 - In a session your game (the host) rolls the die and everyone sees the roll in the log.
@@ -342,24 +349,30 @@ on it, clockwise from the top:
 | Neutral | the target tile itself |
 | Left | the same on the left |
 
-Choosing a direction attacks. Esc, a click outside the ring or a right click closes the ring and goes back to
-choosing a tile; then Esc, a right click or a left click outside the range cancels ("Attack cancelled"). The log
-shows e.g. `Mao: Test attack, range 1; click the tile to attack (Esc cancels)`, then `Mao: Test attack on [4|7] up`
-and one line per character on the tile: `  Bob: success, 3 damage, HP 7/10 (Injured)`.
+Choosing a direction declares the attack; it hits when it resolves. Esc, a click outside the ring or a right click
+closes the ring and goes back to choosing a tile; then Esc, a right click or a left click outside the range cancels
+("Attack cancelled"). The log shows e.g. `Mao: Test attack, range 1; click the tile to attack (Esc cancels)`, then
+`Mao declares Test attack on [4|7] up` and, when it resolves, `Mao: Test attack on [4|7] up` and one line per
+character hit: `  Bob: success, 3 damage, HP 7/10 (Injured)`.
 
-- Every character on the tile is hit, allies too. An empty tile gives `..., nobody there`. A character without max
-  HP takes no damage (`3 damage (no HP)`). HP can go below 0, down to −max HP, as with `:c damage`.
+- Every character on the tile at some point of the round is hit, allies too (see **Rounds** in section 8; one that
+  only passes the tile in the middle of a move gets at least a scrape). An empty tile gives `..., nobody there`. A
+  character without max HP takes no damage (`3 damage (no HP)`). HP can go below 0, down to −max HP, as with
+  `:c damage`.
 - Each attack succeeds, scrapes or misses for each character: against a block on the tile or a dodge (below) it can
   scrape or miss, otherwise it succeeds. The log then says e.g.
   `Mao: Test attack on [4|7] up, AV 0 against a block of BV 2` and `  Bob: miss, 0 damage, HP 10/10 (Healthy)`; an
   attack in a direction the block doesn't cover adds ` in other directions` and succeeds.
 - The range counts tiles in a straight line from the attacker's nearest tile (big characters attack from the tile
-  closest to the target). Walls don't block it yet, and a character can't attack its own tiles.
-- The attack uses its Major or Minor action and its stamina, like the move actions (same turn rules; a Minor attack
-  can use the Major action). Using up the last stamina ends the turn.
-- The attacked tile gets a red mark for everyone: an arrow in the attack's direction, a ring for neutral. The marks
-  stay until the attacker's next turn starts, and all go when the initiative ends or a table is loaded. They are not
-  saved, and players who join in the middle of a round don't see the marks made before they joined.
+  closest to the target), where the attacker is at that point of its declarations. Walls don't block it yet, and a
+  character can't attack its own tiles.
+- The attack uses its Major or Minor action and its stamina when it is declared, like the move actions (same turn
+  rules; a Minor attack can use the Major action). Using up the last stamina ends the declaring turn.
+- The attacked tile gets a red mark for everyone: an arrow in the attack's direction, a ring for neutral. It is
+  hollow (an outlined arrow, a thin double ring) while the attack waits for the resolution, and solid once it
+  resolved. The marks stay until the next round's declaration starts, and all go when the initiative ends or a table
+  is loaded. They are not saved, and players who join in the middle of a round don't see the marks made before they
+  joined.
 - In a session your game (the host) rolls the damage and decides each character's result, so everyone sees the same
   result.
 
@@ -387,12 +400,13 @@ tiles`).
 - The block belongs to the tile: every character on it is protected, and it stays there when the blocker moves
   away. With several blocks on a tile their directions combine and the highest BV counts.
 - A blocked tile shows a blue hexagon with the directions and the BV, e.g. `UL 2`.
-- Blocks stay until the blocker's next turn starts, and all go when the initiative ends or a table is loaded. They
-  are not saved, and players who join in the middle of a round don't see earlier blocks (the results stay right:
-  your game decides them).
+- A block takes effect as soon as it is declared and counts against every attack of the round, also those resolved
+  before the blocker's turn. It stays until the next round's declaration starts, and all go when the initiative ends
+  or a table is loaded. Blocks are not saved, and players who join in the middle of a round don't see earlier
+  blocks (the results stay right: your game decides them).
 - **A failed block:** when an attack succeeds against a tile a character blocked without standing on it (wrong
-  direction), that character can't block that tile on its next turn, unless it stands on it then: "Can't block this
-  tile this turn: its last block there failed".
+  direction), that character can't block that tile in the next round, unless it stands on it then: "Can't block
+  this tile this turn: its last block there failed".
 - The turn rules are those of the other actions (Major / Minor action, stamina, exhaustion).
 
 ### Dodges (during initiative)
@@ -401,12 +415,14 @@ tiles`).
 |---|---|---|---|---|
 | Dodge | Major | to an adjacent tile | 1d8 + AGI | 2 |
 
-Choose Major action, then **Dodge**. The adjacent tiles the character fits on light up; left click one and it moves
-there. Esc, a right click or a click outside them cancels ("Dodge cancelled"). Your game (the host) rolls the die;
-the log shows e.g. `Mao: Dodge from [4|7] to [3|7], DV 6 (1d8: 4, AGI 2), stamina 6/8`.
+Choose Major action, then **Dodge**. The adjacent tiles the character fits on light up; left click one to declare
+the dodge there. Esc, a right click or a click outside them cancels ("Dodge cancelled"). Your game (the host) rolls
+the die when it is declared; the log shows e.g. `Mao: Dodge from [4|7] to [3|7], DV 6 (1d8: 4, AGI 2), stamina 6/8`.
+The dodge counts from then on, for the whole round; the token moves like a declared move (a faded copy first) and
+goes to the new tile when the dodge resolves (`Mao: Dodge to [3|7]`).
 
-- The character dodges on the tile it left: until its next turn starts, an attack on that tile still hits it, with
-  the dodge contest. It wins when its DV is at least the attack's Attack Value plus its Evasion Threshold
+- The character dodges on the tile it left: until the next round's declaration starts, an attack on that tile still
+  hits it, with the dodge contest. It wins when its DV is at least the attack's Attack Value plus its Evasion Threshold
   (`:c et`, 3 by default).
 - The dodge's direction is its step, as the attacker sees it: away from the attacker is up, to the attacker's left or
   right is left or right. A step toward the attacker matches no direction.
@@ -417,7 +433,7 @@ the log shows e.g. `Mao: Dodge from [4|7] to [3|7], DV 6 (1d8: 4, AGI 2), stamin
 - With a block on the attacked tile as well, the better result for the character counts. A failed block there locks
   the tile only if the attack got through to someone (not when a dodge saved everyone hit).
 - Each tile the character left shows a green hexagon with an arrow toward its step and its DV, e.g. `DV 6`. Dodges
-  stay until the dodger's next turn starts, and all go when the initiative ends or a table is loaded. They are not
+  stay until the next round's declaration starts, and all go when the initiative ends or a table is loaded. They are not
   saved, and players who join in the middle of a round don't see earlier dodges (the results stay right: your game
   decides them).
 - A dodge counts as a move (Sprint can follow it) and follows the turn rules of the other actions.
@@ -430,18 +446,21 @@ the log shows e.g. `Mao: Dodge from [4|7] to [3|7], DV 6 (1d8: 4, AGI 2), stamin
 
 Test mode is for trying things out without setting up turns and stamina first. While it is on, move actions, the
 recover actions (Recover, Full Recover), attacks, blocks and dodges work for everyone at the table:
-- outside initiative, and for any character, not only the one whose turn it is;
+- outside initiative, where they happen at once (nothing is declared);
+- during the declaration phase for any character at any time, not only the one whose turn it is (and any
+  character can take back its last declaration then);
 - when the Major or Minor action is already used this turn;
 - for Sprint without another move action before it;
 - with too little stamina (move actions, attacks, blocks and dodges).
 
 The actions still have their effects: they use up their Major or Minor action, and they spend stamina, but never
-below 0. A character whose stamina an action brings to 0 is exhausted and its turn ends, as usual; actions at 0
-stamina don't end the turn again.
+below 0. A character whose stamina an action brings to 0 is exhausted and its declaring turn ends, as usual; actions
+at 0 stamina don't end the turn again. During the resolution phase nothing can be declared or taken back, not even
+in test mode ("Not during the resolution phase").
 
 Still checked in test mode: players only act with their own characters, the move, attack or block stays within the
 action's range, a dodge goes to an adjacent tile the character fits on, a character with speed 0 can only Step, the recover actions need a character with max stamina
-whose stamina isn't full, and a failed block's tile stays locked for the blocker's next turn. Players' Shift + click moves keep their rules (refused during initiative). Roll and claim
+whose stamina isn't full, and a failed block's tile stays locked for the blocker in the next round. Players' Shift + click moves keep their rules (refused during initiative). Roll and claim
 limits stay too.
 
 Outside initiative an attack's marks stay until the same character attacks again (its new mark replaces them), and
@@ -469,15 +488,48 @@ Pasted characters keep their name, HP, attributes and party but have no owner.
 | `:i` | | Add every entity to the initiative order |
 | `:i add` | `:i a` | Add the selected entities |
 | `:i remove` | `:i r` | Remove the selected entities |
-| `:i next` | `:i n` | Next turn. The first `:i next` starts the round. |
+| `:i next` | `:i n` | Next turn. The first `:i next` starts the round. In the declaration phase it ends the current character's declaring turn; in the resolution phase it resolves the current character (see **Rounds** below). |
 | `:i show` | `:i s` | Show / hide the turn markers |
 | `:i clear` | `:i c` | End initiative |
 
 The order is random; the characters' initiative stat doesn't change it. A marker above each entity shows its
 place in the order (counting from 0): green = current turn, yellow = next, red = later.
 
-While initiative runs, players move their characters only with move actions on their own turn (section 6), and
-only the owner of the current character (or the GM) can use `:i next`.
+While initiative runs, players move their characters only with move actions on their own turn (section 6).
+
+### Rounds: declaration and resolution
+
+A round of Tales of Honor has two phases, both in initiative order. A label at the top of the map shows the phase
+and whose turn it is: `DECLARATION · Mao`, `RESOLUTION · Mao`, or `RESOLUTION · done` when everyone resolved.
+
+1. **Declaration.** On its turn each character declares its actions through its action menu (section 10): moves,
+   Recover, attacks, blocks and dodges. Their requirements are checked now, and their slot (Major / Minor) and
+   stamina are spent now; running out of stamina ends the declaring turn. Everything declared is public. `:i next`
+   ends the turn; the owner of the current character can use it too. After the last character, `:i next` starts the
+   resolution at the top of the order.
+2. **Resolution.** Each `:i next` resolves the current character's declarations in the order they were made: moves
+   and dodges move the token, attacks hit, Recover rolls. Only you step the resolution (players get "Only the GM can
+   do that"), and nothing can be declared meanwhile ("Not during the resolution phase"). After the last character,
+   `:i next` starts the next round's declaration, which clears the round's attack marks, blocks, dodges and
+   declarations, and frees everyone's Major and Minor actions.
+
+- **Planned tiles.** A declared move or dodge puts the character on the tile where it ends for the rest of the
+  declaration (its later declarations, the range of its moves and attacks and other characters' room checks start
+  there), while its token stays where it stood until the move resolves; a faded copy and the way show the plan.
+- **The whole round counts.** Blocks and dodges count against every attack of the round, also those resolved before
+  the blocker's or dodger's own turn. An attack on a tile hits every character that is on it at some point of the
+  round: on a tile where one of its moves starts or ends (or where it stays), with the normal result; on a tile it
+  only passes in the middle of a move, with at least a scrape (a block or dodge can still make it a miss); on the
+  tile it dodged from, with the dodge contest. An attack's direction is worked out from where the attacker is at
+  that point of its declarations. Damage, HP and rolls happen in resolution order.
+- **Taking back.** During its declaring turn a character can take back its last declaration with **Take back** in
+  its action menu (repeatedly, newest first): the action, its stamina and its tile come back, and its block, dodge
+  or attack mark goes. The log says `Mao takes back Run`. Greyed out with "Nothing declared this round" or outside
+  its declaring turn.
+- Removing the current character from the initiative passes the turn on in the same phase (after the last
+  declarer, the resolution starts). A character added during a round joins the order where its value puts it.
+- The phase is saved with the initiative; the declarations are not (a table loaded during a resolution resolves
+  nothing more for that round).
 
 ## 9. Dice
 
@@ -531,7 +583,8 @@ keyboard-only play can't open it.
 ### The action menu
 
 Right click a character you control. If several share the tile, the menu is for the selected one, else the one
-whose turn it is, else the first. Its four entries, clockwise from the top:
+whose turn it is, else the first. While a declared move waits, it opens both on the token and on the faded copy.
+Its five entries, clockwise from the top:
 
 | Entry | Color | What it holds |
 |---|---|---|
@@ -539,6 +592,7 @@ whose turn it is, else the first. Its four entries, clockwise from the top:
 | Info | grey (#5E5E5E) | nothing yet; choosing it only closes the menu |
 | Mental action | violet (#80537E) | nothing yet: greyed out, "Nothing to choose here" |
 | Major action | blue (#355C85) | Walk, Run, Crawl, Full Recover, Attack (a submenu: Test attack), Block (a submenu: Test block, Test block range 1), Dodge |
+| Take back | grey (#5E5E5E) | takes back the character's last declaration (see **Rounds** in section 8) |
 
 The move and recover actions, attacks, blocks and their rules are in section 6. The centre button closes the menu.
 
@@ -633,7 +687,8 @@ anything else asks again). Several requests wait in line; each player can have a
 Paths may contain spaces, with or without quotes around them; `~/` means your home folder. The window's close button always quits.
 
 A save holds the background, characters (image, stats, attributes, current HP and stamina, name, owner, party and
-the actions used this turn), walls, initiative, waypoints, grid orientation,
+the actions used this turn), walls, initiative (with the round's phase, but not the declarations), waypoints, grid
+orientation,
 camera and theme. It does not hold the console, selections, clipboard or measurements. Saves from older versions
 still load; an armor class stored in them is ignored. Loading a save shows its theme, but the game keeps remembering
 the theme you chose with `:t` for the next start.
@@ -711,8 +766,9 @@ in the name field Enter = Next). `:c` creates a character without them.
 
 Players can:
 - move their own characters (freely outside initiative; while it runs, with move actions on their turn),
-  recover their stamina with Recover and Full Recover, attack, block and dodge with them, on their turn;
-- end their turn with `:i next`;
+  recover their stamina with Recover and Full Recover, attack, block and dodge with them, declared on their turn;
+- take back their last declaration during their declaring turn;
+- end their declaring turn with `:i next`;
 - roll dice (at most 10 rolls in 10 seconds);
 - ask for existing characters with `:claim`, or for a new one of their own through the bar's **+ Create
   character** (while they have none) or `:c` (attributes −2 to 3; you answer y/n);
@@ -727,7 +783,7 @@ Everything else is yours, including:
   characters' other stats, changing attributes (`:c str` etc.) after a character exists, deleting characters, and
   walls;
 - giving characters to players, and putting characters into parties (`:c party`);
-- the initiative order (apart from `:i next`);
+- the initiative order (apart from `:i next` to end their declaring turn), and stepping the resolution phase;
 - waypoints, the background and the grid;
 - `:gm`, `:tm` (test mode), `:load`, kicking and banning.
 

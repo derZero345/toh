@@ -33,8 +33,12 @@ int recover_roll(RecoverAction a) {
 }
 
 void recover_apply(Entity *e, RecoverAction a, int rolled) {
+    action_use_slot(e, RECOVER_ACTIONS[a].slot);
+    recover_gain(e, a, rolled);
+}
+
+void recover_gain(Entity *e, RecoverAction a, int rolled) {
     const RecoverActionDef *d = &RECOVER_ACTIONS[a];
-    action_use_slot(e, d->slot);
     e->stamina = d->full ? e->maxStamina : hp_clamp((long long)e->stamina + rolled, e->maxStamina);
     char name[CHAR_NAME_MAX + 16];
     entity_display_name(e, name, sizeof(name));

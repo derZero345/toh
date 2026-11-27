@@ -113,6 +113,7 @@ static bool validate(const SaveData *d, bool encoding) {
         if (!ok) return false;
     }
     if (d->ninit == 0 ? (d->current_turn != 0 || d->turn_started) : d->current_turn >= d->ninit) return false;
+    if ((d->resolving && !d->turn_started) || (d->resolve_done && !d->resolving)) return false;
 
     for (uint32_t i = 0; i < d->nwaypoints; i++) {
         const SaveWaypoint *w = &d->waypoints[i];
@@ -127,7 +128,8 @@ static bool validate(const SaveData *d, bool encoding) {
 /* fingerprint: camera and theme are left out (they don't make the table "modified") */
 static void write_state(Buf *b, const SaveData *d, bool fingerprint) {
     put_u8(b, (uint8_t)((d->is_flat ? 1 : 0) | (d->has_background ? 2 : 0) |
-                        (d->init_markers_visible ? 4 : 0) | (d->turn_started ? 8 : 0)));
+                        (d->init_markers_visible ? 4 : 0) | (d->turn_started ? 8 : 0) | (d->resolving ? 16 : 0) |
+                        (d->resolve_done ? 32 : 0)));
     if (d->has_background) put_uv(b, d->background);
     put_uv(b, d->bg_rows);
     put_uv(b, d->bg_cols);
@@ -184,11 +186,13 @@ int32_t savefmt_size_from_v3(int32_t s) {
 static SaveError read_state(const uint8_t *p, size_t n, uint16_t version, SaveData *d) {
     Rd r = { p, n, 0, false };
     uint8_t flags = get_u8(&r);
-    if (flags & ~15u) return SAVE_ERR_CORRUPT;
+    if (flags & (version >= 11 ? ~63u : ~15u)) return SAVE_ERR_CORRUPT;
     d->is_flat = flags & 1;
     d->has_background = flags & 2;
     d->init_markers_visible = flags & 4;
     d->turn_started = flags & 8;
+    d->resolving = flags & 16;
+    d->resolve_done = flags & 32;
     if (d->has_background) d->background = get_uv(&r);
     d->bg_rows = get_uv(&r);
     d->bg_cols = get_uv(&r);

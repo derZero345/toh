@@ -2,6 +2,7 @@
 #include "app.h"
 #include "blocks.h"
 #include "dodges.h"
+#include "phases.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -50,7 +51,10 @@ void marker_text(const Marker *m, char *buf, size_t n) {
 void marker_update(Marker *m) {
     if (!m->attached) return;
     Hex tiles[MAX_OCCUPIED];
-    entity_occupied_tiles(m->attached, tiles);
+    if (m->attached->hasShown) /* over the token, which stays until its declared moves resolve (phases.h) */
+        character_occupied_tiles(m->attached->shown, m->attached->size, tiles);
+    else
+        entity_occupied_tiles(m->attached, tiles);
     Vec2 c = hex_center(tiles[0]);
     m->coords = (Vec2){ (int)c.x, (int)c.y - gh->hexSize };
 }
@@ -262,6 +266,7 @@ void entity_delete(Entity *e) {
     attack_marks_clear_of(e->id);
     blocks_clear_of(e->id);
     dodges_clear_of(e->id);
+    phases_clear_of(e->id);
     da_remove_value(&gh->entities, e);
     entity_free(e);
 }

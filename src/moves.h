@@ -1,9 +1,10 @@
 /*
  * Move actions of Tales of Honor (rulebook: Actions -> Move, and the Personal Actions with type Move).
  *
- * During initiative each character has a Major and a Minor action per turn; a Major action can be used as a Minor
+ * During initiative each character has a Major and a Minor action per round; a Major action can be used as a Minor
  * one. A move action uses its slot, costs stamina and moves the character along adjacent tiles up to its distance.
- * Reaching 0 stamina makes the character exhausted and ends its turn. Outside initiative there are no turns, so
+ * Reaching 0 stamina makes the character exhausted and ends its turn. During initiative actions are declared on the
+ * character's turn and carried out in the resolution phase (phases.h); outside initiative there are no turns, so
  * move actions can't be used (characters move freely as before).
  *
  * Only the actions the map can support are here: no levels, terrain or conditions yet, so Jump, Long Jump, Climb,
@@ -12,7 +13,8 @@
  *
  * Test mode (:tm, gh->testMode, the whole table) lifts the requirements so features can be tried out: initiative,
  * the character's turn, a free slot (action_turn_check, also for recover actions), Sprint's earlier move and enough
- * stamina never block. The effects stay: the slot
+ * stamina never block; during the declaration phase any character can declare (and take back) at any time. Nothing
+ * is declared during the resolution phase, not even in test mode (OPR_RESOLVING). The effects stay: the slot
  * is marked used, stamina is spent down to 0 at most, and the turn ends only when an action uses up the last
  * stamina. Ownership, the range and speed 0 still hold (attacks.h, blocks.h, dodges.h: the same for attacks, blocks
  * and dodges; a failed block's lock and a dodge's adjacent tile with room hold too). Keep this list in the guides
@@ -49,7 +51,8 @@ extern const MoveActionDef MOVE_ACTIONS[MOVE_COUNT];
 /* Which slot an action of slot s would use now: its own; a Minor one uses the Major slot when the Minor one is
  * used. -1 if none is free. */
 int action_slot(const Entity *e, ActionSlot s);
-/* Initiative runs, it is e's turn and a slot is free; test mode lifts all three. OPR_OK or the reason. */
+/* Not the resolution phase (phases.h; never lifted), initiative runs, it is e's turn and a slot is free; test mode
+ * lifts the last three. OPR_OK or the reason. */
 OpResult action_turn_check(const Entity *e, ActionSlot s);
 /* Marks the slot action_slot names (its own if none is free: test mode) as used. */
 void action_use_slot(Entity *e, ActionSlot s);

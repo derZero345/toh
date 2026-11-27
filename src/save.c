@@ -3,6 +3,7 @@
 #include "app.h"
 #include "savefmt.h"
 #include "moves.h"
+#include "phases.h"
 #include "session.h"
 
 #include <errno.h>
@@ -116,6 +117,8 @@ static void gather(Gathered *g) {
     if (d->ninit > 0) {
         d->current_turn = (uint32_t)gh->currentTurnIndex < d->ninit ? (uint32_t)gh->currentTurnIndex : 0;
         d->turn_started = gh->currentTurn != NULL;
+        d->resolving = d->turn_started && gh->phase == PHASE_RESOLVE; /* phases.h; the declarations are not saved */
+        d->resolve_done = d->resolving && gh->resolveDone;
     }
     d->init_markers_visible = gh->initMarkers.count == 0 || gh->initMarkers.items[0]->visible;
 
@@ -361,6 +364,10 @@ static void apply(SaveData *d, bool keep_view) {
     }
     game_restore_initiative(init_entities, init_values, (int)d->ninit, (int)d->current_turn, d->turn_started,
                             d->init_markers_visible);
+    if (gh->currentTurn && d->resolving) {
+        gh->phase = PHASE_RESOLVE;
+        gh->resolveDone = d->resolve_done;
+    }
     free(init_entities);
     free(init_values);
 

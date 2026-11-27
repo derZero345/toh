@@ -3,6 +3,7 @@
 #include "radial_game.h"
 #include "blocks.h"
 #include "dodges.h"
+#include "phases.h"
 #include "target_ui.h"
 #include "charcreate.h"
 #include "move_ui.h"
@@ -70,6 +71,13 @@ static const char *rule_dodge(const RadialTarget *t, int arg) {
     return r == OPR_OK ? NULL : move_result_text(r);
 }
 
+/* Can the actor take back its last declaration now (phases.h)? */
+static const char *rule_take_back(const RadialTarget *t, int arg) {
+    (void)t, (void)arg;
+    OpResult r = phases_take_back_check(entity_by_id(actor));
+    return r == OPR_OK ? NULL : move_result_text(r);
+}
+
 /* The block ring's toggles: their direction bits. */
 static int toggled_dirs(void) {
     return (radial_toggled("block.up") ? DIR_BIT(DIR_UP) : 0) | (radial_toggled("block.left") ? DIR_BIT(DIR_LEFT) : 0) |
@@ -98,6 +106,7 @@ static const RadialRule RULES[] = {
     { "block.dirs", rule_block_dirs, "Choose at least one direction", "", NULL, 0 },
     /* one per dodge; the keys are DODGE_ACTIONS' ids */
     { "dodge", NULL, NULL, "Not possible", rule_dodge, DODGE_BASIC },
+    { "take_back", NULL, NULL, "Not possible", rule_take_back, 0 },
 };
 #define NRULES ((int)(sizeof(RULES) / sizeof(RULES[0])))
 
@@ -116,13 +125,16 @@ bool radial_game_controls(const Entity *e) {
 
 /* The character on h the menu is for: the selected one, else the one whose turn it is, else the first one, of
  * those the local user controls. 0 if none. */
+/* on h: where it will be, or where its token is drawn until its declared moves resolve (phases.h) */
+static bool is_on(const Entity *e, Hex h) { return entity_occupies(e, h) || phases_shown_on(e, h); }
+
 static uint32_t actor_on(Hex h) {
     Entity *sel = gh->selectedEntities.count > 0 ? entity_by_id(gh->selectedEntities.items[0]) : NULL;
-    if (radial_game_controls(sel) && entity_occupies(sel, h)) return sel->id;
-    if (radial_game_controls(gh->currentTurn) && entity_occupies(gh->currentTurn, h)) return gh->currentTurn->id;
+    if (radial_game_controls(sel) && is_on(sel, h)) return sel->id;
+    if (radial_game_controls(gh->currentTurn) && is_on(gh->currentTurn, h)) return gh->currentTurn->id;
     for (int i = 0; i < gh->entities.count; i++) {
         const Entity *e = gh->entities.items[i];
-        if (radial_game_controls(e) && entity_occupies(e, h)) return e->id;
+        if (radial_game_controls(e) && is_on(e, h)) return e->id;
     }
     return 0;
 }
@@ -179,6 +191,9 @@ static void on_event(const RadialEvent *ev) {
         } else if (strcmp(ev->id, "char.create") == 0) { /* the creation steps, with this tile */
             Hex h = { ev->target.row, ev->target.col };
             cc_start(&h);
+        } else if (strcmp(ev->id, "take_back") == 0) {
+            Op op = { .type = OP_TAKE_BACK, .id = actor };
+            ops_submit(&op);
         } else if (strcmp(ev->id, "info") == 0) {
             /* nothing yet */
         } else { /* placeholder entries: they only say what was chosen */

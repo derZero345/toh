@@ -19,8 +19,8 @@
  * Major slot) and cost stamina; using up the last stamina ends the turn. Test mode lifts initiative, the turn, the
  * slot and stamina; the range, ownership and the direction still hold.
  *
- * Every attack leaves a mark on its tile (gh->attackMarks, drawn by graphics.c) until the attacker's next turn starts,
- * the initiative ends or the attacker is deleted; outside initiative (test mode) the attacker's next attack replaces
+ * Every attack leaves a mark on its tile (gh->attackMarks, drawn by graphics.c; hollow while it is declared and not
+ * resolved, phases.h) until the next round's declaration starts, the initiative ends or the attacker is deleted; outside initiative (test mode) the attacker's next attack replaces
  * its marks. Marks are not saved.
  *
  * The host decides: it rolls the damage of every outcome and resolves the tile (attack_targets) in ops_apply, and
@@ -106,18 +106,28 @@ bool attack_rolls_ok(AttackAction a, const int rolled[OUTCOME_COUNT]);
 
 /* ---- using it ---- */
 
-/* The host's resolution of attacker's attack: the characters on tile and those who dodged from it (at most cap) and
- * each one's outcome against an attack in direction d with Attack Value av. Returns how many. */
-int attack_targets(const Entity *attacker, Hex tile, AttackDir d, int av, uint32_t *ids, int *outcomes, int cap);
-/* Uses the slot, spends the stamina, marks the tile, locks it for failed blockers off it (blocks.h; not when a dodge
- * saved everyone hit) and applies the outcomes: character ids[i] loses rolled[outcomes[i]] HP; logs what happened. Exhausted: the turn ends. Requires
+/* The host's resolution of an attack from `from` (the attacker's tile, attack_origin): the characters on tile at some
+ * point of the round (phases_presence: where a move starts or ends, or where it stays: the normal result; a tile
+ * passed in the middle of a move: at least a scrape) and those who dodged from it (at most cap), and each one's
+ * outcome against an attack in direction d with Attack Value av. Returns how many. */
+int attack_targets(Hex from, Hex tile, AttackDir d, int av, uint32_t *ids, int *outcomes, int cap);
+/* The attack happens: logs it (note: added to its line, e.g. the stamina), locks the tile for failed blockers off it
+ * (blocks.h; not when a dodge saved everyone hit) and applies the outcomes: character ids[i] loses
+ * rolled[outcomes[i]] HP. */
+void attack_hit(const Entity *e, AttackAction a, Hex from, Hex tile, AttackDir d, const int rolled[OUTCOME_COUNT],
+                const uint32_t *ids, const int *outcomes, int n, const char *note);
+/* Uses the slot, spends the stamina (*before, *spent: for action_end_if_exhausted) and marks the tile (pending: a
+ * declaration, drawn hollow until it resolves). */
+void attack_declare(Entity *e, AttackAction a, Hex tile, AttackDir d, bool pending, int *before, bool *spent);
+/* At once (outside initiative): attack_declare, then attack_hit. Uses the slot, spends the stamina, marks the tile,
+ * locks it for failed blockers off it (blocks.h; not when a dodge saved everyone hit) and applies the outcomes: character ids[i] loses rolled[outcomes[i]] HP; logs what happened. Exhausted: the turn ends. Requires
  * attack_check_at == OPR_OK. */
 void attack_apply(Entity *e, AttackAction a, Hex tile, AttackDir d, const int rolled[OUTCOME_COUNT],
                   const uint32_t *ids, const int *outcomes, int n);
 
 /* ---- tile marks ---- */
 
-void attack_marks_clear_of(uint32_t attacker); /* its turn starts, it was deleted, or it attacks outside initiative */
+void attack_marks_clear_of(uint32_t attacker); /* it was deleted, or it attacks outside initiative */
 void attack_marks_clear(void);                 /* the initiative ends, a table is loaded */
 
 #endif

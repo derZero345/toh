@@ -1,5 +1,6 @@
 /* Mouse and keyboard handling (main/IOHandler). */
 #include "app.h"
+#include "phases.h"
 #include "charcreate.h"
 #include "ops.h"
 #include "hud_game.h"
@@ -120,7 +121,8 @@ static Entity *entity_under_cursor(void) {
     double best_d = 0;
     for (int i = 0; i < gh->entities.count; i++) {
         Entity *e = gh->entities.items[i];
-        if (!entity_occupies(e, gh->currentHexagon)) continue;
+        /* where it will be, or where its token stands until its declared moves resolve (phases.h) */
+        if (!entity_occupies(e, gh->currentHexagon) && !phases_shown_on(e, gh->currentHexagon)) continue;
         Vec2 c = e->type == ENTITY_CHARACTER && e->drawSize > 0
                      ? (Vec2){ e->location.x + e->drawSize / 2, e->location.y + e->drawSize / 2 }
                      : hex_center(e->tile);

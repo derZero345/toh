@@ -2,6 +2,7 @@
 #include "app.h"
 #include "blocks.h"
 #include "dodges.h"
+#include "phases.h"
 
 /* Called at ~60 Hz: camera panning with WASD. */
 void game_tick(void) {
@@ -93,16 +94,42 @@ void game_update_initiative_markers(void) {
     }
 }
 
+/* A character's declaring turn starts: its Major and Minor actions are free again (moves.h). */
+static void declaring_turn(void) {
+    gh->currentTurn = gh->init.items[gh->currentTurnIndex].entity;
+    gh->currentTurn->turnUsed = 0;
+}
+
 void game_next_turn(void) {
     if (gh->init.count == 0) return;
-    /* the first :i next starts the round with the highest roller (the Java version skipped them) */
-    if (gh->currentTurn) gh->currentTurnIndex = (gh->currentTurnIndex + 1) % gh->init.count;
-    else gh->currentTurnIndex %= gh->init.count;
-    gh->currentTurn = gh->init.items[gh->currentTurnIndex].entity;
-    gh->currentTurn->turnUsed = 0; /* a new turn: its Major and Minor actions are free again (moves.h) */
-    attack_marks_clear_of(gh->currentTurn->id); /* and the tiles it attacked last round are no longer marked */
-    blocks_turn_started(gh->currentTurn->id);   /* its blocks end (blocks.h) */
-    dodges_turn_started(gh->currentTurn->id);   /* its dodges end (dodges.h) */
+    int last = gh->init.count - 1;
+    if (!gh->currentTurn) { /* the first :i next starts the round with the highest roller (Java skipped them) */
+        gh->currentTurnIndex %= gh->init.count;
+        gh->phase = PHASE_DECLARE;
+        gh->resolveDone = false;
+        declaring_turn();
+    } else if (gh->phase == PHASE_DECLARE) { /* phases.h: the next declarer, or the resolution from the top */
+        if (gh->currentTurnIndex < last) {
+            gh->currentTurnIndex++;
+            declaring_turn();
+        } else {
+            gh->phase = PHASE_RESOLVE;
+            gh->resolveDone = false;
+            gh->currentTurnIndex = 0;
+            gh->currentTurn = gh->init.items[0].entity;
+        }
+    } else if (gh->resolveDone) { /* the next round */
+        phases_round_start();
+        gh->phase = PHASE_DECLARE;
+        gh->resolveDone = false;
+        gh->currentTurnIndex = 0;
+        declaring_turn();
+    } else if (gh->currentTurnIndex < last) { /* the caller resolved the current one (OP_INIT_NEXT) */
+        gh->currentTurnIndex++;
+        gh->currentTurn = gh->init.items[gh->currentTurnIndex].entity;
+    } else {
+        gh->resolveDone = true; /* everyone resolved; the current one stays shown until the next round */
+    }
     game_update_initiative_markers();
 }
 
@@ -124,13 +151,19 @@ void game_remove_from_initiative(Entity *e) {
         if (gh->init.count == 0) {
             gh->currentTurn = NULL;
             gh->currentTurnIndex = 0;
-        } else { /* the next one in order slid into the removed slot */
-            gh->currentTurnIndex = idx % gh->init.count;
+        } else if (idx >= gh->init.count && gh->phase == PHASE_RESOLVE) { /* it was the last to resolve */
+            gh->currentTurnIndex = gh->init.count - 1;
             gh->currentTurn = gh->init.items[gh->currentTurnIndex].entity;
-            gh->currentTurn->turnUsed = 0; /* its turn starts */
-            attack_marks_clear_of(gh->currentTurn->id);
-            blocks_turn_started(gh->currentTurn->id);
-            dodges_turn_started(gh->currentTurn->id);
+            gh->resolveDone = true;
+        } else if (idx >= gh->init.count) { /* it was the last to declare: resolution from the top */
+            gh->phase = PHASE_RESOLVE;
+            gh->resolveDone = false;
+            gh->currentTurnIndex = 0;
+            gh->currentTurn = gh->init.items[0].entity;
+        } else { /* the next one in order slid into the removed slot */
+            gh->currentTurnIndex = idx;
+            if (gh->phase == PHASE_DECLARE) declaring_turn(); /* its declaring turn starts */
+            else gh->currentTurn = gh->init.items[idx].entity;
         }
     } else if (gh->currentTurnIndex > 0 && init_index(gh->currentTurn) < gh->currentTurnIndex) {
         gh->currentTurnIndex--;
@@ -139,6 +172,7 @@ void game_remove_from_initiative(Entity *e) {
         attack_marks_clear();
         blocks_clear();
         dodges_clear();
+        phases_clear();
     }
     game_update_initiative_markers();
 }
@@ -154,9 +188,10 @@ void game_clear_initiative(void) {
     da_clear(&gh->init);
     gh->currentTurn = NULL;
     gh->currentTurnIndex = 0;
-    attack_marks_clear(); /* marks, blocks and dodges last a round; without initiative there are none */
+    attack_marks_clear(); /* marks, blocks, dodges and declarations last a round; without initiative there are none */
     blocks_clear();
     dodges_clear();
+    phases_clear();
 }
 
 void game_restore_initiative(Entity **entities, const double *values, int n, int current, bool turn_started,

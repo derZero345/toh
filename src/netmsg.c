@@ -94,6 +94,14 @@ static bool op_ok(const NetOp *o) {
         return dice_ok(o->dice);
     case NOP_CLAIM:
         return o->id != 0;
+    case NOP_TAKE_BACK:
+        return o->id != 0 && coord_ok(o->row) && coord_ok(o->col) && o->action <= 7 &&
+               o->value >= -SAVEFMT_MAX_HP && o->value <= SAVEFMT_MAX_HP;
+    case NOP_INIT_NEXT:
+        if (o->nvalues > NETMSG_MAX_RESULTS || (o->nvalues && !o->values)) return false;
+        for (uint32_t i = 0; i < o->nvalues; i++)
+            if (!isfinite(o->values[i])) return false;
+        return true;
     case NOP_SET_TEST_MODE:
         return o->value == 0 || o->value == 1;
     case NOP_RECOVER_ACTION: /* ops_check checks the action and the roll's range */
@@ -306,8 +314,19 @@ static void put_op(Buf *b, const NetOp *o) {
         for (uint32_t i = 0; i < o->nvalues; i++) put_f64(b, o->values[i]);
         break;
     case NOP_INIT_NEXT:
+        put_uv(b, o->id);
+        put_uv(b, o->nvalues);
+        for (uint32_t i = 0; i < o->nvalues; i++) put_f64(b, o->values[i]);
+        break;
     case NOP_CLAIM:
         put_uv(b, o->id);
+        break;
+    case NOP_TAKE_BACK:
+        put_uv(b, o->id);
+        put_sv(b, o->row);
+        put_sv(b, o->col);
+        put_u8(b, o->action);
+        put_sv(b, o->value);
         break;
     case NOP_SET_OWNER:
         put_ids(b, o->ids, o->nids);
@@ -641,9 +660,23 @@ static void get_op(Rd *r, NetOp *o) {
         o->nvalues = o->values ? o->nids : 0;
         for (uint32_t i = 0; i < o->nvalues && !r->bad; i++) o->values[i] = get_f64(r);
         break;
-    case NOP_INIT_NEXT:
+    case NOP_INIT_NEXT: {
+        o->id = get_uv(r);
+        uint32_t n = get_count(r, NETMSG_MAX_RESULTS, 8);
+        o->values = get_array(r, n, sizeof(double));
+        o->nvalues = o->values ? n : 0;
+        for (uint32_t i = 0; i < o->nvalues && !r->bad; i++) o->values[i] = get_f64(r);
+        break;
+    }
     case NOP_CLAIM:
         o->id = get_uv(r);
+        break;
+    case NOP_TAKE_BACK:
+        o->id = get_uv(r);
+        o->row = get_sv(r);
+        o->col = get_sv(r);
+        o->action = get_u8(r);
+        o->value = get_sv(r);
         break;
     case NOP_SET_OWNER:
         o->ids = get_ids(r, &o->nids);

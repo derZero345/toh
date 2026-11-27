@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # End-to-end check of attacks: during initiative, the attacker's action menu -> Major action -> Attack -> Test attack
 # shows the tiles in range, a click on the tile with the other character opens the direction menu there (four
-# entries), Up attacks: the tile gets a mark and the log says the character took damage. Esc in the direction menu
+# entries), Up declares the attack: the tile gets a (hollow) mark; :i next twice resolves it (the resolution phase)
+# and the log says the character took damage. Esc in the direction menu
 # goes back to choosing a tile, a second Esc cancels. Then blocks, in test mode: the target blocks up on its own
 # tile through Major action -> Block -> Test block and the toggle ring (Up, then the centre), the tile gets a block
 # mark, and an attack up on it misses. Then dodges, in test mode: the target gets ET 0 (:c et 0), dodges up through
@@ -38,17 +39,18 @@ timeout 60 ./toh --size 600x500 --auto-file "$icon" \
     --exec "@key escape" --exec "@wait 20" --exec "@shot $out/back.png" \
     --exec "@click 300 150" --exec "@wait 20" --exec "@clickradial ring.1" --exec "@wait 20" \
     --exec "@move 500 60" --exec "@wait 5" --exec "@shot $out/attacked.png" \
-    --exec "@logfile $out/log.txt" \
     --exec "@rclick 300 220" --exec "@wait 20" --exec "@clickradial ring.4" --exec "@wait 20" \
     --exec "@clickradial ring.5" --exec "@wait 20" --exec "@radialpoint ring.1 $out/used" \
     --exec "@key escape" --exec "@wait 20" \
+    --exec ":i next" --exec ":i next" --exec "@wait 5" --exec "@logfile $out/log.txt" \
     --exec "@quit" > "$out/toh.log" 2>&1 || fail "toh exited with status $? (see $out/toh.log)"
 
 # the range: the tiles around the attacker light up (the one below it, away from the target, too)
 differ "$out/before.png" "$out/choosing.png" 300 290 || fail "choosing a tile for the attack shows no range"
 [ -s "$out/d4" ] && [ ! -s "$out/d5" ] || fail "a click on a tile in range did not open the direction menu (see $out/toh.log)"
 differ "$out/before.png" "$out/back.png" 300 290 || fail "Esc in the direction menu left choosing a tile"
-grep -q "Test attack on \[.*\] up" "$out/log.txt" || fail "the log has no attack (see $out/log.txt)"
+grep -q "declares Test attack on \[.*\] up" "$out/log.txt" || fail "the attack was not declared (see $out/log.txt)"
+grep -q ": Test attack on \[.*\] up" "$out/log.txt" || fail "the attack did not resolve (see $out/log.txt)"
 grep -q ": success, [1-4] damage, HP [0-9]/10 " "$out/log.txt" || fail "the character on the tile took no damage (see $out/log.txt)"
 differ "$out/back.png" "$out/attacked.png" 300 150 || fail "the attacked tile has no mark"
 ! differ "$out/before.png" "$out/attacked.png" 300 290 || fail "the range is still shown after the attack"

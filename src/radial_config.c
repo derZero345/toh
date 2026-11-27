@@ -102,6 +102,7 @@ static const RadialEntry ACTIONS[] = {
     { .id = "mental", .icon = "placeholder", .label = "Mental action", .accent = HUD_ACCENT_MENTAL,
       .kind = RADIAL_SUBMENU }, /* no mental actions yet */
     SUBMENU("major", "Major action", HUD_ACCENT_MAJOR, MAJOR),
+    ACTION("take_back", "Take back the last declaration", HUD_ACCENT_INFO, .enabled_if = "take_back"),
 };
 
 /* an attack's direction (attacks.h), opened on the attacked tile; clockwise from the top. The ids are

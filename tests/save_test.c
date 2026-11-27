@@ -857,6 +857,39 @@ static void test_evasion_versions(void) {
     free(f);
 }
 
+/* version 11: the round's phase in the state flags; older saves are in the declaration phase */
+static void test_phase_versions(void) {
+    Sample s;
+    sample_init(&s);
+    s.d.resolving = true;
+    s.d.resolve_done = true;
+    size_t len;
+    uint8_t *file = encode_sample(&s, &len);
+    SaveData d;
+    CHECK_ERR(savefmt_decode(file, len, &d), SAVE_OK);
+    CHECK(d.resolving && d.resolve_done && d.turn_started);
+    savefmt_free(&d);
+    free(file);
+    s.d.resolving = false; /* done without resolving */
+    CHECK(encode_sample_err(&s) == SAVE_ERR_INVALID);
+    s.d.resolving = true;
+    s.d.resolve_done = false;
+    s.d.turn_started = false; /* resolving without a turn */
+    CHECK(encode_sample_err(&s) == SAVE_ERR_INVALID);
+    sample_free(&s);
+
+    /* the new bits are corrupt in a version 10 file */
+    W st = { .n = 0 }, im = { .n = 0 };
+    wimage(&im, 8, 8);
+    wworld(&st, 16);
+    wuv(&st, 0);
+    wuv(&st, 0);
+    wuv(&st, 0);
+    uint8_t *f = wrap_v(&st, &im, &len, 1, 10);
+    CHECK_ERR(savefmt_decode(f, len, &d), SAVE_ERR_CORRUPT);
+    free(f);
+}
+
 /* sizes of version 1-3 saves map to Tales of Honor's classes by footprint */
 static void test_size_conversion(void) {
     const int32_t from[] = { -5, -2, -1, 0, 1, 2, 3, 9 }, to[] = { -2, -1, 0, 1, 3, 4, 4, 4 };
@@ -919,6 +952,7 @@ int main(int argc, char **argv) {
     test_turn_used_versions();
     test_attr_versions();
     test_evasion_versions();
+    test_phase_versions();
     test_size_conversion();
     printf("%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;

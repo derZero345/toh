@@ -2,7 +2,7 @@
 #define TOH_SAVEFMT_H
 
 /*
- * .tuhh file format, version 9: encoding, decoding and validation.
+ * .tuhh file format, version 11: encoding, decoding and validation.
  * Version 2 adds an owner name after each character's stats; version 1 files still load (no owners).
  * Version 3 drops the armor class (versions 1 and 2 store one after attack; it is skipped).
  * Version 4 uses the size classes of Tales of Honor; older sizes are converted (savefmt_size_from_v3).
@@ -11,6 +11,8 @@
  * Version 7 adds the party name after stamina.
  * Version 8 adds what the character used this turn (turn_used) after the party.
  * Version 9 adds the attributes STR, AGI, COG and SPI after turn_used.
+ * Version 10 adds the Evasion Threshold after the attributes (older characters get 3).
+ * Version 11 adds the phase of the round to the state flags: 16 resolving, 32 every character resolved (phases.h).
  *
  * Plain C11 on top of libzstd, libwebp and libsodium. It knows nothing about SDL,
  * Vulkan or the App struct, so tools or a server can reuse it to validate files.
@@ -25,7 +27,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SAVEFMT_VERSION     10
+#define SAVEFMT_VERSION     11
 #define SAVEFMT_TAG_SIZE    32
 #define SAVEFMT_HEADER_SIZE 12 /* magic, version, flags, state_len */
 
@@ -106,6 +108,7 @@ typedef struct {
 
 typedef struct {
     bool is_flat, has_background, init_markers_visible, turn_started;
+    bool resolving, resolve_done; /* the round's phase (version 11): resolving needs turn_started, done resolving */
     uint32_t background; /* image index, when has_background */
     uint32_t bg_rows, bg_cols;
     int32_t offset_x, offset_y;

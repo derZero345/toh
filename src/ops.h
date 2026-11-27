@@ -26,7 +26,8 @@ typedef enum {
     OP_INIT_REMOVE,      /* ids */
     OP_INIT_CLEAR,
     OP_INIT_SHOW,        /* toggles the turn order markers */
-    OP_INIT_NEXT,        /* id: the entity whose turn it is now (0 = none); stale ops are refused */
+    OP_INIT_NEXT,        /* id: the entity whose turn it is now (0 = none); stale ops are refused; in the resolution
+                          * phase the host adds values: the current character's results (phases.h) */
     OP_SET_OWNER,        /* ids, name: player name, "" = no owner */
     OP_SET_HEALTH,       /* ids, healthMode, value: set or change current HP (owners too) */
     OP_SET_NAME,         /* ids, charName (owners too) */
@@ -39,6 +40,8 @@ typedef enum {
                           * hit, and values: the damage roll per outcome, then each character's outcome (attacks.h) */
     OP_BLOCK_ACTION,     /* id, action (BlockAction), tile, value: the blocked directions, DIR_BIT bits (blocks.h) */
     OP_DODGE_ACTION,     /* id, action (DodgeAction), tile: where to; value: 0 from a client, the host's roll (dodges.h) */
+    OP_TAKE_BACK,        /* id: takes back the character's last declaration (phases.h); from the host also what the
+                          * character goes back to: tile, value: stamina, action: turnUsed */
     OP_COUNT
 } OpType;
 
@@ -67,7 +70,7 @@ typedef struct Op {
     uint32_t id; /* OP_MOVE */
     Hex tile;    /* OP_MOVE, OP_WAYPOINT_SET */
     DA(uint32_t) ids;
-    DA(double) values;    /* OP_INIT_ADD; OP_ATTACK_ACTION: damage rolls and outcomes */
+    DoubleList values;    /* OP_INIT_ADD; OP_ATTACK_ACTION: damage rolls and outcomes; OP_INIT_NEXT: results */
     DA(EntitySpec) specs; /* OP_SPAWN */
     Texture *image;       /* OP_SET_ICON, OP_SET_BACKGROUND; borrowed */
     int statMask;         /* OP_SET_STATS */
@@ -113,8 +116,10 @@ typedef enum {
     OPR_NO_STAMINA_STAT, /* OP_RECOVER_ACTION: the character has no max stamina */
     OPR_STAMINA_FULL,    /* OP_RECOVER_ACTION: stamina is at its maximum */
     OPR_BLOCK_LOCKED,    /* OP_BLOCK_ACTION: the blocker's last block on that tile failed (blocks.h) */
+    OPR_RESOLVING,       /* an action during the resolution phase (phases.h) */
+    OPR_NOTHING_DECLARED, /* OP_TAKE_BACK: the character has declared nothing this round */
 } OpResult;
-#define OPR_LAST OPR_BLOCK_LOCKED
+#define OPR_LAST OPR_NOTHING_DECLARED
 
 /*
  * Notes for ops_check / ops_apply:

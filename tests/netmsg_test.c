@@ -98,6 +98,7 @@ static NetOp sample_op(int type) {
         break;
     case NOP_INIT_NEXT:
         o.id = 300;
+        o.values = values3; o.nvalues = 3; /* as broadcast by the host in the resolution phase */
         break;
     case NOP_SET_OWNER:
         o.ids = ids3; o.nids = 2; strcpy(o.name, "Ålice");
@@ -144,6 +145,9 @@ static NetOp sample_op(int type) {
         break;
     case NOP_CLAIM:
         o.id = 70000;
+        break;
+    case NOP_TAKE_BACK:
+        o.id = 14; o.row = 3; o.col = -4; o.action = 5; o.value = -2; /* as the host sends it */
         break;
     default: /* NOP_GRID_ORIENTATION, NOP_INIT_CLEAR, NOP_INIT_SHOW: no body */
         break;
@@ -445,6 +449,14 @@ static void test_encoder_refuses_invalid(void) {
     m = sample_msg(NM_OP, NOP_MOVE); m.op.row = SAVEFMT_MAX_COORD + 1; check_invalid(m, "row out of range");
     m = sample_msg(NM_OP, NOP_MOVE); m.op.id = 0; check_invalid(m, "move id 0");
     m = sample_msg(NM_OP, NOP_CLAIM); m.op.id = 0; check_invalid(m, "claim id 0");
+    m = sample_msg(NM_OP, NOP_TAKE_BACK); m.op.id = 0; check_invalid(m, "take back without a character");
+    m = sample_msg(NM_OP, NOP_TAKE_BACK); m.op.action = 8; check_invalid(m, "take back to unknown used bits");
+    m = sample_msg(NM_OP, NOP_TAKE_BACK); m.op.value = SAVEFMT_MAX_HP + 1; check_invalid(m, "take back stamina too high");
+    {
+        double inf_results[] = { 1, INFINITY };
+        m = sample_msg(NM_OP, NOP_INIT_NEXT); m.op.values = inf_results; m.op.nvalues = 2;
+        check_invalid(m, "resolution result not finite");
+    }
     m = sample_msg(NM_OP, NOP_DELETE); ids3[1] = 0; check_invalid(m, "id 0 in list"); ids3[1] = 300;
     m = sample_msg(NM_OP, NOP_DELETE); m.op.nids = SAVEFMT_MAX_ENTITIES + 1; check_invalid(m, "too many ids");
     m = sample_msg(NM_OP, NOP_SPAWN); m.op.nids = 1; check_invalid(m, "spawn ids != specs");
