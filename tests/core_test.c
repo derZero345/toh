@@ -6,6 +6,7 @@
 #include "baranim.h"
 #include "hud.h"
 #include "hud_game.h"
+#include "hud_create.h"
 #include "radial.h"
 #include "radial_game.h"
 #include "settings.h"
@@ -16,6 +17,7 @@
 #include "recover.h"
 #include "move_ui.h"
 #include "party.h"
+#include "session.h"
 #include "textwrap.h"
 #include "savefmt.h"
 
@@ -2738,6 +2740,129 @@ static void test_attribute_ops(void) {
     reset_table();
 }
 
+/* The creation steps and the "no character" bar (hud_create.c through hud_game.c). */
+static void test_hud_create(void) {
+    reset_table();
+    app.winW = 1000;
+    app.winH = 700;
+    app.console.fontSize = 16;
+    app.console.active = false;
+    app.toolbox.size = 32;
+    stub_client = false;
+    stub_pending = 0;
+    hud_use_config(NULL, 0);
+    hud_set_visible(true);
+    hud_game_init("resources");
+    da_clear(&app.selectedEntities);
+    HudRect r;
+
+    /* every step's rows and the empty rows pass the config check */
+    char err[160];
+    const HudRow *rows;
+    int n;
+    for (int w = 0; w <= 3; w++) {
+        hud_create_empty_rows(w, &rows, &n);
+        CHECK(n == 1 + w && hud_config_check(rows, n, err, sizeof(err)) == 0);
+    }
+
+    /* the GM with no character on the board: the Create button and "+" */
+    hud_game_update(0);
+    CHECK(hud_part_rect("cc.start", &r) && hud_part_rect("plus", &r));
+    CHECK(hud_target()->shown && !strcmp(hud_target()->name, "No character"));
+    click_part("cc.start");
+    hud_game_update(0);
+    const CharCreate *c = cc_state();
+    CHECK(c->active && c->step == CC_NAME && !hud_part_rect("plus", &r)); /* "+" hides while creating */
+    CHECK(!strcmp(hud_target()->name, "New character") && !strcmp(hud_target()->extra, "· 1/5"));
+    CHECK(hud_focused()); /* the name field has the focus */
+    hud_create_rows(&rows, &n); /* each step's rows are checked here as the test walks through them */
+    CHECK(hud_config_check(rows, n, err, sizeof(err)) == 0);
+    hud_text_input("Mao");
+    CHECK(!strcmp(c->name, "Mao"));
+    hud_game_update(0);
+    CHECK(hud_focused()); /* the next frame keeps the focus */
+    CHECK(hud_part_rect("cc.next", &r) && !hud_part_rect("cc.back", &r)); /* no Back on the first step */
+    hud_text_key(HUD_EDIT_ENTER); /* Enter = Next */
+    hud_game_update(0);
+    CHECK(c->step == CC_SIZE && !strcmp(hud_value("cc.size")->choice.options[c->size - SIZE_MIN], "Normal"));
+    click_part("cc.next");
+    hud_game_update(0);
+    CHECK(c->step == CC_ATTRS);
+    click_part("cc.str.plus");
+    hud_game_update(0);
+    CHECK(c->attr[ATTR_STR] == 1 && strstr(hud_value("cc.derived")->label.text, "Max HP 15"));
+    click_part("cc.next");
+    hud_game_update(0);
+    CHECK(c->step == CC_PICTURE && !hud_value("cc.next")->button.enabled);
+    cc_set_picture(TEX_A, (Image){ 0 });
+    hud_game_update(0);
+    click_part("cc.next");
+    hud_game_update(0);
+    CHECK(c->step == CC_SUMMARY && !strcmp(hud_value("cc.next")->button.label, "Place"));
+    CHECK(strstr(hud_value("cc.summary")->label.text, "Mao · Normal · STR 1 AGI 0 COG 0 SPI 0 · HP 15 ST 8 SPD 3 INI 0"));
+    cc_set_name("WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW"); /* 32 bytes: the summary is cut at the label's edge */
+    hud_game_update(0);
+    int clips = stub_clip_sets;
+    hud_draw();
+    CHECK(stub_clip_sets > clips && !stub_clip_on);
+    cc_set_name("Mao");
+    click_part("cc.back"); /* Back keeps the draft */
+    hud_game_update(0);
+    CHECK(c->step == CC_PICTURE && c->attr[ATTR_STR] == 1 && !strcmp(c->name, "Mao"));
+    click_part("cc.cancel");
+    hud_game_update(0);
+    CHECK(!c->active && hud_part_rect("cc.start", &r));
+
+    /* the console takes the focus away */
+    click_part("cc.start");
+    hud_game_update(0);
+    CHECK(hud_focused());
+    app.console.active = true;
+    hud_game_update(0);
+    CHECK(!hud_focused());
+    app.console.active = false;
+    cc_cancel();
+
+    /* "+" starts creation while characters exist; the normal bar shows STR / AGI and the tab tooltip */
+    Entity *a = add_character((Hex){ 2, 2 }, 3, "");
+    a->attr[ATTR_STR] = 2;
+    a->attr[ATTR_AGI] = -1;
+    a->attr[ATTR_COG] = 1;
+    da_push(&app.selectedEntities, a->id);
+    hud_game_update(0);
+    CHECK(!hud_part_rect("cc.start", &r) && hud_part_rect("plus", &r) && hud_value("hotbar"));
+    CHECK(!strcmp(hud_value("pill.left")->pill.label, "STR") && !strcmp(hud_value("pill.left")->pill.value, "2"));
+    CHECK(!strcmp(hud_value("pill.right")->pill.label, "AGI") && !strcmp(hud_value("pill.right")->pill.value, "-1"));
+    CHECK(!strcmp(hud_target()->tip, "COG 1 · SPI 0"));
+    click_part("plus");
+    hud_game_update(0);
+    CHECK(c->active && c->step == CC_NAME);
+    cc_cancel();
+    da_clear(&app.selectedEntities);
+
+    /* a player who owns none: Create, with a line per waiting request; full at SESSION_REQUESTS_MAX */
+    stub_client = true; /* "alice" owns nothing */
+    stub_pending = 2;
+    hud_game_update(0);
+    CHECK(hud_part_rect("cc.start", &r) && hud_part_rect("cc.wait.2", &r) && !hud_part_rect("cc.wait.3", &r));
+    CHECK(!hud_part_rect("plus", &r)); /* players never get "+" */
+    CHECK(!strcmp(hud_value("cc.wait.1")->label.text, "Waiting for the GM: Mao"));
+    CHECK(hud_value("cc.start")->button.enabled);
+    stub_pending = SESSION_REQUESTS_MAX;
+    hud_game_update(0);
+    CHECK(!hud_value("cc.start")->button.enabled && hud_value("cc.start")->button.why[0]);
+    /* a player who owns one gets the normal bar */
+    snprintf(a->owner, sizeof(a->owner), "alice");
+    hud_game_update(0);
+    CHECK(!hud_part_rect("cc.start", &r) && hud_value("hotbar") && hud_target()->shown);
+    stub_pending = 0;
+    stub_client = false;
+
+    hud_game_shutdown();
+    hud_use_config(NULL, 0);
+    reset_table();
+}
+
 int main(void) {
     test_split_args();
     test_entity_ids();
@@ -2775,6 +2900,7 @@ int main(void) {
     test_hud_controls();
     test_hud_plus();
     test_hud_game();
+    test_hud_create();
     test_radial_config();
     test_radial_menu();
     test_move_actions();

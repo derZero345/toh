@@ -7,7 +7,7 @@
  * by key (hud_icons.c). What the user does comes back as HudEvents to the handler hud_game.c registers.
  *
  * How to ...
- *   Add a stat:            publish it in hud_game.c's publish_placeholders (later: real data), e.g.
+ *   Add a stat:            publish it in hud_game.c's publish_character, e.g.
  *                          hud_set_pill("pill.left", "STR", "3"), and make sure a row in hud_config.c has an
  *                          element with that key.
  *   Add / move / remove a row element or a row:
@@ -19,10 +19,12 @@
  *                          hud_widgets.c and put it into HUD_COMPONENTS. If it shows a new kind of value, add the
  *                          struct to HudValue and a hud_set_* function in hud.c.
  *   Swap icons:            change the table in hud_icons.c; everything else refers to icons by key.
- *   Real content:          the placeholders (stat pills, the slot states) are published in hud_game.c's
- *                          publish_placeholders(); replace them with game data there, and react to slot events in
- *                          hud_game.c's on_event(). A slider (HUD_SLIDER) is available but not in the config.
- *   Text fields, buttons and the other controls: see hud_create.c for a config that uses them.
+ *   Real content:          the stat pills show the character's STR and AGI (publish_character). The placeholders
+ *                          (the slot states) are published in hud_game.c's publish_placeholders(); replace them
+ *                          with game data there, and react to slot events in hud_game.c's on_event(). A slider
+ *                          (HUD_SLIDER) is available but not in the config.
+ *   Text fields, buttons and the other controls: see hud_create.c, whose rows hud_game.c swaps in while a
+ *                          character is created or the viewer has none.
  */
 #ifndef TOH_HUD_H
 #define TOH_HUD_H

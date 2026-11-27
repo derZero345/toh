@@ -437,7 +437,11 @@ static const char *choice_tip(const HudElement *e, const HudValue *v, const HudU
 
 static void label_draw(const HudElement *e, HudRect r, const HudValue *v, const HudUiState *ui, int self, float s) {
     const char *text = v ? v->label.text : e->label ? e->label : "";
-    if (text[0]) text_left(FONT_PLAIN, T->font * s, r.x, r, v ? T->text : T->textDim, text);
+    if (!text[0]) return;
+    bool over = dr_text_width(FONT_PLAIN, T->font * s, text) > r.w; /* a long text is cut at the element's edge */
+    if (over) dr_set_clip(r.x, r.y, r.w, r.h); /* the HUD is drawn without a clip; clips don't nest */
+    text_left(FONT_PLAIN, T->font * s, r.x, r, v ? T->text : T->textDim, text);
+    if (over) dr_clear_clip();
 }
 
 static void image_draw(const HudElement *e, HudRect r, const HudValue *v, const HudUiState *ui, int self, float s) {

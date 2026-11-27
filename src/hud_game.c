@@ -1,6 +1,8 @@
 /* The HUD adapter: chooses the character, publishes the values the config's keys name, and turns HUD events into
  * game actions. This is the only HUD file that touches game state (see hud.h). */
 #include "hud_game.h"
+#include "charcreate.h"
+#include "hud_create.h"
 #include "party.h"
 #include "session.h"
 
@@ -54,6 +56,13 @@ static void publish_character(Entity *e, int others, bool from_selection, float 
     if (dead || tired)
         snprintf(extra + n, sizeof(extra) - (size_t)n, "%s(%s)", n ? " " : "", dead ? "dead" : "exhausted");
     hud_set_target(name, extra, from_selection);
+    char v[16], tip[HUD_TEXT_MAX];
+    snprintf(v, sizeof(v), "%d", e->attr[ATTR_STR]);
+    hud_set_pill("pill.left", "STR", v);
+    snprintf(v, sizeof(v), "%d", e->attr[ATTR_AGI]);
+    hud_set_pill("pill.right", "AGI", v);
+    snprintf(tip, sizeof(tip), "COG %d · SPI %d", e->attr[ATTR_COG], e->attr[ATTR_SPI]);
+    hud_set_target_tip(tip);
 
     /* bar animation: a character that wasn't shown in the previous frame starts without one */
     float hpf = bar_fraction(e->health, e->maxHealth), stf = bar_fraction(e->stamina, e->maxStamina);
@@ -82,7 +91,7 @@ static void publish_character(Entity *e, int others, bool from_selection, float 
     }
 }
 
-/* Placeholder content: replace with real game data here (see hud.h). The stat pills stay unpublished ("—"). */
+/* Placeholder content: replace with real game data here (see hud.h). */
 static void publish_placeholders(void) {
     static const HudSlot SLOTS[] = {
         { HUD_SLOT_AVAILABLE, "placeholder", 0, 0 },
@@ -104,12 +113,64 @@ void hud_game_refresh_screen(void) {
     hud_set_screen(&s);
 }
 
+/* the rows hud_game asked for last (NULL = HUD_ROWS); switched only on a change, since hud_use_config drops the
+ * focus and the layout */
+static const HudRow *shown_rows;
+static int shown_n;
+static int focused_step = -1; /* the step whose name field got the focus; -1 = none */
+
+static void use_rows(const HudRow *r, int n) {
+    if (r == shown_rows && n == shown_n) return;
+    shown_rows = r;
+    shown_n = n;
+    hud_use_config(r, n);
+}
+
+static void reset_rows(void) {
+    shown_rows = NULL;
+    shown_n = 0;
+    focused_step = -1;
+    hud_use_config(NULL, 0);
+}
+
+/* nothing for the bar to show: a player owns no character; the GM (or alone) has none on the board */
+static bool viewer_has_none(void) {
+    for (int i = 0; i < gh->entities.count; i++) {
+        const Entity *e = gh->entities.items[i];
+        if (session_is_client() ? mine(e) : e->type == ENTITY_CHARACTER) return false;
+    }
+    return true;
+}
+
 bool hud_game_update(float dt) {
     frame++;
     hud_game_refresh_screen();
     if (gh->nthemes > 0) hud_set_border(gfx_theme()->secondary); /* like the console's border, also while fading */
     hud_begin_frame();
     if (!hud_visible()) return false;
+    if (gh->console.active) hud_blur(); /* typing goes to the console now */
+    const CharCreate *c = cc_state();
+    const HudRow *r;
+    int n;
+    if (c->active && !c->placing) { /* the steps */
+        hud_create_rows(&r, &n);
+        use_rows(r, n);
+        hud_create_publish();
+        if ((int)c->step != focused_step) { /* a step opens: the name field gets the focus */
+            focused_step = (int)c->step;
+            if (c->step == CC_NAME && !gh->console.active) hud_focus("cc.name");
+        }
+        return false;
+    }
+    focused_step = -1;
+    if (!c->active) hud_set_plus(!session_is_client()); /* the GM's "+"; hidden while creating (also placing) */
+    if (!c->active && viewer_has_none()) { /* while placing the bar shows its normal rows */
+        hud_create_empty_rows(session_is_client() ? session_pending_count() : 0, &r, &n);
+        use_rows(r, n);
+        hud_create_publish_empty();
+        return false;
+    }
+    use_rows(NULL, 0);
     bool moving = false;
     int others;
     bool from_selection;
@@ -122,6 +183,7 @@ bool hud_game_update(float dt) {
 /* ---- events ---- */
 
 static void on_event(const HudEvent *ev) {
+    if (hud_create_event(ev)) return; /* the creation rows' "cc.*" keys */
     switch (ev->type) {
     case HUD_EV_TARGET_CLOSED: /* like a click on empty map */
         entities_clear_highlights();
@@ -132,20 +194,24 @@ static void on_event(const HudEvent *ev) {
         break;
     case HUD_EV_SLIDER_CHANGED: /* the config has no slider */
         break;
-    case HUD_EV_BUTTON: case HUD_EV_TEXT: case HUD_EV_SUBMIT: case HUD_EV_STEP: case HUD_EV_CHOICE:
-    case HUD_EV_PLUS: /* the config has no controls and no "+" box */
+    case HUD_EV_PLUS: /* the GM's "+": the rows switch to the steps in the next update */
+        cc_start(NULL);
         break;
+    case HUD_EV_BUTTON: case HUD_EV_TEXT: case HUD_EV_SUBMIT: case HUD_EV_STEP: case HUD_EV_CHOICE:
+        break; /* only the creation rows have controls */
     }
 }
 
 void hud_game_init(const char *resource_dir) {
     hud_icons_init(resource_dir);
     hud_set_event_handler(on_event);
+    reset_rows();
 }
 
 void hud_game_shutdown(void) {
     hud_set_event_handler(NULL);
     hud_icons_free();
+    reset_rows();
 }
 
 /* ---- input ---- */
