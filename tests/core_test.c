@@ -1127,7 +1127,15 @@ static void test_char_create(void) {
     CHECK(cc_place((Hex){ 9, 9 }) && stub_requests == asks && strstr(stub_last_log, "Could not encode the picture"));
     CHECK(c->active && c->placing);
     cc_cancel();
+
+    /* shutting down lets go of the draft's picture without a log line */
     stub_client = false;
+    refs = stub_refs(TEX_B);
+    cc_to_summary(NULL, "Last", TEX_B);
+    CHECK(stub_refs(TEX_B) == refs + 1);
+    int logs = stub_log_count;
+    cc_shutdown();
+    CHECK(!c->active && stub_refs(TEX_B) == refs && stub_log_count == logs);
     reset_table();
 }
 

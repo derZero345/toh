@@ -28,6 +28,7 @@ const CharCreate *cc_state(void);
  * placing does. */
 void cc_start(const Hex *tile);
 void cc_cancel(void);           /* logs "Character creation cancelled" */
+void cc_shutdown(void);         /* drops a draft without a log line (before the renderer goes) */
 bool cc_can_next(const char **why);
 void cc_next(void);             /* the next step; on the summary: place (or create on the chosen tile) */
 void cc_back(void);             /* the step before; while placing: back to the summary */

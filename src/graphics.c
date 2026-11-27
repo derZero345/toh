@@ -137,6 +137,7 @@ void gfx_shutdown(void) {
     da_free(&gh->attackTiles);
     da_free(&gh->path);
     move_ui_cancel();
+    cc_shutdown(); /* the draft's picture */
     da_free(&gh->moveMode.path);
     da_free(&gh->init);
     da_free(&gh->initMarkers);

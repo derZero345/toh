@@ -41,6 +41,8 @@ void cc_cancel(void) {
     console_log("Character creation cancelled");
 }
 
+void cc_shutdown(void) { reset(); }
+
 bool cc_can_next(const char **why) {
     *why = NULL;
     if (!C.active) return false;
