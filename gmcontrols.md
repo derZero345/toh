@@ -74,14 +74,42 @@ Many commands act on the selection: `:c` (edit characters), `:w` (walls on the s
 
 ### Create
 
-`:c [stats]` with no character selected creates one, then opens a file dialog for its image (PNG). It is placed on:
+**In the bar.** With no character on the board, the bar at the bottom shows **+ Create character**. The small
+**+** box at the bottom left of the bar starts the same steps; it is always there for you (players never see it)
+and hides while you create. In the tile menu of an empty tile (right click, Drag tool) **Create character** starts
+them with that tile already chosen. The steps are shown inside the bar; the tab says `New character · 2/5`.
+
+| Step | What you do |
+|---|---|
+| 1 Name | Type it (1 to 32 bytes; typing past 32 does nothing). Enter = Next, Ctrl + V pastes (line breaks become spaces). The field gets the focus when the step opens; while it has it, keys go to it, not to the map (W A S D don't move the view, `:` doesn't open the console; Ctrl + Enter and Alt + Enter still work). Esc or a click elsewhere takes the focus away. |
+| 2 Size | Wee to Gigantic; Normal is chosen. Hover a size for its tiles and bulk, e.g. "Huge: 3 tiles in a triangle, bulk 3", "Gigantic: 7 tiles, bulk 5 centre, 3 around". |
+| 3 Attributes | STR, AGI, COG, SPI with − / +, −2 to 3; the line below shows Max HP, Stamina, Speed and Initiative (see **Attributes**) |
+| 4 Picture | **Choose picture…** opens the PNG dialog; the preview shows the round cut |
+| 5 Summary | The picture with `name · size` beside it and the stats below, e.g. `STR 1 AGI -1 COG 0 SPI 0 · HP 15 · Stamina 7 · Speed 2 · Initiative 0`. **Place** (see below); started from the tile menu the button is **Create** and puts the character on that tile at once (no room check). |
+
+**Cancel** is on every step ("Character creation cancelled"); **< Back** (from step 2 on) keeps what was entered.
+**Next** is greyed out until there is a name and a picture; hovering it says "Give the character a name" or
+"Choose a picture first".
+
+**Placing.** After **Place** the log says `Click a tile to place Mao (Esc: back)` and the bar shows its normal
+content again. The picture follows the mouse, its tiles green where it fits (see **Sharing tiles**) and red where
+not. Left click a green tile to place it; on a red one the log says "No room on that tile". Esc, or a right click
+without moving, goes back to the summary (from there **Cancel** stops). The camera still works (W A S D, arrow
+keys, mouse wheel, and a right drag with the Drag tool), and clicks on the toolbox still choose tools.
+
+Your new character has full HP and stamina and no owner; give it away with `:c owner`, put it into a party with
+`:c party`. A player's character made this way comes to you as a yes/no question (see section 14).
+
+**Typed.** `:c [stats]` with no character selected creates one, then opens a file dialog for its image (PNG). It
+is placed on:
 - the selected tile, if exactly one is selected;
 - every selected tile, if several are selected (the console asks first);
 - otherwise the tile under the mouse.
 
-Stats can be given right away, e.g. `:c name Mao size 3 maxhealth 30 maxstamina 9 speed 6 initiative 2`. Without `size` a character is
-Normal (1).
-**Set a speed:** a new character's speed is 0 unless you give one, so it cannot move.
+Stats can be given right away, e.g. `:c name Mao size 3 str 1 agi 2` or
+`:c name Mao maxhealth 30 maxstamina 9 speed 6 initiative 2`. Attributes fill in the stats they give unless you give
+those too. Without `size` a character is Normal (1).
+**Set a speed:** a new character without `agi` or `speed` has speed 0 and cannot move.
 
 ### Edit
 
@@ -97,8 +125,20 @@ Select one or more characters, then:
 | `:c icon` | `ic` | Choose a new image |
 | `:c owner <player>` | `ow` | Give the characters to a player (by their name) |
 | `:c owner none` | | Take them back: only the GM controls them |
+| `:c str <n>` | | STR; sets max HP to 12 + 3 × STR |
+| `:c agi <n>` | | AGI; sets max stamina to 8 + AGI and speed to AGI + 3 (at least 2) |
+| `:c cog <n>` | | COG; sets initiative to COG |
+| `:c spi <n>` | | SPI (sets nothing yet) |
 
 Several can be combined: `:c speed 6 owner Bob`.
+
+**Attributes.** Characters have the four attributes of Tales of Honor, −10 to 10 with `:c` ("Attributes go from
+-10 to 10"); in the creation steps and in a player's request for a new character −2 to 3. Changing one
+recalculates the stats it gives; a stat given by hand in the same command wins (`:c str 1 maxhealth 40` = STR 1,
+max HP 40) and holds until that attribute changes again. Full HP and stamina stay full. The log shows e.g.
+`Mao: STR 1 -> 2, max HP 15 -> 18` or `Mao: AGI 0 -> 1, max stamina 8 -> 9, speed 3 -> 4`. Older saves load with
+all attributes at 0. Only you change the attributes of existing characters; a player's `:c str` on a selection says
+"Only the GM can do that". Hover the HUD's tab to see a character's COG and SPI.
 
 Sizes:
 
@@ -164,8 +204,13 @@ footprint (old large → Huge, old huge and gargantuan → Gigantic).
   - A red HP bar with `current/max` and a line in the middle where the character becomes injured. Left of its
     frame is the zone below 0 HP: while the character is dying the red fill grows into it from the frame's left
     edge, and a tick in its middle shows where the character becomes critical.
+  - Beside the HP bar the character's STR (left) and AGI (right); hovering the tab shows its COG and SPI
+    (`COG 0 · SPI 0`).
   - Under it a green stamina bar with `current/max`, if the character has max stamina (below 0 it grows to the
     left in the same way).
+  - With no character to show at all (you: none on the board; a player: none of their own) the tab says "No
+    character" and the panel shows **+ Create character** instead (see **Create**); a player's waiting requests
+    for new characters show under it as `Waiting for the GM: Mao`.
   - When HP or stamina changes, the bar slides to the new value; a loss leaves a lighter part for a moment that
     shows how much was lost.
 
@@ -211,7 +256,7 @@ footprint (old large → Huge, old huge and gargantuan → Gigantic).
 
 The green range and the path only use tiles the character fits on (see **Sharing tiles** in section 4), so it can
 walk through and stop on tiles other characters leave room on. You can still put characters anywhere: with `:gm`,
-or by creating them on a tile, no bulk is checked.
+or by creating them on a tile with `:c` or the tile menu's **Create character**, no bulk is checked.
 
 `:gm` only works for the GM (not for joined players). These free moves stay yours during initiative too; players
 then move with move actions (below).
@@ -308,7 +353,7 @@ initiative). Roll and claim limits stay too.
 | Ctrl + C | Copy the selected entities |
 | Ctrl + V | Paste them at the tile under the mouse, in the same arrangement. Each paste is relative to the previous one, so pasting repeatedly makes a row. |
 
-Pasted characters keep their name, HP and party but have no owner.
+Pasted characters keep their name, HP, attributes and party but have no owner.
 
 ## 8. Initiative
 
@@ -367,9 +412,11 @@ inside the window near the edges.
 | Right click another tile | Close the menu and open it on that tile |
 
 On a character you control (you: every character; players: their own) the menu is the character's action menu
-(below). A tile with another character gets a slightly different menu than an empty one; their entries are
-placeholders: choosing one writes `Menu: <entry> on [row|col]` to the log. "Action 3" (and "Option A4" in Menu A) needs something
-on the tile, and "GM action" is only shown to you. While the menu is open, a left click never reaches the map (outside
+(below). A tile with another character gets a slightly different menu than an empty one. The menu of a tile
+without a character has **Create character** (only for you; greyed out on a wall: "Needs an empty tile"): it starts
+the creation steps with that tile (section 4). The other entries are placeholders: choosing one writes
+`Menu: <entry> on [row|col]` to the log. "Action 3" (and "Option A4" in Menu A) needs something on the tile, and
+"GM action" is only shown to you. While the menu is open, a left click never reaches the map (outside
 the menu it only closes it), and the mouse wheel and the pointer over the menu don't either. The menu needs a mouse:
 keyboard-only play can't open it.
 
@@ -440,15 +487,19 @@ needed.
 anything else asks again). Several requests wait in line; each player can have at most 3 waiting.
 
 **Player-created characters:**
-- Players can create their own character with `:c [stats]` on an empty tile and a picture (at most 512×512).
-- Your log says "<player> asks for a new character", and the console asks, for example,
-  `Bob: new character Mao [2|7] size 1 HP 20 speed 6 init 1. Allow? (y/n)` (the name only if they gave one).
+- Players can create their own character through the bar's **+ Create character** (while they have none of their
+  own; the same steps as yours, see section 4) or with `:c [stats]` on an empty tile, and a picture (at most
+  512×512). Their attributes go from −2 to 3 ("Attributes go from -2 to 3").
+- Your log says "<player> asks for a new character.", and the console asks, for example,
+  `Bob: new character Mao [2|7] size 1 HP 15 speed 5 init 0 ST 10 STR 1 AGI 2 COG 0 SPI 0. Allow? (y/n)` (the name
+  only if they gave one). Until you answer, the player's bar shows `Waiting for the GM: Mao`.
 - While the question is open, only your screen shows the picture faintly on that tile, so you can check it.
-- On `y` the character is created for everyone and belongs to that player; on `n` the player is told you
-  declined.
+- On `y` the character is created for everyone with full HP and stamina and belongs to that player ("The GM
+  accepted your character."); on `n` the player is told "The GM declined your character."
 - If the character no longer fits there (see **Sharing tiles**), nothing is created and the log says so.
 - Change its stats afterwards with `:c` like any other character.
-- These requests share the limit of 3 waiting requests per player with claims.
+- These requests share the limit of 3 waiting requests per player with claims. With 3 new characters waiting, the
+  player's **+ Create character** is greyed out ("Wait for the GM to answer your requests").
 
 **Ownership rings:**
 - During a session every owned character has a ring in its owner's color: blue, red, …, or grey if the owner isn't
@@ -470,8 +521,8 @@ anything else asks again). Several requests wait in line; each player can have a
 
 Paths may contain spaces, with or without quotes around them; `~/` means your home folder. The window's close button always quits.
 
-A save holds the background, characters (image, stats, current HP and stamina, name, owner, party and the actions
-used this turn), walls, initiative, waypoints, grid orientation,
+A save holds the background, characters (image, stats, attributes, current HP and stamina, name, owner, party and
+the actions used this turn), walls, initiative, waypoints, grid orientation,
 camera and theme. It does not hold the console, selections, clipboard or measurements. Saves from older versions
 still load; an armor class stored in them is ignored. Loading a save shows its theme, but the game keeps remembering
 the theme you chose with `:t` for the next start.
@@ -488,8 +539,9 @@ the theme you chose with `:t` for the next start.
 | `:cl` | Clear the log and command history |
 | `:d` | Debug mode on / off (tile coordinates at the mouse) |
 
-The HUD at the bottom centre holds the character's tab, its HP and stamina bars, two stat fields (they show "—") and
-a hotbar of ten slots (keys 1–9 and 0). The stat fields and hotbar have no effect yet; in debug mode (`:d`) using a
+The HUD at the bottom centre holds the character's tab, its HP and stamina bars, its STR and AGI beside the HP bar
+(they show "—" while no character is shown) and a hotbar of ten slots (keys 1–9 and 0). While you create a
+character the steps replace this content (section 4). The hotbar has no effect yet; in debug mode (`:d`) using a
 slot writes a log line. The HUD is shown at every start; `:hud off`
 hides it until the next start. The map does not react to the pointer over the HUD: no tile is highlighted under it,
 and clicks, the mouse wheel and the right button there don't reach the map (a camera drag can cross it). The keyboard
@@ -520,6 +572,9 @@ file is in `.gitignore`, so it never ends up in the repository.
 | Right Shift + Enter | Right click on the cursor (tools) |
 | Right Shift + Up / Down | Zoom in / out at the cursor |
 
+While placing a new character (section 4), Enter places it on the cursor's tile and Right Shift + Enter goes back to
+the summary.
+
 ## 18. Command-line options and environment variables
 
 ```
@@ -547,7 +602,8 @@ Players can:
   recover their stamina with Recover and Full Recover on their turn;
 - end their turn with `:i next`;
 - roll dice (at most 10 rolls in 10 seconds);
-- ask for existing characters with `:claim`, or for a new one of their own with `:c` (you answer y/n);
+- ask for existing characters with `:claim`, or for a new one of their own through the bar's **+ Create
+  character** (while they have none) or `:c` (attributes −2 to 3; you answer y/n);
 - jump to waypoints and coordinates;
 - use the measure and attack tools, the tile menu (without the entries only you see) and their own characters' action menu;
 - save a copy of the table;
@@ -555,7 +611,9 @@ Players can:
 - change their own camera, zoom, theme and HUD (`:hud`), and see the HP and stamina of their own characters and of the members of their parties (select them), and list their parties with `:party`.
 
 Everything else is yours, including:
-- creating characters directly, editing characters' other stats, deleting characters, and walls;
+- creating characters directly (also with the bar's + box and the tile menu's Create character), editing
+  characters' other stats, changing attributes (`:c str` etc.) after a character exists, deleting characters, and
+  walls;
 - giving characters to players, and putting characters into parties (`:c party`);
 - the initiative order (apart from `:i next`);
 - waypoints, the background and the grid;

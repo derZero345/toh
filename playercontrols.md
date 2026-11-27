@@ -66,7 +66,8 @@ The HUD at the bottom of the window shows your character: the one of yours you s
 one. The tab above it shows the name; while the character is selected, its ✕ clears the selection. The red HP bar shows `current/max`; the line
 in its middle marks where your character becomes injured. Below 0 HP your character is dying: the bar grows to
 the left out of its frame, and a tick shows where it becomes critical. When HP changes, the bar slides to the new
-value and briefly shows what was lost in a lighter red.
+value and briefly shows what was lost in a lighter red. Beside the HP bar are your character's **STR** (left) and
+**AGI** (right); hover the tab to see its COG and SPI.
 
 If your character has stamina, a green bar under the HP bar shows it (`current/max`). Type `:c spend <n>` to use
 stamina (refused with "Not enough stamina" if you don't have enough) and `:c recover <n>` to get it back, up to the
@@ -108,20 +109,32 @@ game rolls, and everyone sees the result. You can roll at most 10 times in 10 se
 
 ## 7. Get a character
 
+**Create one in the bar:** while you have no character of your own, the bar at the bottom shows **+ Create character**. Click
+it and go through the steps; **Cancel** stops, **< Back** goes back without losing anything.
+
+1. **Name**: type it (Enter = Next). While the name field has the focus, keys go to it, not to the map; Esc or a
+   click elsewhere takes the focus away.
+2. **Size**: Normal is chosen; hover a size to see its tiles and bulk.
+3. **Attributes**: STR, AGI, COG and SPI with − and +, from −2 to 3. The line below shows what they give:
+   Max HP 12 + 3 × STR, Stamina 8 + AGI, Speed AGI + 3 (at least 2), Initiative COG.
+4. **Picture**: **Choose picture…** and pick a PNG (large pictures are shrunk to 512×512).
+5. **Summary**: check it and click **Place**. The picture follows the mouse: green tiles = it fits, red = no room
+   ("No room on that tile"). Left click a green tile. Esc or a right click goes back to the summary.
+
+The GM then accepts or declines; until then the bar shows "Waiting for the GM: <name>". The rest of the table
+only sees your character once the GM says yes, so you can surprise the party. It then belongs to you. Only the GM
+can change its attributes afterwards.
+
 **Claim one that exists:** select a character that has no owner yet, then type `:claim`. The GM answers yes or
 no.
 
-**Create your own:**
-1. Click an empty tile, so that nothing else is selected.
-2. Type `:c` with your stats, for example `:c name Mao speed 6 maxhealth 20 maxstamina 9 initiative 2`. Without `speed` your
-   character can't move.
-3. Pick a picture (PNG). Large pictures are shrunk to 512×512.
+**Or type it:** click an empty tile so that nothing else is selected, type `:c` with your stats, e.g.
+`:c name Mao str 1 agi 2` (attributes −2 to 3; they fill in Max HP, stamina, speed and initiative), then pick a
+picture. Without `agi` or `speed` your character can't move. The tile needs room for your character (see
+section 2); otherwise you get "No room on that tile".
 
-The GM sees your stats and the picture and accepts or declines. The rest of the table only sees your character
-once the GM says yes, so you can surprise the party. It then belongs to you. The tile needs room for your
-character (see section 2); otherwise you get "No room on that tile".
-
-Claims and new characters count together: at most 3 can wait for the GM at once.
+Claims and new characters count together: at most 3 can wait for the GM at once. With 3 new characters waiting,
+**+ Create character** is greyed out.
 
 ## 8. Measure and aim
 
@@ -174,6 +187,6 @@ On other tiles the entries are placeholders: choosing one writes `Menu: <entry> 
 | `:hud` | Show / hide the HUD |
 | `:t [name]` | List the color themes, or choose one (remembered for the next start) |
 | `:cl` | Clear the log and command history |
-| Arrow keys, Enter | Play without a mouse: move a cursor, Enter = left click, Right Shift + Enter = right click, Right Shift + Up / Down = zoom |
+| Arrow keys, Enter | Play without a mouse: move a cursor, Enter = left click, Right Shift + Enter = right click, Right Shift + Up / Down = zoom. While placing a new character, Enter places it on the cursor's tile and Right Shift + Enter goes back to the summary |
 
-Everything else (editing your characters' other stats, deleting characters, walls, initiative, the background) is the GM's job.
+Everything else (editing your characters' other stats and attributes, deleting characters, walls, initiative, the background) is the GM's job.

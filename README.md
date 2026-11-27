@@ -41,8 +41,9 @@ in the Java version.
 |---|---|
 | Left click (or Enter in keyboard mode) | select tile / entity |
 | Right click (or Right-Shift + Enter) | tool action (drag start, measure point, place attack) |
-| Right click without moving (Drag tool) | tile menu: a ring of entries around the tile; Esc / click outside closes |
+| Right click without moving (Drag tool) | tile menu: a ring of entries around the tile; Esc / click outside closes; the GM's Create character on empty tiles |
 | Right click your character (Drag tool) | action menu: Minor / Info / Mental / Major; during initiative its move actions (Walk, Run, Crawl, Step, Sprint) move it on its turn, and Recover (1d4) / Full Recover restore its stamina |
+| + Create character (bar, when you have no character) / + box left of the bar (GM) | create a character in steps: name, size, attributes (STR / AGI shown beside the HP bar), picture, then place it (left click a green tile; Esc / right click back; Enter / Right-Shift + Enter in keyboard mode) |
 | Shift + left click | move the selected character inside its (green) range (players: outside initiative) |
 | Hold Left Shift | preview footprint and path of the selected character |
 | Ctrl + click / drag | multi-select |
@@ -59,7 +60,7 @@ in the Java version.
 | Alt + X / S / A / C / V | drag / measure / area / cone / line tool |
 
 Console commands: `:q` quit, `:b [file.png]` background, `:d` debug, `:c` character
-(`delete`, `size n`, `maxhealth n`, `maxstamina n`, `stamina n`, `spend n`, `recover n`, `speed n`, `initiative n`, `icon`, `owner <player|none>`, `name <name>`, `party <name>` (GM),
+(`delete`, `size n`, `maxhealth n`, `maxstamina n`, `stamina n`, `spend n`, `recover n`, `speed n`, `initiative n`, `icon`, `owner <player|none>`, `name <name>`, `party <name>` (GM), `str / agi / cog / spi n` (attributes; they set max HP, max stamina, speed, initiative; GM only on a selection),
 `hp n`, `damage n`, `heal n`; the HUD at the bottom shows the selected (your own, or a party member's) character's HP and stamina),
 `:w [delete]` wall, `:e delete`, `:r 2d6+3` roll, `:g` grid orientation, `:gm` gamemaster,
 `:i [add|remove|clear|show|next]` initiative, `:tm [on|off]` test mode (GM: move and recover actions without turn, action or stamina requirements, for the whole table), `:cl` clear, `:t [name]` theme (remembered in `settings.txt`), `:h [command]` help, `:hud [on|off]` HUD on/off,
@@ -80,8 +81,9 @@ along and cannot read the game.
    needs a VPN.
 2. Players: `:join <code> <name>`. Their table is replaced by the GM's; camera, zoom and theme stay their own.
 3. The GM gives characters to players with `:c owner <name>`, or a player selects an unowned character and asks
-   with `:claim` (the GM answers y/n in the console). A player can also create a character of their own: `:c [stats]`
-   on an empty tile and a picture; the GM sees the stats and a faint preview and answers y/n.
+   with `:claim` (the GM answers y/n in the console). A player without a character can also create one of their own
+   through the bar's **+ Create character**, or with `:c [stats]` on an empty tile and a picture; the GM sees the
+   stats and attributes and a faint preview and answers y/n.
 
 Players can move their own characters (Shift + click inside the green range; while initiative runs only on their
 turn), change the HP, stamina and name of their own characters, see the HP of characters in a party with one of
@@ -112,12 +114,12 @@ Like nvim, `:q` and `:load` refuse to throw away unsaved changes: `No write sinc
 Use `:q!` / `:load!` to discard them. Camera, zoom and theme are saved but don't count as changes. The window's
 close button always quits.
 
-A save contains the background, characters (image, stats, current HP and stamina, name, owner and party), walls, the initiative order, waypoints, grid
+A save contains the background, characters (image, stats, attributes, current HP and stamina, name, owner and party), walls, the initiative order, waypoints, grid
 orientation, camera and theme (loading shows it, but the theme remembered for the next start stays the one from `:t`);
 not the console, selections, clipboard or measurements. `:c owner <player>` gives the
 selected characters to a player; pasted copies have no owner (but keep their party).
 
-The format (`src/savefmt.h`, version 8; files from older versions still load) is binary and compact: the game state is packed with varints and zstd-compressed, and
+The format (`src/savefmt.h`, version 9; files from older versions still load) is binary and compact: the game state is packed with varints and zstd-compressed, and
 every image is stored once as WebP (lossless for characters and walls, quality 90 for the background; images over
 16383 px are scaled down). Saves are written to `file.tmp` first and then renamed, and a load only replaces the
 table once the whole file has been checked.
