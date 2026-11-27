@@ -15,7 +15,7 @@ typedef enum {
     OP_MOVE,             /* id -> tile */
     OP_SPAWN,            /* specs; ops_apply stores the new entities' ids in ids */
     OP_DELETE,           /* ids */
-    OP_SET_STATS,        /* ids; statMask says which of the values below change */
+    OP_SET_STATS,        /* ids; statMask says which of the values below change; an attribute bit also sets the stats it gives (attrs.h) unless they are in the mask too */
     OP_SET_ICON,         /* ids, image */
     OP_SET_BACKGROUND,   /* image, NULL = none */
     OP_GRID_ORIENTATION, /* toggles flat / pointy */
@@ -37,7 +37,10 @@ typedef enum {
     OP_COUNT
 } OpType;
 
-enum { STAT_SIZE = 1, STAT_MAXHEALTH = 2, STAT_SPEED = 4, STAT_INITIATIVE = 8, STAT_MAXSTAMINA = 16 };
+enum { STAT_SIZE = 1, STAT_MAXHEALTH = 2, STAT_SPEED = 4, STAT_INITIATIVE = 8, STAT_MAXSTAMINA = 16,
+       STAT_STR = 32, STAT_AGI = 64, STAT_COG = 128, STAT_SPI = 256, STAT_ALL = 511 };
+#define STAT_ATTR(a) (STAT_STR << (a)) /* the bit of attribute a (attrs.h) */
+#define STAT_ATTRS (STAT_STR | STAT_AGI | STAT_COG | STAT_SPI)
 enum { HEALTH_SET = 0, HEALTH_CHANGE = 1 }; /* OP_SET_HEALTH: value is the new HP / is added to it */
 enum { STAMINA_SPEND = 2 };                 /* OP_SET_STAMINA: subtract value; refused below 0 */
 
@@ -48,6 +51,7 @@ typedef struct {
     Hex tile;
     int size, maxHealth, health, attack, speed, initiative; /* characters only */
     int maxStamina, stamina;                                /* characters only */
+    int attr[ATTR_COUNT];                                   /* characters only */
     char name[CHAR_NAME_MAX]; /* characters: "" = no name */
     char party[CHAR_NAME_MAX]; /* characters: "" = no party */
 } EntitySpec;
@@ -62,6 +66,7 @@ typedef struct Op {
     Texture *image;       /* OP_SET_ICON, OP_SET_BACKGROUND; borrowed */
     int statMask;         /* OP_SET_STATS */
     int size, maxHealth, speed, initiative, maxStamina;
+    int attr[ATTR_COUNT]; /* OP_SET_STATS: the attribute bits' values */
     char name[WAYPOINT_NAME_MAX]; /* OP_WAYPOINT_*: waypoint name, OP_SET_OWNER: player name */
     int healthMode, value;        /* OP_SET_HEALTH, OP_SET_STAMINA; value: OP_SET_TEST_MODE, OP_RECOVER_ACTION */
     int action;                   /* OP_MOVE_ACTION: MoveAction, OP_RECOVER_ACTION: RecoverAction */

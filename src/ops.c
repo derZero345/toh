@@ -25,6 +25,7 @@ EntitySpec op_spec_from_entity(const Entity *e) {
                      .maxStamina = e->maxStamina, .stamina = e->stamina };
     snprintf(s.name, sizeof(s.name), "%s", e->name);
     snprintf(s.party, sizeof(s.party), "%s", e->party);
+    memcpy(s.attr, e->attr, sizeof(s.attr));
     return s;
 }
 
@@ -103,6 +104,8 @@ static OpResult check_structure(const Op *op) {
             if (!memchr(s->party, '\0', sizeof(s->party))) return OPR_INVALID;
             if (s->party[0] && (s->type != ENTITY_CHARACTER || !savefmt_char_name_valid(s->party))) return OPR_INVALID;
             if (s->maxStamina < 0 || s->maxStamina > SAVEFMT_MAX_HP) return OPR_INVALID; /* the wire's limit */
+            for (int a = 0; a < ATTR_COUNT; a++)
+                if (!attr_valid(s->attr[a])) return OPR_INVALID;
         }
         return OPR_OK;
     case OP_SET_ICON:
@@ -141,6 +144,9 @@ static OpResult check_structure(const Op *op) {
     case OP_SET_STATS:
         if ((op->statMask & STAT_MAXSTAMINA) && (op->maxStamina < 0 || op->maxStamina > SAVEFMT_MAX_HP))
             return OPR_INVALID;
+        if (op->statMask & ~STAT_ALL) return OPR_INVALID;
+        for (int a = 0; a < ATTR_COUNT; a++)
+            if ((op->statMask & STAT_ATTR(a)) && !attr_valid(op->attr[a])) return OPR_INVALID;
         return ids_exist(op) ? OPR_OK : OPR_NO_ENTITY;
     case OP_DELETE:
     case OP_INIT_REMOVE:
@@ -238,6 +244,7 @@ static void apply_spawn(Op *op) {
             e->attack = s->attack;
             snprintf(e->name, sizeof(e->name), "%s", s->name);
             snprintf(e->party, sizeof(e->party), "%s", s->party);
+            memcpy(e->attr, s->attr, sizeof(e->attr));
         }
         if (keep) entity_register_as(e, given[i]);
         else entity_register(e);
@@ -283,21 +290,68 @@ static Entity *character_at(const Op *op, int i) {
     return e && e->type == ENTITY_CHARACTER ? e : NULL;
 }
 
+/* "Mao: STR 1 -> 2, max HP 15 -> 18" for the person who made the change */
+static void log_attributes(const Entity *e, int mask, const int old_attr[ATTR_COUNT], int maxHealth, int maxStamina,
+                           int speed, int initiative) {
+    char name[CHAR_NAME_MAX + 16], line[256];
+    entity_display_name(e, name, sizeof(name));
+    int n = snprintf(line, sizeof(line), "%s:", name);
+    const char *sep = " ";
+#define ADD(...)                                                                                     \
+    do {                                                                                             \
+        if (n < (int)sizeof(line)) n += snprintf(line + n, sizeof(line) - (size_t)n, "%s", sep);    \
+        if (n < (int)sizeof(line)) n += snprintf(line + n, sizeof(line) - (size_t)n, __VA_ARGS__);  \
+        sep = ", ";                                                                                  \
+    } while (0)
+    for (int a = 0; a < ATTR_COUNT; a++) {
+        if (!(mask & STAT_ATTR(a))) continue;
+        ADD("%s %d -> %d", ATTR_NAMES[a], old_attr[a], e->attr[a]);
+        if (a == ATTR_STR) ADD("max HP %d -> %d", maxHealth, e->maxHealth);
+        if (a == ATTR_AGI) {
+            ADD("max stamina %d -> %d", maxStamina, e->maxStamina);
+            ADD("speed %d -> %d", speed, e->speed);
+        }
+        if (a == ATTR_COG) ADD("initiative %d -> %d", initiative, e->initiative);
+    }
+#undef ADD
+    console_log("%s", line);
+}
+
 static void apply_stats(const Op *op) {
+    int m = op->statMask;
     for (int i = 0; i < op->ids.count; i++) {
         Entity *e = character_at(op, i);
         if (!e) continue;
-        if (op->statMask & STAT_SIZE)       e->size = op->size;
-        if (op->statMask & STAT_MAXHEALTH) {
-            e->health = hp_after_max_change(e->health, e->maxHealth, op->maxHealth);
-            e->maxHealth = op->maxHealth;
+        int old_attr[ATTR_COUNT];
+        memcpy(old_attr, e->attr, sizeof(old_attr));
+        int oldMaxH = e->maxHealth, oldMaxSt = e->maxStamina, oldSpeed = e->speed, oldIni = e->initiative;
+        for (int a = 0; a < ATTR_COUNT; a++)
+            if (m & STAT_ATTR(a)) e->attr[a] = op->attr[a];
+        AttrStats d = attr_derive(e->attr);
+        int maxH = e->maxHealth, maxSt = e->maxStamina, speed = e->speed, ini = e->initiative;
+        if (m & STAT_STR) maxH = d.maxHealth;
+        if (m & STAT_AGI) {
+            maxSt = d.maxStamina;
+            speed = d.speed;
         }
-        if (op->statMask & STAT_MAXSTAMINA) {
-            e->stamina = hp_after_max_change(e->stamina, e->maxStamina, op->maxStamina);
-            e->maxStamina = op->maxStamina;
+        if (m & STAT_COG) ini = d.initiative;
+        /* a value given by hand in the same op wins over the attribute's */
+        if (m & STAT_MAXHEALTH) maxH = op->maxHealth;
+        if (m & STAT_MAXSTAMINA) maxSt = op->maxStamina;
+        if (m & STAT_SPEED) speed = op->speed;
+        if (m & STAT_INITIATIVE) ini = op->initiative;
+        if (m & STAT_SIZE) e->size = op->size;
+        if (maxH != e->maxHealth) {
+            e->health = hp_after_max_change(e->health, e->maxHealth, maxH);
+            e->maxHealth = maxH;
         }
-        if (op->statMask & STAT_SPEED)      e->speed = op->speed > MAX_SPEED ? MAX_SPEED : op->speed;
-        if (op->statMask & STAT_INITIATIVE) e->initiative = op->initiative;
+        if (maxSt != e->maxStamina) {
+            e->stamina = hp_after_max_change(e->stamina, e->maxStamina, maxSt);
+            e->maxStamina = maxSt;
+        }
+        e->speed = speed > MAX_SPEED ? MAX_SPEED : speed;
+        e->initiative = ini;
+        if ((m & STAT_ATTRS) && !op->remote) log_attributes(e, m, old_attr, oldMaxH, oldMaxSt, oldSpeed, oldIni);
     }
 }
 

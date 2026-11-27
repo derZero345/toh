@@ -16,6 +16,7 @@
 
 #include <SDL3/SDL.h>
 
+#include "attrs.h"
 #include "baranim.h"
 #include "util.h"
 #include "vk_renderer.h"
@@ -103,6 +104,7 @@ typedef struct Entity {
     int slot, slots; /* entity_layout: characters sharing a tile are drawn side by side in `slots` places */
     int size, maxHealth, health, attack, speed, initiative;
     int maxStamina, stamina; /* Tales of Honor stamina; max 0 = no stamina stat */
+    int attr[ATTR_COUNT];    /* Tales of Honor attributes (attrs.h); the stats they set follow them (OP_SET_STATS) */
     int turnUsed;            /* this turn (initiative): TURN_* bits; cleared when its turn starts (moves.h) */
     BarAnim hpAnim, staminaAnim; /* HUD bar animation; memory only */
     unsigned panelFrame;         /* the last frame the HUD showed this entity (0 = never) */

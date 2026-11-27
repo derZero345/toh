@@ -2382,6 +2382,75 @@ static void test_settings(void) {
     remove(file);
 }
 
+static void test_attribute_ops(void) {
+    reset_table();
+    OpAuthor alice = player("Alice");
+    Entity *hero = add_character((Hex){ 0, 0 }, 3, "Alice");
+    hero->maxHealth = hero->health = 15;
+    snprintf(hero->name, sizeof(hero->name), "Mao");
+    CHECK(hero->attr[ATTR_STR] == 0 && hero->attr[ATTR_SPI] == 0); /* new characters: all 0 */
+
+    /* STR sets max HP; full HP stays full; GM only */
+    Op str = { .type = OP_SET_STATS, .statMask = STAT_STR };
+    str.attr[ATTR_STR] = 2;
+    da_push(&str.ids, hero->id);
+    CHECK_R(ops_check(&str, &alice), OPR_GM_ONLY);
+    CHECK_R(ops_check(&str, &GM), OPR_OK);
+    ops_apply(&str);
+    CHECK(hero->attr[ATTR_STR] == 2 && hero->maxHealth == 18 && hero->health == 18);
+    CHECK(strstr(stub_last_log, "Mao: STR 0 -> 2, max HP 15 -> 18"));
+
+    /* AGI sets max stamina and speed; a speed given in the same op wins */
+    hero->health = 5;
+    Op agi = { .type = OP_SET_STATS, .statMask = STAT_AGI | STAT_SPEED, .speed = 9 };
+    agi.attr[ATTR_AGI] = 2;
+    da_push(&agi.ids, hero->id);
+    ops_apply(&agi);
+    CHECK(hero->maxStamina == 10 && hero->stamina == 10 && hero->speed == 9 && hero->health == 5);
+    CHECK(strstr(stub_last_log, "Mao: AGI 0 -> 2, max stamina 0 -> 10, speed 3 -> 9"));
+
+    /* COG sets initiative; SPI nothing */
+    Op cog = { .type = OP_SET_STATS, .statMask = STAT_COG | STAT_SPI };
+    cog.attr[ATTR_COG] = 1;
+    cog.attr[ATTR_SPI] = -1;
+    da_push(&cog.ids, hero->id);
+    ops_apply(&cog);
+    CHECK(hero->initiative == 1 && hero->attr[ATTR_SPI] == -1);
+    CHECK(strstr(stub_last_log, "Mao: COG 0 -> 1, initiative 0 -> 1, SPI 0 -> -1"));
+
+    /* someone else's op changes the values but logs nothing here */
+    int logs = stub_log_count;
+    cog.remote = true;
+    cog.attr[ATTR_COG] = 2;
+    ops_apply(&cog);
+    CHECK(hero->initiative == 2 && stub_log_count == logs);
+
+    /* out of range */
+    str.attr[ATTR_STR] = ATTR_MAX + 1;
+    CHECK_R(ops_check(&str, &GM), OPR_INVALID);
+    str.attr[ATTR_STR] = ATTR_MIN - 1;
+    CHECK_R(ops_check(&str, &GM), OPR_INVALID);
+
+    /* spawns and copies keep the attributes */
+    EntitySpec s = op_spec_from_entity(hero);
+    CHECK(s.attr[ATTR_STR] == 2 && s.attr[ATTR_AGI] == 2 && s.attr[ATTR_SPI] == -1);
+    s.tile = (Hex){ 0, 4 };
+    Op sp = { .type = OP_SPAWN };
+    da_push(&sp.specs, s);
+    CHECK_R(ops_check(&sp, &GM), OPR_OK);
+    ops_apply(&sp);
+    Entity *copy = entity_by_id(sp.ids.items[0]);
+    CHECK(copy && copy->attr[ATTR_COG] == 2 && copy->attr[ATTR_SPI] == -1);
+    sp.specs.items[0].attr[ATTR_AGI] = ATTR_MAX + 1;
+    CHECK_R(ops_check(&sp, &GM), OPR_INVALID);
+
+    op_free(&str);
+    op_free(&agi);
+    op_free(&cog);
+    op_free(&sp);
+    reset_table();
+}
+
 int main(void) {
     test_split_args();
     test_entity_ids();
@@ -2404,6 +2473,7 @@ int main(void) {
     test_attr_rules();
     test_health_and_names();
     test_stamina();
+    test_attribute_ops();
     test_party_ops();
     test_bar_anim();
     test_parties();
