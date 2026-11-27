@@ -34,7 +34,7 @@ attributes (STR, AGI, COG, SPI) from now on, and the stats that come from them f
 ## The steps
 
 All steps happen inside the bar: the panel replaces its rows with the step's rows. The tab above reads
-`New character · <step>/5` (or `/4` when the tile is already chosen). No separate window opens.
+`New character · <step>/5` (placing is not a numbered step). No separate window opens.
 
 ```
 1 Name       [ Mao Clausewitz_______________ ]                   [Cancel] [Next >]
@@ -76,8 +76,8 @@ All steps happen inside the bar: the panel replaces its rows with the step's row
 ## Placing on the map
 
 - The bar goes back to its normal content. The character's picture follows the mouse over the map at the size
-  it will have; the tiles it would cover are tinted green where it fits and red where it doesn't
-  (`character_fits`, the existing bulk check: a tile holds 5 bulk, walls fill their tile).
+  it will have; the tiles it would cover are tinted green when it fits there and red when it doesn't
+  (`character_fits` on the whole footprint, the existing bulk check: a tile holds 5 bulk, walls fill their tile).
 - The log says `Click a tile to place Mao (Esc: back)`.
 - **Left click** on a tile where it fits places it:
   - GM / alone: an `OP_SPAWN` with the draft, full HP and stamina, no owner. Creation ends.
@@ -109,7 +109,7 @@ From the rulebook's stats table:
 
 SPI sets nothing yet (Max Vigor is not in the app).
 
-One function computes them, used by the steps, `:c` and the host's op (`cc_derive`, below). With the step range
+One function computes them, used by the steps, `:c` and the host's op (`attr_derive` in `src/attrs.c`, below). With the step range
 (−2 to 3) they are always valid: Max HP 6 to 21, max stamina 6 to 11, speed 2 to 6.
 
 With `:c` and the wider range, max HP and max stamina are clamped at 0 from below (−10 STR would give −18):
@@ -171,7 +171,8 @@ max HP 0 is the existing "no HP" state, max stamina 0 the existing "no stamina" 
   - `cc_set_name`, `cc_set_size`, `cc_step_attr(i, ±1)`, `cc_set_picture`.
   - `cc_place(Hex tile)`: the `OP_SPAWN` (GM) or the request (player); `cc_place_preset()` for the tile-menu
     case.
-  - `cc_derive(const int attr[4], int *maxHealth, int *maxStamina, int *speed, int *initiative)`.
+- **`src/attrs.c` / `.h`**: the attribute names, ranges and `attr_derive` (used by `ops.c`, `console.c` and the
+  steps, so `ops.c` does not depend on the creation UI).
 - **`src/hud_create.c`**: one `HudRow[]` per step, publishing the draft's values while creation runs, and
   turning HUD events into `cc_*` calls. `hud_game.c` calls it while creation is active and switches configs
   with `hud_use_config` in `hud_game_update` (never in the event handler, which must not call it).
@@ -208,7 +209,7 @@ section of `gmcontrols.md` stays as it is.
 ## Tests
 
 - `tests/core_test.c`:
-  - `cc_derive` at both ends of the step range and of the `:c` range (speed never below 2, max HP and max
+  - `attr_derive` at both ends of the step range and of the `:c` range (speed never below 2, max HP and max
     stamina never below 0).
   - The steps: Next blocked without a name or picture (with the reasons), Back keeps the values, Cancel clears
     the draft, the attribute buttons stop at −2 and 3, a preset tile skips placing.
