@@ -11,7 +11,8 @@
  * are not checked.
  *
  * Test mode (:tm, gh->testMode, the whole table) lifts the requirements so features can be tried out: initiative,
- * the character's turn, a free slot, Sprint's earlier move and enough stamina never block. The effects stay: the slot
+ * the character's turn, a free slot (action_turn_check, also for recover actions), Sprint's earlier move and enough
+ * stamina never block. The effects stay: the slot
  * is marked used, stamina is spent down to 0 at most, and the turn ends only when an action uses up the last
  * stamina. Ownership, the range and speed 0 still hold. Keep this list in the guides when a requirement is added.
  *
@@ -42,12 +43,19 @@ typedef struct {
 
 extern const MoveActionDef MOVE_ACTIONS[MOVE_COUNT];
 
+/* The turn rules every action shares (move actions here, recover actions in recover.h). */
+/* Which slot an action of slot s would use now: its own; a Minor one uses the Major slot when the Minor one is
+ * used. -1 if none is free. */
+int action_slot(const Entity *e, ActionSlot s);
+/* Initiative runs, it is e's turn and a slot is free; test mode lifts all three. OPR_OK or the reason. */
+OpResult action_turn_check(const Entity *e, ActionSlot s);
+/* Marks the slot action_slot names (its own if none is free: test mode) as used. */
+void action_use_slot(Entity *e, ActionSlot s);
+
 int move_action_by_id(const char *id); /* -1 if none */
 /* Tiles the action may move e: 1, half its speed rounded up, or its speed. */
 int move_distance(const Entity *e, MoveAction a);
-/* Which slot the action would use now: its own; a Minor one uses the Major slot when the Minor one is used.
- * -1 if none is free. */
-int move_slot(const Entity *e, MoveAction a);
+int move_slot(const Entity *e, MoveAction a); /* action_slot for the action's slot */
 /* May e use the action now (before choosing where)? OPR_OK or the reason. */
 OpResult move_check(const Entity *e, MoveAction a);
 /* ...and move to tile: move_check plus the tile in the action's range (move_range). */

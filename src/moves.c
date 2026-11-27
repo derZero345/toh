@@ -30,11 +30,26 @@ int move_distance(const Entity *e, MoveAction a) {
     return 0;
 }
 
-int move_slot(const Entity *e, MoveAction a) {
-    if (!e || !valid(a)) return -1;
-    if (MOVE_ACTIONS[a].slot == SLOT_MINOR && !(e->turnUsed & TURN_MINOR)) return SLOT_MINOR;
+int action_slot(const Entity *e, ActionSlot s) {
+    if (!e) return -1;
+    if (s == SLOT_MINOR && !(e->turnUsed & TURN_MINOR)) return SLOT_MINOR;
     return e->turnUsed & TURN_MAJOR ? -1 : SLOT_MAJOR; /* a Major action can be used as a Minor one */
 }
+
+OpResult action_turn_check(const Entity *e, ActionSlot s) {
+    if (gh->testMode) return OPR_OK; /* test mode: these requirements never block (moves.h) */
+    if (gh->init.count == 0) return OPR_NOT_IN_COMBAT;
+    if (gh->currentTurn != e) return OPR_NOT_YOUR_TURN;
+    return action_slot(e, s) < 0 ? OPR_ACTION_USED : OPR_OK;
+}
+
+void action_use_slot(Entity *e, ActionSlot s) {
+    int slot = action_slot(e, s);
+    if (slot < 0) slot = (int)s; /* test mode: none is free; mark its own */
+    e->turnUsed |= slot == SLOT_MINOR ? TURN_MINOR : TURN_MAJOR;
+}
+
+int move_slot(const Entity *e, MoveAction a) { return valid(a) ? action_slot(e, MOVE_ACTIONS[a].slot) : -1; }
 
 /* A character without a stamina stat (max 0) pays nothing. */
 static bool tracks_stamina(const Entity *e) { return e->maxStamina > 0; }
@@ -42,10 +57,9 @@ static bool tracks_stamina(const Entity *e) { return e->maxStamina > 0; }
 OpResult move_check(const Entity *e, MoveAction a) {
     if (!e || e->type != ENTITY_CHARACTER) return OPR_NO_ENTITY;
     if (!valid(a)) return OPR_INVALID;
+    OpResult r = action_turn_check(e, MOVE_ACTIONS[a].slot);
+    if (r != OPR_OK) return r;
     if (!gh->testMode) { /* test mode: these requirements never block (moves.h) */
-        if (gh->init.count == 0) return OPR_NOT_IN_COMBAT;
-        if (gh->currentTurn != e) return OPR_NOT_YOUR_TURN;
-        if (move_slot(e, a) < 0) return OPR_ACTION_USED;
         if (MOVE_ACTIONS[a].afterMove && !(e->turnUsed & TURN_MOVED)) return OPR_MOVE_FIRST;
         if (tracks_stamina(e) && e->stamina < MOVE_ACTIONS[a].stamina) return OPR_NO_STAMINA;
     }
@@ -70,9 +84,8 @@ OpResult move_check_to(const Entity *e, MoveAction a, Hex tile) {
 
 void move_apply(Entity *e, MoveAction a, Hex tile, HexList *path, bool log) {
     const MoveActionDef *d = &MOVE_ACTIONS[a];
-    int slot = move_slot(e, a);
-    if (slot < 0) slot = (int)d->slot; /* test mode: none is free; mark its own */
-    e->turnUsed |= (slot == SLOT_MINOR ? TURN_MINOR : TURN_MAJOR) | TURN_MOVED;
+    action_use_slot(e, d->slot);
+    e->turnUsed |= TURN_MOVED;
     if (path) astar_path_within(e->tile, tile, move_distance(e, a), e, path);
     e->tile = tile;
     bool spent = tracks_stamina(e) && d->stamina > 0;
@@ -103,6 +116,7 @@ const char *move_result_text(OpResult r) {
     case OPR_MOVE_FIRST:    return "Needs another move action first this turn";
     case OPR_NO_STAMINA:    return "Not enough stamina";
     case OPR_CANT_MOVE:     return "This character can't move (speed 0)";
+    case OPR_NO_STAMINA_STAT: return "This character has no stamina";
     default:                return ops_result_text(r);
     }
 }

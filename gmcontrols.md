@@ -253,25 +253,47 @@ mouse is drawn in white. Left click a lit tile to move there; Esc, a right click
 - Levels, terrain and conditions are not part of the map yet, so Jump, Long Jump, Climb, Swimming, Glide, Hang and
   Turn Around are not in the menu, and nothing checks whether a character is prone or falling.
 
+### Recovering stamina (during initiative)
+
+The same menus hold the two personal actions of Tales of Honor that only recover stamina. They take effect as soon as
+you choose them; there is no tile to pick.
+
+| Action | Type | Effect | Stamina |
+|---|---|---|---|
+| Recover | Minor | recovers the Stamina Recovery Die, 1d4 | 0 |
+| Full Recover | Major | stamina back to its maximum | 0 |
+
+The log shows e.g. `Mao: Recover 1d4 = 3, stamina 5/8` or `Mao: Full Recover, stamina 8/8`.
+
+- They follow the turn rules of the move actions: only during initiative, on the character's turn, one Major and
+  one Minor action per turn, and a second Recover can use the Major action. Recover doesn't count as a move action
+  for Sprint.
+- Greyed out with "Stamina is already full" at full stamina, and with "This character has no stamina" for a
+  character without max stamina.
+- Stamina never goes above the maximum. From below 0, Recover adds the roll and Full Recover goes straight to the
+  maximum.
+- In a session your game (the host) rolls the die and everyone sees the roll in the log.
+
 ### Test mode
 
 | Command | Short | Action |
 |---|---|---|
 | `testmode [on\|off]` | `:tm` | Test mode on / off for the whole table (without an argument it toggles; Tab completes `on` / `off`) |
 
-Test mode is for trying things out without setting up turns and stamina first. While it is on, move actions work for
-everyone at the table:
+Test mode is for trying things out without setting up turns and stamina first. While it is on, move actions and the
+recover actions (Recover, Full Recover) work for everyone at the table:
 - outside initiative, and for any character, not only the one whose turn it is;
 - when the Major or Minor action is already used this turn;
 - for Sprint without another move action before it;
-- with too little stamina.
+- with too little stamina (move actions).
 
 The actions still have their effects: they use up their Major or Minor action, and they spend stamina, but never
 below 0. A character whose stamina an action brings to 0 is exhausted and its turn ends, as usual; actions at 0
 stamina don't end the turn again.
 
 Still checked in test mode: players only act with their own characters, the move stays within the action's range,
-and a character with speed 0 can only Step. Players' Shift + click moves keep their rules (refused during
+a character with speed 0 can only Step, and the recover actions need a character with max stamina whose stamina isn't
+full. Players' Shift + click moves keep their rules (refused during
 initiative). Roll and claim limits stay too.
 
 - Only the GM can switch it. Everyone gets `Test mode on: actions ignore turns, used actions and stamina` or
@@ -358,12 +380,12 @@ whose turn it is, else the first. Its four entries, clockwise from the top:
 
 | Entry | Color | What it holds |
 |---|---|---|
-| Minor action | gold (#84672B) | Step, Sprint |
+| Minor action | gold (#84672B) | Step, Sprint, Recover |
 | Info | grey (#5E5E5E) | nothing yet; choosing it only closes the menu |
 | Mental action | violet (#80537E) | nothing yet: greyed out, "Nothing to choose here" |
-| Major action | blue (#355C85) | Walk, Run, Crawl |
+| Major action | blue (#355C85) | Walk, Run, Crawl, Full Recover |
 
-The move actions and their rules are in section 6. The centre button closes the menu.
+The move and recover actions and their rules are in section 6. The centre button closes the menu.
 
 ## 11. Waypoints and teleport
 
@@ -521,7 +543,8 @@ file is in `.gitignore`, so it never ends up in the repository.
 ## 19. What players can and cannot do
 
 Players can:
-- move their own characters (freely outside initiative; while it runs, with move actions on their turn);
+- move their own characters (freely outside initiative; while it runs, with move actions on their turn), and
+  recover their stamina with Recover and Full Recover on their turn;
 - end their turn with `:i next`;
 - roll dice (at most 10 rolls in 10 seconds);
 - ask for existing characters with `:claim`, or for a new one of their own with `:c` (you answer y/n);

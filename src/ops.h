@@ -33,6 +33,7 @@ typedef enum {
     OP_SET_PARTY,        /* ids, party ("" = no party); GM only */
     OP_MOVE_ACTION,      /* id, action (MoveAction), tile: a move action on the character's turn (moves.h) */
     OP_SET_TEST_MODE,    /* value: 1 on, 0 off; GM only (moves.h: what test mode lifts) */
+    OP_RECOVER_ACTION,   /* id, action (RecoverAction), value: the host's roll (recover.h) */
     OP_COUNT
 } OpType;
 
@@ -62,8 +63,8 @@ typedef struct Op {
     int statMask;         /* OP_SET_STATS */
     int size, maxHealth, speed, initiative, maxStamina;
     char name[WAYPOINT_NAME_MAX]; /* OP_WAYPOINT_*: waypoint name, OP_SET_OWNER: player name */
-    int healthMode, value;        /* OP_SET_HEALTH, OP_SET_STAMINA; value: OP_SET_TEST_MODE */
-    int action;                   /* OP_MOVE_ACTION: MoveAction */
+    int healthMode, value;        /* OP_SET_HEALTH, OP_SET_STAMINA; value: OP_SET_TEST_MODE, OP_RECOVER_ACTION */
+    int action;                   /* OP_MOVE_ACTION: MoveAction, OP_RECOVER_ACTION: RecoverAction */
     char charName[CHAR_NAME_MAX]; /* OP_SET_NAME */
     char party[CHAR_NAME_MAX];    /* OP_SET_PARTY: "" = no party */
     bool remote;  /* someone else's op: leave the local selection and path preview alone */
@@ -95,8 +96,10 @@ typedef enum {
     OPR_MOVE_FIRST,    /* OP_MOVE_ACTION: Sprint needs another move action first */
     OPR_CANT_MOVE,     /* OP_MOVE_ACTION: speed 0 */
     OPR_USE_ACTION,    /* OP_MOVE by a player during initiative: move with a move action */
+    OPR_NO_STAMINA_STAT, /* OP_RECOVER_ACTION: the character has no max stamina */
+    OPR_STAMINA_FULL,    /* OP_RECOVER_ACTION: stamina is at its maximum */
 } OpResult;
-#define OPR_LAST OPR_USE_ACTION
+#define OPR_LAST OPR_STAMINA_FULL
 
 /*
  * Notes for ops_check / ops_apply:

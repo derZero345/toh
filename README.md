@@ -42,7 +42,7 @@ in the Java version.
 | Left click (or Enter in keyboard mode) | select tile / entity |
 | Right click (or Right-Shift + Enter) | tool action (drag start, measure point, place attack) |
 | Right click without moving (Drag tool) | tile menu: a ring of entries around the tile; Esc / click outside closes |
-| Right click your character (Drag tool) | action menu: Minor / Info / Mental / Major; during initiative its move actions (Walk, Run, Crawl, Step, Sprint) move it on its turn |
+| Right click your character (Drag tool) | action menu: Minor / Info / Mental / Major; during initiative its move actions (Walk, Run, Crawl, Step, Sprint) move it on its turn, and Recover (1d4) / Full Recover restore its stamina |
 | Shift + left click | move the selected character inside its (green) range (players: outside initiative) |
 | Hold Left Shift | preview footprint and path of the selected character |
 | Ctrl + click / drag | multi-select |
@@ -62,7 +62,7 @@ Console commands: `:q` quit, `:b [file.png]` background, `:d` debug, `:c` charac
 (`delete`, `size n`, `maxhealth n`, `maxstamina n`, `stamina n`, `spend n`, `recover n`, `speed n`, `initiative n`, `icon`, `owner <player|none>`, `name <name>`, `party <name>` (GM),
 `hp n`, `damage n`, `heal n`; the HUD at the bottom shows the selected (your own, or a party member's) character's HP and stamina),
 `:w [delete]` wall, `:e delete`, `:r 2d6+3` roll, `:g` grid orientation, `:gm` gamemaster,
-`:i [add|remove|clear|show|next]` initiative, `:tm [on|off]` test mode (GM: move actions without turn, action or stamina requirements, for the whole table), `:cl` clear, `:t [name]` theme (remembered in `settings.txt`), `:h [command]` help, `:hud [on|off]` HUD on/off,
+`:i [add|remove|clear|show|next]` initiative, `:tm [on|off]` test mode (GM: move and recover actions without turn, action or stamina requirements, for the whole table), `:cl` clear, `:t [name]` theme (remembered in `settings.txt`), `:h [command]` help, `:hud [on|off]` HUD on/off,
 `:save [file]` / `:load[!] [file]` save files (see below), `:q!` quit without saving,
 `:host`, `:join`, `:leave`, `:unhost`, `:players`, `:kick`, `:ban`, `:unban`, `:claim`, `:party` multiplayer (see below).
 

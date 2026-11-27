@@ -120,6 +120,9 @@ static NetOp sample_op(int type) {
     case NOP_SET_TEST_MODE:
         o.value = 1;
         break;
+    case NOP_RECOVER_ACTION:
+        o.id = 9; o.action = 1; o.value = 4;
+        break;
     case NOP_ROLL:
         strcpy(o.dice, "2d6+3");
         o.values = values3; o.nvalues = 3; /* as broadcast by the host: dice, then the total */
@@ -268,6 +271,9 @@ static void test_fields_survive(void) {
     netmsg_free(&d);
     m = sample_msg(NM_OP, NOP_SET_TEST_MODE); m.op.value = 0;
     CHECK(round_trip(&m, &d) && d.op.value == 0);
+    netmsg_free(&d);
+    m = sample_msg(NM_OP_APPLIED, NOP_RECOVER_ACTION);
+    CHECK(round_trip(&m, &d) && d.op.id == 9 && d.op.action == 1 && d.op.value == 4);
     netmsg_free(&d);
 
     m = sample_msg(NM_OP, NOP_SET_STATS);
@@ -420,6 +426,9 @@ static void test_encoder_refuses_invalid(void) {
     m = sample_msg(NM_OP, NOP_SET_PARTY); strcpy(m.op.party, "tab\there"); check_invalid(m, "party with a control character");
     m = sample_msg(NM_OP, NOP_MOVE_ACTION); m.op.id = 0; check_invalid(m, "move action without a character");
     m = sample_msg(NM_OP, NOP_SET_TEST_MODE); m.op.value = 2; check_invalid(m, "test mode neither on nor off");
+    m = sample_msg(NM_OP, NOP_RECOVER_ACTION); m.op.id = 0; check_invalid(m, "recover action without a character");
+    m = sample_msg(NM_OP, NOP_RECOVER_ACTION); m.op.value = -1; check_invalid(m, "negative recovery roll");
+    m = sample_msg(NM_OP, NOP_RECOVER_ACTION); m.op.value = NETMSG_MAX_DIE + 1; check_invalid(m, "recovery roll too big");
     m = sample_msg(NM_OP, NOP_SPAWN); strcpy(specs2[1].party, "Heroes"); check_invalid(m, "wall with a party"); specs2[1].party[0] = '\0';
     m = sample_msg(NM_OP, NOP_SPAWN); strcpy(specs2[1].name, "wall"); check_invalid(m, "wall with a name"); specs2[1].name[0] = '\0';
     m = sample_msg(NM_OP, NOP_SET_STATS); m.op.stat_mask = 0; check_invalid(m, "empty stat mask");

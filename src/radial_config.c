@@ -60,19 +60,21 @@ static const RadialEntry CHARACTER[] = {
 
 /* ---- a character you control (radial_game.c): its actions by type, the Tales of Honor action colours ---- */
 
-/* Move actions (moves.h): the ids are MOVE_ACTIONS' ids, each entry's rule of the same key says whether the
- * character can use it now. */
+/* Move actions (moves.h) and recover actions (recover.h): the ids are MOVE_ACTIONS' and RECOVER_ACTIONS' ids, each
+ * entry's rule of the same key says whether the character can use it now. */
 #define MOVE(id_, label_, accent_) ACTION(id_, label_, accent_, .enabled_if = id_)
 
 static const RadialEntry MINOR[] = {
     MOVE("move.step", "Step: 1 tile, 1 stamina", HUD_ACCENT_MINOR),
     MOVE("move.sprint", "Sprint: your speed, 3 stamina, after another move action", HUD_ACCENT_MINOR),
+    MOVE("stamina.recover", "Recover: 1d4 stamina", HUD_ACCENT_MINOR),
 };
 
 static const RadialEntry MAJOR[] = {
     MOVE("move.walk", "Walk: half your speed", HUD_ACCENT_MAJOR),
     MOVE("move.run", "Run: your speed, 2 stamina", HUD_ACCENT_MAJOR),
     MOVE("move.crawl", "Crawl: half your speed, 2 stamina", HUD_ACCENT_MAJOR),
+    MOVE("stamina.full_recover", "Full Recover: all your stamina", HUD_ACCENT_MAJOR),
 };
 
 /* clockwise from the top */

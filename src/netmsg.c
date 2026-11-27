@@ -87,6 +87,8 @@ static bool op_ok(const NetOp *o) {
         return o->id != 0;
     case NOP_SET_TEST_MODE:
         return o->value == 0 || o->value == 1;
+    case NOP_RECOVER_ACTION: /* ops_check checks the action and the roll's range */
+        return o->id != 0 && o->value >= 0 && o->value <= NETMSG_MAX_DIE;
     default: /* DELETE, INIT_REMOVE (ids only), SET_BACKGROUND, INIT_NEXT, GRID / CLEAR / SHOW */
         return true;
     }
@@ -310,6 +312,11 @@ static void put_op(Buf *b, const NetOp *o) {
         break;
     case NOP_SET_TEST_MODE:
         put_u8(b, (uint8_t)o->value);
+        break;
+    case NOP_RECOVER_ACTION:
+        put_uv(b, o->id);
+        put_u8(b, o->action);
+        put_sv(b, o->value);
         break;
     case NOP_ROLL:
         put_str(b, o->dice);
@@ -606,6 +613,11 @@ static void get_op(Rd *r, NetOp *o) {
         break;
     case NOP_SET_TEST_MODE:
         o->value = get_u8(r);
+        break;
+    case NOP_RECOVER_ACTION:
+        o->id = get_uv(r);
+        o->action = get_u8(r);
+        o->value = get_sv(r);
         break;
     case NOP_ROLL: {
         get_str(r, o->dice, sizeof(o->dice));

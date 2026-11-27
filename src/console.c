@@ -647,7 +647,8 @@ static void cmd_help(Args *a) {
     } else if (!strcmp(arg, "init") || !strcmp(arg, ":i")) {
         console_log(":i  or init # Add all entities to the initiative order");
         console_log("  add | remove | clear | show | next");
-        console_log("  While it runs, right click your character on its turn to move with move actions");
+        console_log("  While it runs, right click your character on its turn for move actions,");
+        console_log("  Recover (1d4 stamina) and Full Recover");
     } else if (!strcmp(arg, "clear") || !strcmp(arg, ":cl")) {
         console_log(":cl or clear # Clear the command log and history");
     } else if (!strcmp(arg, "theme") || !strcmp(arg, ":t")) {
@@ -691,8 +692,8 @@ static void cmd_help(Args *a) {
         console_log(":hud [on|off] # Show or hide the HUD at the bottom of the window");
     } else if (!strcmp(arg, "testmode") || !strcmp(arg, ":tm")) {
         console_log(":tm or testmode [on|off] # GM: test mode for the whole table (no argument: switch)");
-        console_log("  move actions work outside initiative and off-turn, and used actions or too little");
-        console_log("  stamina don't stop them; they still use the action and spend stamina (not below 0)");
+        console_log("  move and recover actions work outside initiative and off-turn, and used actions or");
+        console_log("  too little stamina don't stop them; they still use the action and spend stamina (not below 0)");
     } else {
         console_log("Available commands:");
         console_log(":q  or quit       # Quit the application");

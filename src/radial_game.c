@@ -3,6 +3,7 @@
 #include "radial_game.h"
 #include "move_ui.h"
 #include "moves.h"
+#include "recover.h"
 #include "session.h"
 
 #include <string.h>
@@ -34,6 +35,14 @@ static const char *rule_move(const RadialTarget *t, int arg) {
 }
 #define MOVE_RULE(key_, action_) { key_, NULL, NULL, "Not possible", rule_move, action_ }
 
+/* Can the actor use recover action arg now? */
+static const char *rule_recover(const RadialTarget *t, int arg) {
+    (void)t;
+    OpResult r = recover_check(entity_by_id(actor), (RecoverAction)arg);
+    return r == OPR_OK ? NULL : move_result_text(r);
+}
+#define RECOVER_RULE(key_, action_) { key_, NULL, NULL, "Not possible", rule_recover, action_ }
+
 static const RadialRule RULES[] = {
     { "gm", rule_gm, "Only the GM can do this", "The GM can't do this", NULL, 0 },
     { "occupied", rule_occupied, "Needs something on the tile", "Needs an empty tile", NULL, 0 },
@@ -44,6 +53,9 @@ static const RadialRule RULES[] = {
     MOVE_RULE("move.run", MOVE_RUN),
     MOVE_RULE("move.sprint", MOVE_SPRINT),
     MOVE_RULE("move.crawl", MOVE_CRAWL),
+    /* one per recover action; the keys are RECOVER_ACTIONS' ids */
+    RECOVER_RULE("stamina.recover", RECOVER_SMALL),
+    RECOVER_RULE("stamina.full_recover", RECOVER_FULL),
 };
 #define NRULES ((int)(sizeof(RULES) / sizeof(RULES[0])))
 
@@ -89,9 +101,12 @@ uint32_t radial_game_actor(void) {
 static void on_event(const RadialEvent *ev) {
     switch (ev->type) {
     case RADIAL_EV_ACTION: {
-        int move = move_action_by_id(ev->id);
+        int move = move_action_by_id(ev->id), recover = recover_action_by_id(ev->id);
         if (move >= 0) {
             move_ui_start(actor, move);
+        } else if (recover >= 0) { /* nothing to choose: done at once */
+            Op op = { .type = OP_RECOVER_ACTION, .id = actor, .action = recover };
+            ops_submit(&op);
         } else if (strcmp(ev->id, "info") == 0) {
             /* nothing yet */
         } else { /* placeholder entries: they only say what was chosen */

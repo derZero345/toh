@@ -2,7 +2,7 @@
 # End-to-end check of move actions: during initiative a right click on your character opens its action menu (four
 # entries), Major action -> Walk shows the action's range, a click on a tile in it moves the character, and its
 # action menu then opens on the new tile while the old tile gets the plain tile menu. Then test mode (:tm): Walk
-# without initiative, and the TEST MODE label. Opens a window (needs Wayland
+# without initiative, and the TEST MODE label. Last, Full Recover from the action menu fills the stamina bar. Opens a window (needs Wayland
 # or X11) and uses ImageMagick.
 # Usage: tests/e2e_moves.sh   (or: make e2e)
 set -euo pipefail
@@ -59,5 +59,24 @@ differ "$out/tm-off.png" "$out/tm-on.png" "$lx" 30 || fail ":tm shows no TEST MO
 ! differ "$out/tm-off.png" "$out/tm-back.png" "$lx" 30 || fail ":tm off leaves the TEST MODE label"
 differ "$out/tm-on.png" "$out/tm-moved.png" 300 220 || fail "in test mode Walk did not move the character outside initiative"
 differ "$out/tm-on.png" "$out/tm-moved.png" 300 150 || fail "in test mode the character did not appear on the new tile"
+
+# Full Recover (Major action -> 4th entry): the stamina bar is full again. The bar's frame is the right half of the
+# element (@hudrect); a full bar is green at 90 % of the frame, an almost empty one isn't.
+timeout 60 ./toh --size 600x500 --auto-file "$icon" \
+    --exec "@click 300 220" --exec ":c speed 4 maxstamina 8" --exec "@wait 5" --exec "@click 300 220" \
+    --exec ":c stamina 1" --exec ":i" --exec ":i next" --exec "@wait 5" --exec "@waitbars" \
+    --exec "@hudrect stamina $out/st" --exec "@shot $out/rec-before.png" \
+    --exec "@rclick 300 220" --exec "@wait 20" --exec "@clickradial ring.4" --exec "@wait 20" \
+    --exec "@clickradial ring.4" --exec "@wait 5" --exec "@waitbars" --exec "@shot $out/rec-after.png" \
+    --exec "@quit" > "$out/toh-rec.log" 2>&1 || fail "toh exited with status $? (see $out/toh-rec.log)"
+green() {
+    local rgb
+    rgb=$(magick "$1" -crop 4x4+$(($2 - 2))+$(($3 - 2)) +repage -format '%[fx:mean.r] %[fx:mean.g] %[fx:mean.b]' info:)
+    awk -v s="$rgb" 'BEGIN { split(s, c, " "); exit !(c[2] > 0.5 && c[1] < 0.35 && c[3] < 0.4) }'
+}
+read -r sx sy sw sh < "$out/st"
+px=$((sx + sw / 2 + sw / 2 * 90 / 100)); py=$((sy + sh / 2))
+! green "$out/rec-before.png" $px $py || fail "the stamina bar was full before Full Recover"
+green "$out/rec-after.png" $px $py || fail "Full Recover did not fill the stamina bar (see $out/toh-rec.log)"
 
 echo "e2e move actions: OK"

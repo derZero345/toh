@@ -1,6 +1,7 @@
 /* The op layer: rules for who may change what (ops_check) and the changes themselves (ops_apply). */
 #include "ops.h"
 #include "moves.h"
+#include "recover.h"
 #include "savefmt.h"
 #include "session.h"
 
@@ -55,6 +56,8 @@ const char *ops_result_text(OpResult r) {
     case OPR_MOVE_FIRST:    return "Sprint needs another move action first";
     case OPR_CANT_MOVE:     return "That character can't move";
     case OPR_USE_ACTION:    return "During initiative, move with a move action: right click your character";
+    case OPR_NO_STAMINA_STAT: return "That character has no stamina";
+    case OPR_STAMINA_FULL:  return "Stamina is already full";
     }
     return "Unknown error";
 }
@@ -155,6 +158,10 @@ static OpResult check_structure(const Op *op) {
         return move_check_to(entity_by_id(op->id), (MoveAction)op->action, op->tile);
     case OP_SET_TEST_MODE:
         return op->value == 0 || op->value == 1 ? OPR_OK : OPR_INVALID;
+    case OP_RECOVER_ACTION: /* like move actions, the rules hold for the GM too */
+        if (op->action < 0 || op->action >= RECOVER_COUNT || op->value < 0 || op->value > RECOVER_DIE)
+            return OPR_INVALID;
+        return recover_check(entity_by_id(op->id), (RecoverAction)op->action);
     case OP_SET_BACKGROUND:
     case OP_GRID_ORIENTATION:
     case OP_INIT_CLEAR:
@@ -167,7 +174,7 @@ static OpResult check_structure(const Op *op) {
 }
 
 /* Players may move their own character (in range outside initiative, with move actions on its turn during it),
-   pass their own turn and change the HP, stamina and name of their own characters. */
+   use recover actions with it, pass their own turn and change the HP, stamina and name of their own characters. */
 static OpResult check_player(const Op *op, const OpAuthor *a) {
     switch (op->type) {
     case OP_MOVE: {
@@ -184,6 +191,7 @@ static OpResult check_player(const Op *op, const OpAuthor *a) {
     case OP_INIT_NEXT:
         return is_owner(gh->currentTurn, a) ? OPR_OK : OPR_NOT_YOUR_TURN;
     case OP_MOVE_ACTION:
+    case OP_RECOVER_ACTION:
         return is_owner(entity_by_id(op->id), a) ? OPR_OK : OPR_NOT_YOURS;
     case OP_SET_HEALTH:
     case OP_SET_STAMINA:
@@ -199,7 +207,8 @@ static OpResult check_player(const Op *op, const OpAuthor *a) {
 OpResult ops_check(const Op *op, const OpAuthor *author) {
     if (!memchr(author->name, '\0', sizeof(author->name))) return OPR_INVALID;
     bool player_op = op->type == OP_MOVE || op->type == OP_INIT_NEXT || op->type == OP_SET_HEALTH ||
-                     op->type == OP_SET_NAME || op->type == OP_SET_STAMINA || op->type == OP_MOVE_ACTION;
+                     op->type == OP_SET_NAME || op->type == OP_SET_STAMINA || op->type == OP_MOVE_ACTION ||
+                     op->type == OP_RECOVER_ACTION;
     if (!author->gm && !player_op) return OPR_GM_ONLY;
     OpResult r = check_structure(op);
     if (r != OPR_OK || author->gm) return r;
@@ -450,6 +459,14 @@ void ops_apply(Op *op) {
         bool was_selected = e == selected_entity();
         move_apply(e, (MoveAction)op->action, op->tile, op->remote ? NULL : &gh->path, !op->remote);
         if (op->remote && was_selected) entities_clear_highlights(); /* the range shown belonged to the old tile */
+        break;
+    }
+    case OP_RECOVER_ACTION: {
+        Entity *e = entity_by_id(op->id);
+        if (!e) break;
+        /* the host (or offline) rolls; clients apply the roll the host sent */
+        if (!session_is_client()) op->value = recover_roll((RecoverAction)op->action);
+        recover_apply(e, (RecoverAction)op->action, op->value);
         break;
     }
     case OP_SET_TEST_MODE:

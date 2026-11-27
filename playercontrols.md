@@ -43,8 +43,12 @@ Sprint) can take the Major one instead. An action that can't be used right now i
 why. When your character's stamina reaches 0 it is exhausted and its turn ends. A character without stamina pays
 nothing.
 
-While a gold **TEST MODE** label shows at the top, the GM has turned on test mode: you can use move actions at any
-time, even when it isn't your turn or you lack the action or stamina. They still use up the action and stamina.
+To get stamina back on your turn, choose **Recover** (Minor action: 1d4 stamina) or **Full Recover** (Major action:
+all of it) in the same menus. They work at once and are greyed out when your stamina is already full.
+
+While a gold **TEST MODE** label shows at the top, the GM has turned on test mode: you can use move actions and
+Recover / Full Recover at any time, even when it isn't your turn or you lack the action or stamina. They still use
+up the action and stamina.
 
 **Outside initiative** you move freely:
 

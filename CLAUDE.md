@@ -29,10 +29,13 @@ Check `src/input.c`, `src/console.c`, `src/session.c`, `src/ops.c` and `src/tool
 
 `:tm` / `testmode` (GM only, the whole table) lets the GM try features without their requirements. While it is on,
 move actions ignore initiative, the turn, used actions, Sprint's earlier move and stamina, but their effects still
-apply (the action is used, stamina is spent but never below 0). See `src/moves.h` and `gh->testMode`.
+apply (the action is used, stamina is spent but never below 0). Recover actions ignore initiative, the turn and used
+actions (`action_turn_check`), but still need a stamina stat and stamina below max. See `src/moves.h`,
+`src/recover.h` and `gh->testMode`.
 
 This is a standing task, like the guides:
 - When a new feature adds a requirement (a turn, a cost, a cooldown, a prerequisite, a limit), decide whether test
   mode lifts it. **Ask the user when unsure.**
-- Update the test-mode code, its unit test (`test_test_mode` in `tests/core_test.c`) and the Test mode section of
+- Update the test-mode code, its unit tests (`test_test_mode`, and the action's own test, e.g. `test_recover_actions`,
+  in `tests/core_test.c`) and the Test mode section of
   `gmcontrols.md` (and the note in `playercontrols.md`) in the same change.

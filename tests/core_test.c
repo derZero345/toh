@@ -11,6 +11,7 @@
 #include "netmsg.h"
 #include "ops.h"
 #include "moves.h"
+#include "recover.h"
 #include "move_ui.h"
 #include "party.h"
 #include "textwrap.h"
@@ -31,7 +32,7 @@ _Static_assert((int)NOP_MOVE == (int)OP_MOVE && (int)NOP_SPAWN == (int)OP_SPAWN 
                (int)NOP_INIT_NEXT == (int)OP_INIT_NEXT && (int)NOP_SET_OWNER == (int)OP_SET_OWNER && (int)NOP_SET_HEALTH == (int)OP_SET_HEALTH &&
                (int)NOP_SET_NAME == (int)OP_SET_NAME && (int)NOP_SET_STAMINA == (int)OP_SET_STAMINA &&
                (int)NOP_SET_PARTY == (int)OP_SET_PARTY && (int)NOP_MOVE_ACTION == (int)OP_MOVE_ACTION &&
-               (int)NOP_SET_TEST_MODE == (int)OP_SET_TEST_MODE &&
+               (int)NOP_SET_TEST_MODE == (int)OP_SET_TEST_MODE && (int)NOP_RECOVER_ACTION == (int)OP_RECOVER_ACTION &&
                (int)NOP_ROLL == (int)OP_COUNT,
                "NetOpType must match OpType");
 _Static_assert((int)NSTAT_SIZE == (int)STAT_SIZE && (int)NSTAT_MAXHEALTH == (int)STAT_MAXHEALTH &&
@@ -1970,8 +1971,115 @@ static void test_action_menu(void) {
     CHECK(move_ui_active() && gh->moveMode.action == MOVE_STEP);
     move_ui_cancel();
     rad_settle();
+    /* Major -> Full Recover: at full stamina it is disabled; below, it is used at once */
+    CHECK(radial_game_open(hex_center(hero->tile)));
+    CHECK(rad_click("ring.4") && rad_click("ring.4") && radial_is_open()); /* disabled: nothing happens */
+    radial_close();
+    rad_settle();
+    hero->stamina = 2;
+    CHECK(radial_game_open(hex_center(hero->tile)));
+    CHECK(rad_click("ring.4") && rad_click("ring.4") && !radial_is_open() && !move_ui_active());
+    CHECK(hero->stamina == 8 && (hero->turnUsed & TURN_MAJOR) && strstr(stub_last_log, "Full Recover"));
+    rad_settle();
     game_clear_initiative();
     radial_game_shutdown();
+}
+
+/* Recover and Full Recover (recover.h): the turn rules of move actions, a stamina stat and room to recover */
+static void test_recover_actions(void) {
+    reset_table();
+    stub_client = false;
+    Entity *hero = add_character((Hex){ 10, 10 }, 6, "Alice");
+    Entity *orc = add_character((Hex){ 30, 30 }, 5, "Bob");
+    hero->maxStamina = 8;
+    hero->stamina = 1;
+    OpAuthor alice = player("Alice"), bob = player("Bob");
+
+    for (int i = 0; i < RECOVER_COUNT; i++) CHECK(recover_action_by_id(RECOVER_ACTIONS[i].id) == i);
+    CHECK(recover_action_by_id("move.walk") == -1 && recover_action_by_id(NULL) == -1);
+    CHECK(RECOVER_ACTIONS[RECOVER_SMALL].slot == SLOT_MINOR && RECOVER_ACTIONS[RECOVER_FULL].slot == SLOT_MAJOR);
+
+    Op rec = { .type = OP_RECOVER_ACTION, .id = hero->id, .action = RECOVER_SMALL };
+    Op full = { .type = OP_RECOVER_ACTION, .id = hero->id, .action = RECOVER_FULL };
+    CHECK_R(ops_check(&rec, &alice), OPR_NOT_IN_COMBAT);
+    CHECK_R(ops_check(&rec, &GM), OPR_NOT_IN_COMBAT);
+
+    Entity *order[2] = { hero, orc };
+    double values[2] = { 0.9, 0.1 };
+    game_initiative_list(order, values, 2);
+    CHECK_R(ops_check(&rec, &alice), OPR_NOT_YOUR_TURN);
+    game_next_turn();
+    CHECK(gh->currentTurn == hero);
+
+    /* who, and invalid ops */
+    CHECK_R(ops_check(&rec, &bob), OPR_NOT_YOURS);
+    Op bad = rec;
+    bad.action = RECOVER_COUNT;
+    CHECK_R(ops_check(&bad, &alice), OPR_INVALID);
+    bad = rec;
+    bad.value = RECOVER_DIE + 1;
+    CHECK_R(ops_check(&bad, &alice), OPR_INVALID);
+
+    /* Recover: the Minor action, 1d4 (the host's roll is stored in the op for the players) */
+    CHECK_R(ops_check(&rec, &alice), OPR_OK);
+    ops_apply(&rec);
+    CHECK(rec.value >= 1 && rec.value <= RECOVER_DIE && hero->stamina == 1 + rec.value);
+    CHECK(hero->turnUsed == TURN_MINOR && strstr(stub_last_log, "Recover 1d4 = "));
+    /* a second Recover uses the Major action; then nothing is left, Full Recover neither */
+    hero->stamina = 1;
+    rec.value = 0;
+    CHECK_R(ops_check(&rec, &alice), OPR_OK);
+    ops_apply(&rec);
+    CHECK(hero->turnUsed == (TURN_MINOR | TURN_MAJOR) && !(hero->turnUsed & TURN_MOVED));
+    CHECK_R(ops_check(&rec, &alice), OPR_ACTION_USED);
+    CHECK_R(ops_check(&full, &alice), OPR_ACTION_USED);
+
+    /* a client applies the host's roll instead of rolling */
+    hero->turnUsed = 0;
+    hero->stamina = 2;
+    rec.value = 3;
+    stub_client = true;
+    ops_apply(&rec);
+    stub_client = false;
+    CHECK(hero->stamina == 5 && rec.value == 3);
+    /* the roll never goes past the maximum */
+    hero->turnUsed = 0;
+    hero->stamina = 7;
+    rec.value = 0;
+    ops_apply(&rec);
+    CHECK(hero->stamina == 8);
+
+    /* Full Recover: the Major action, to the maximum (also from below 0) */
+    hero->turnUsed = 0;
+    CHECK_R(ops_check(&full, &alice), OPR_STAMINA_FULL); /* nothing to recover */
+    hero->stamina = -3;
+    CHECK_R(ops_check(&full, &alice), OPR_OK);
+    ops_apply(&full);
+    CHECK(hero->stamina == 8 && full.value == 0 && hero->turnUsed == TURN_MAJOR && strstr(stub_last_log, "Full Recover"));
+    CHECK_R(ops_check(&full, &alice), OPR_ACTION_USED);
+
+    /* without a stamina stat there is nothing to recover */
+    game_next_turn();
+    CHECK(gh->currentTurn == orc && orc->maxStamina == 0);
+    Op orc_rec = { .type = OP_RECOVER_ACTION, .id = orc->id, .action = RECOVER_SMALL };
+    CHECK_R(ops_check(&orc_rec, &bob), OPR_NO_STAMINA_STAT);
+
+    /* test mode lifts the turn rules, not the stamina ones */
+    Op on = { .type = OP_SET_TEST_MODE, .value = 1 }, off = { .type = OP_SET_TEST_MODE, .value = 0 };
+    ops_apply(&on);
+    hero->stamina = 1;
+    hero->turnUsed = TURN_ALL;
+    CHECK_R(ops_check(&full, &alice), OPR_OK); /* not its turn, no action left */
+    ops_apply(&full);
+    CHECK(hero->stamina == 8 && hero->turnUsed == TURN_ALL);
+    CHECK_R(ops_check(&full, &alice), OPR_STAMINA_FULL);
+    CHECK_R(ops_check(&orc_rec, &bob), OPR_NO_STAMINA_STAT);
+    game_clear_initiative();
+    hero->stamina = 1;
+    CHECK_R(ops_check(&rec, &alice), OPR_OK); /* outside initiative */
+    ops_apply(&off);
+    CHECK_R(ops_check(&rec, &alice), OPR_NOT_IN_COMBAT);
+    CHECK(!strcmp(ops_result_text(OPR_STAMINA_FULL), "Stamina is already full"));
 }
 
 static void test_radial_config(void) {
@@ -2293,6 +2401,7 @@ int main(void) {
     test_radial_menu();
     test_move_actions();
     test_test_mode();
+    test_recover_actions();
     test_action_menu();
     test_settings();
     CHECK(stub_bad_releases == 0);
