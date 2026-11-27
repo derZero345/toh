@@ -28,7 +28,7 @@ and network message decoders, needs clang; `FUZZ_TIME=600` fuzzes each longer) a
 window, then runs a host and a client on localhost; needs a display and ImageMagick).
 Set `TOH_VK_VALIDATION=1` to enable the Khronos validation layer when it is installed.
 
-Your settings (for now the theme chosen with `:t`) are kept in `settings.txt` next to the program, a plain text file
+Your settings (the theme chosen with `:t` and the UI size from Ctrl + / Ctrl -) are kept in `settings.txt` next to the program, a plain text file
 of `key = value` lines that git ignores. `TOH_SETTINGS=<file>` uses another file, `TOH_SETTINGS=` none (the e2e tests do that).
 
 ## Controls
@@ -54,7 +54,7 @@ in the Java version.
 | Up / Down / Tab (console) | history / auto-complete |
 | `:` (Shift + `.` on German layouts) | open the console with `:` typed |
 | Ctrl + C / V / A | copy / paste / select all entities |
-| Ctrl + `+` / `-` | console, toolbox and HUD size |
+| Ctrl + `+` / `-` | console, toolbox, HUD and radial menu size (remembered in `settings.txt`) |
 | 1 … 9, 0 | hotbar slots (console closed) |
 | Alt + X / S / A / C / V | drag / measure / area / cone / line tool |
 

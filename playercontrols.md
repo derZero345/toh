@@ -166,7 +166,7 @@ On other tiles the entries are placeholders: choosing one writes `Menu: <entry> 
 | Up / Down in the console | Earlier commands |
 | Tab in the console | Complete a command or argument (`:c` too); Tab again cycles |
 | Mouse wheel over the console | Scroll the log |
-| Ctrl + `+` / Ctrl + `-` | Bigger / smaller console text, toolbox and HUD |
+| Ctrl + `+` / Ctrl + `-` | Bigger / smaller console text, toolbox, HUD and menus (remembered for the next start) |
 | `:hud` | Show / hide the HUD |
 | `:t [name]` | List the color themes, or choose one (remembered for the next start) |
 | `:cl` | Clear the log and command history |

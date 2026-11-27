@@ -6,7 +6,7 @@
  * The file is settings.txt next to the program (it is in .gitignore). TOH_SETTINGS=<file> uses another file;
  * TOH_SETTINGS= (empty) uses none, so nothing is remembered (the tests do that).
  *
- * Keys: theme (the colour theme chosen with :t).
+ * Keys: theme (the colour theme chosen with :t), ui_scale (Ctrl + / Ctrl - steps from the normal size, -24..64).
  */
 #ifndef TOH_SETTINGS_H
 #define TOH_SETTINGS_H

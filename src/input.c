@@ -395,16 +395,10 @@ static void key_pressed(const SDL_KeyboardEvent *k) {
         }
         break;
     case SDLK_PLUS: case SDLK_KP_PLUS: case SDLK_EQUALS:
-        if (gh->isCtrlDown) {
-            console_change_font_size(1);
-            toolbox_change_size(&gh->toolbox, 1);
-        }
+        if (gh->isCtrlDown) gfx_change_ui_scale(1);
         break;
     case SDLK_MINUS: case SDLK_KP_MINUS:
-        if (gh->isCtrlDown && gh->toolbox.size > 8) {
-            console_change_font_size(-1);
-            toolbox_change_size(&gh->toolbox, -1);
-        }
+        if (gh->isCtrlDown) gfx_change_ui_scale(-1);
         break;
     case SDLK_A:
         if (gh->isCtrlDown) select_all_entities();

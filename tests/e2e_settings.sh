@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end check of the settings file: the theme chosen with :t is written to it and used at the next start,
-# a theme shown by :load is not remembered, and an unknown theme in the file falls back to the default.
+# a theme shown by :load is not remembered, and an unknown theme in the file falls back to the default; the UI scale
+# (Ctrl + / Ctrl -) is remembered as ui_scale.
 # Opens a window (needs Wayland or X11) and uses ImageMagick.
 # Usage: tests/e2e_settings.sh   (or: make e2e)
 set -euo pipefail
@@ -39,5 +40,16 @@ near "$(corner "$out/4.png")" 208 208 208 || fail "an unknown theme did not fall
 run --exec ":t green"
 [ "$(cat "$out/settings.txt")" = "$(printf '# my notes\ntheme = green\nother = 1')" ] ||
     fail "the file lost lines: $(cat "$out/settings.txt")"
+
+# 5. Ctrl + / Ctrl - steps are remembered as ui_scale and used at the next start (from 2, one Ctrl - leaves 1, not
+#    -1). The keypad keys, because the key names "=" and "-" depend on the keyboard layout.
+run --exec "@key ctrl+Keypad +" --exec "@key ctrl+Keypad +"
+grep -qx "ui_scale = 2" "$out/settings.txt" || fail "two Ctrl + did not write ui_scale = 2: $(cat "$out/settings.txt")"
+run --exec "@key ctrl+Keypad -"
+grep -qx "ui_scale = 1" "$out/settings.txt" || fail "the next start did not use ui_scale = 2: $(cat "$out/settings.txt")"
+# a value that isn't a whole number is ignored
+sed -i 's/^ui_scale = .*/ui_scale = big/' "$out/settings.txt"
+run --exec "@key ctrl+Keypad +"
+grep -qx "ui_scale = 1" "$out/settings.txt" || fail "ui_scale = big was not ignored: $(cat "$out/settings.txt")"
 
 echo "e2e settings: OK"

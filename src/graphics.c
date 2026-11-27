@@ -14,6 +14,7 @@
 #include "textwrap.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -47,6 +48,41 @@ static void add_theme(const char *name, uint32_t primary, uint32_t secondary) {
     t->secondary = rgb_hex(secondary);
 }
 
+/* ---- UI scale (Ctrl + / Ctrl -) ---- */
+
+/* One step makes the console text and the toolbox 1 px bigger; the HUD and the radial menu follow the console's
+ * font size. The settings file keeps the steps from the normal size as "ui_scale". */
+enum { UI_SCALE_MIN = -24, UI_SCALE_MAX = 64, TOOLBOX_MIN = 8 };
+static int ui_scale_steps; /* from the normal size */
+
+static bool ui_step(int delta) {
+    int to = ui_scale_steps + delta;
+    if (to < UI_SCALE_MIN || to > UI_SCALE_MAX) return false;
+    if (delta < 0 && gh->toolbox.size <= TOOLBOX_MIN) return false;
+    console_change_font_size(delta);
+    toolbox_change_size(&gh->toolbox, delta);
+    ui_scale_steps = to;
+    return true;
+}
+
+void gfx_change_ui_scale(int delta) {
+    if (!ui_step(delta)) return;
+    char v[16];
+    snprintf(v, sizeof(v), "%d", ui_scale_steps);
+    if (!settings_set("ui_scale", v)) console_log("Could not save the UI scale to %s", settings_path());
+}
+
+/* The steps saved last time; a value that isn't a whole number in range is ignored. */
+static void ui_scale_from_settings(void) {
+    const char *v = settings_get("ui_scale");
+    if (!v) return;
+    char *end;
+    long n = strtol(v, &end, 10);
+    if (end == v || *end || n < UI_SCALE_MIN || n > UI_SCALE_MAX) return;
+    int dir = n > 0 ? 1 : -1;
+    while (ui_scale_steps != n && ui_step(dir)) {}
+}
+
 bool gfx_init(App *app, const char *resource_dir) {
     gh = app;
     snprintf(gh->resourceDir, sizeof(gh->resourceDir), "%s", resource_dir);
@@ -75,6 +111,7 @@ bool gfx_init(App *app, const char *resource_dir) {
     toolbox_init(&gh->toolbox, resource_dir);
     hud_game_init(resource_dir);
     radial_game_init();
+    ui_scale_from_settings();
     const char *theme = settings_get("theme"); /* the one chosen with :t last time */
     if (!theme || !gfx_change_theme(theme)) gfx_change_theme("light");
     return true;

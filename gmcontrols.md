@@ -460,7 +460,7 @@ the theme you chose with `:t` for the next start.
 |---|---|
 | `:t` | List the color themes |
 | `:t <name>` | Choose a theme: purple, red, green, yellow, light, dark, black; the colours fade over a quarter second (the HUD outline follows the theme). The game remembers it for the next start (see below) |
-| Ctrl + `+` / Ctrl + `-` | Bigger / smaller console text, toolbox and HUD |
+| Ctrl + `+` / Ctrl + `-` | Bigger / smaller console text, toolbox, HUD and radial menu (remembered for the next start) |
 | `:hud [on\|off]` | Show / hide the HUD (without an argument it toggles; Tab completes `on` / `off`) |
 | 1 … 9, 0 (console closed; also on the keypad) | Use hotbar slot 1–10 (once per key press; holding does not repeat) |
 | `:cl` | Clear the log and command history |
@@ -475,10 +475,17 @@ cursor scrolls the view when it would move under the HUD.
 
 ### Settings file
 
-The game remembers your settings in `settings.txt` in the game's folder (next to the program). For now that is the
-theme chosen with `:t`. It is a plain text file with one `key = value` per line, for example `theme = dark`; the game
+The game remembers your settings in `settings.txt` in the game's folder (next to the program):
+
+| Key | Setting |
+|---|---|
+| `theme` | The theme chosen with `:t`, e.g. `theme = dark` |
+| `ui_scale` | The UI size from Ctrl + / Ctrl −: steps from the normal size, e.g. `ui_scale = 3` (0 = normal, −24 to 64) |
+
+It is a plain text file with one `key = value` per line; the game
 rewrites it when a setting changes and keeps any other lines (comments starting with `#`, keys it doesn't know). You
-can edit it while the game is closed. A missing file or an unknown theme in it means the default theme, Light. The
+can edit it while the game is closed. A missing file or an unknown theme in it means the default theme, Light; a
+`ui_scale` that isn't a whole number from −24 to 64 means the normal size. The
 file is in `.gitignore`, so it never ends up in the repository.
 
 ## 17. Keyboard-only play
